@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "devduck"
+dynamic = ["version"]
+description = "🦆 Extreme minimalist self-adapting AI agent - one file, self-healing, runtime dependencies"
+readme = "README.md"
+license = "MIT"
+authors = [
+    {name = "duck", email = "hey@devduck.dev"}
+]
+keywords = ["ai", "agent", "minimalist", "self-healing", "ollama", "strands-agents"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console", 
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11", 
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Systems Administration",
+    "Topic :: Utilities",
+]
+requires-python = ">=3.10"
+dependencies = [
+    "strands-agents",
+    "strands-agents[ollama]",
+    "strands-agents[openai]",
+    "strands-agents[anthropic]",
+    "strands-agents-tools",
+]
+
+[project.scripts]
+devduck = "devduck:cli"
+
+[project.urls]
+Homepage = "https://github.com/cagataycali/devduck"
+Repository = "https://github.com/cagataycali/devduck.git"
+Documentation = "https://github.com/cagataycali/devduck#readme"
+"Bug Tracker" = "https://github.com/cagataycali/devduck/issues"
+
+[tool.setuptools]
+packages = ["devduck", "devduck.tools"]
+
+[tool.setuptools_scm]
+write_to = "devduck/_version.py"
