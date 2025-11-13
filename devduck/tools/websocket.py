@@ -206,13 +206,12 @@ async def process_message_async(connection_agent, message, websocket, loop, turn
         await websocket.send(json.dumps(error_msg))
 
 
-async def handle_websocket_client(websocket, system_prompt: str, devduck_instance: Any = None):
+async def handle_websocket_client(websocket, system_prompt: str):
     """Handle a WebSocket client connection with streaming responses.
 
     Args:
         websocket: WebSocket connection object
         system_prompt: System prompt for the DevDuck agent
-        devduck_instance: Parent DevDuck instance to clone settings from
     """
     client_address = websocket.remote_address
     logger.info(f"WebSocket connection established with {client_address}")
@@ -223,33 +222,36 @@ async def handle_websocket_client(websocket, system_prompt: str, devduck_instanc
     # Import DevDuck and create a new instance for this connection
     try:
         from devduck import DevDuck
-        
+
         # Create a new DevDuck instance with auto_start_servers=False to avoid recursion
         connection_devduck = DevDuck(auto_start_servers=False)
-        
+
         # Override system prompt if provided
         if connection_devduck.agent and system_prompt:
-            connection_devduck.agent.system_prompt = system_prompt
-            
+            connection_devduck.agent.system_prompt += (
+                "\nCustom system prompt:" + system_prompt
+            )
+
         connection_agent = connection_devduck.agent
-        
+
     except Exception as e:
         logger.error(f"Failed to create DevDuck instance: {e}", exc_info=True)
         # Fallback to basic Agent if DevDuck fails
         from strands import Agent
         from strands.models.ollama import OllamaModel
-        
+
         agent_model = OllamaModel(
             host=os.getenv("OLLAMA_HOST", "http://localhost:11434"),
             model_id=os.getenv("OLLAMA_MODEL", "qwen3:1.7b"),
             temperature=1,
             keep_alive="5m",
         )
-        
+
         connection_agent = Agent(
             model=agent_model,
             tools=[],
-            system_prompt=system_prompt or "You are a helpful WebSocket server assistant.",
+            system_prompt=system_prompt
+            or "You are a helpful WebSocket server assistant.",
         )
 
     # Track active tasks for concurrent processing
@@ -309,7 +311,6 @@ def run_websocket_server(
     host: str,
     port: int,
     system_prompt: str,
-    devduck_instance: Any = None,
 ) -> None:
     """Run a WebSocket server that processes client requests with DevDuck instances."""
     import websockets
@@ -325,7 +326,7 @@ def run_websocket_server(
             websocket: WebSocket connection object
         """
         WS_SERVER_THREADS[port]["connections"] += 1
-        await handle_websocket_client(websocket, system_prompt, devduck_instance)
+        await handle_websocket_client(websocket, system_prompt)
 
     async def start_server():
         stop_future = asyncio.Future()
@@ -385,7 +386,7 @@ def websocket(
         WS_SERVER_THREADS[port] = {"running": False}
         server_thread = threading.Thread(
             target=run_websocket_server,
-            args=(host, port, system_prompt, None),  # No parent instance needed
+            args=(host, port, system_prompt),
         )
         server_thread.daemon = True
         server_thread.start()

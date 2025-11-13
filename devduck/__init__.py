@@ -718,7 +718,7 @@ class DevDuck:
             if auto_start_servers:
                 logger.info("Auto-starting servers...")
                 print("🦆 Auto-starting servers...")
-    
+
                 try:
                     # Start TCP server on port 9999
                     tcp_result = self.agent.tool.tcp(action="start_server", port=9999)
@@ -730,10 +730,12 @@ class DevDuck:
                 except Exception as e:
                     logger.error(f"Failed to start TCP server: {e}")
                     print(f"🦆 ⚠ TCP server failed: {e}")
-    
+
                 try:
                     # Start WebSocket server on port 8080
-                    ws_result = self.agent.tool.websocket(action="start_server", port=8080)
+                    ws_result = self.agent.tool.websocket(
+                        action="start_server", port=8080
+                    )
                     if ws_result.get("status") == "success":
                         logger.info("✓ WebSocket server started on port 8080")
                         print("🦆 ✓ WebSocket server: localhost:8080")
@@ -742,7 +744,7 @@ class DevDuck:
                 except Exception as e:
                     logger.error(f"Failed to start WebSocket server: {e}")
                     print(f"🦆 ⚠ WebSocket server failed: {e}")
-    
+
                 try:
                     # Start MCP server with HTTP transport on port 8000
                     mcp_result = self.agent.tool.mcp_server(
@@ -760,14 +762,14 @@ class DevDuck:
                 except Exception as e:
                     logger.error(f"Failed to start MCP server: {e}")
                     print(f"🦆 ⚠ MCP server failed: {e}")
-    
+
                 # Start file watcher for auto hot-reload
                 self._start_file_watcher()
-    
+
                 logger.info(
                     f"DevDuck agent initialized successfully with model {self.model}"
                 )
-    
+
         except Exception as e:
             logger.error(f"Initialization failed: {e}")
             self._self_heal(e)

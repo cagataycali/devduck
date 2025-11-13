@@ -161,7 +161,6 @@ def handle_client(
     client_address: tuple,
     system_prompt: str,
     buffer_size: int,
-    devduck_instance: Any = None,
 ) -> None:
     """Handle a client connection in the TCP server with streaming responses.
 
@@ -170,7 +169,6 @@ def handle_client(
         client_address: The address of the client
         system_prompt: System prompt for creating a new agent for this connection
         buffer_size: Size of the message buffer
-        devduck_instance: Parent DevDuck instance to clone settings from
     """
     logger.info(f"Connection established with {client_address}")
 
@@ -181,33 +179,35 @@ def handle_client(
     # This gives us full DevDuck capabilities: system prompt building, self-healing, etc.
     try:
         from devduck import DevDuck
-        
+
         # Create a new DevDuck instance with auto_start_servers=False to avoid recursion
         connection_devduck = DevDuck(auto_start_servers=False)
-        
+
         # Override the callback handler to enable streaming
         if connection_devduck.agent:
             connection_devduck.agent.callback_handler = streaming_handler
-            
+
             # Optionally override system prompt if provided
             if system_prompt:
-                connection_devduck.agent.system_prompt = system_prompt
-                
+                connection_devduck.agent.system_prompt += (
+                    "\nCustom system prompt:" + system_prompt
+                )
+
         connection_agent = connection_devduck.agent
-        
+
     except Exception as e:
         logger.error(f"Failed to create DevDuck instance: {e}", exc_info=True)
         # Fallback to basic Agent if DevDuck fails
         from strands import Agent
         from strands.models.ollama import OllamaModel
-        
+
         agent_model = OllamaModel(
             host=os.getenv("OLLAMA_HOST", "http://localhost:11434"),
             model_id=os.getenv("OLLAMA_MODEL", "qwen3:1.7b"),
             temperature=1,
             keep_alive="5m",
         )
-        
+
         connection_agent = Agent(
             model=agent_model,
             tools=[],
@@ -268,7 +268,6 @@ def run_server(
     system_prompt: str,
     max_connections: int,
     buffer_size: int,
-    devduck_instance: Any = None,
 ) -> None:
     """Run a TCP server that processes client requests with per-connection DevDuck instances.
 
@@ -278,7 +277,6 @@ def run_server(
         system_prompt: System prompt for the server agents
         max_connections: Maximum number of concurrent connections
         buffer_size: Size of the message buffer
-        devduck_instance: Parent DevDuck instance to pass to connections
     """
     # Store server state
     SERVER_THREADS[port]["running"] = True
@@ -313,7 +311,6 @@ def run_server(
                         client_address,
                         system_prompt,
                         buffer_size,
-                        devduck_instance,
                     ),
                 )
                 client_thread.daemon = True
@@ -444,7 +441,6 @@ def tcp(
                 system_prompt,
                 max_connections,
                 buffer_size,
-                None,  # No parent instance needed
             ),
         )
         server_thread.daemon = True
