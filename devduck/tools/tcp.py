@@ -1,38 +1,60 @@
-"""TCP tool for Strands Agents to function as both server and client.
+"""TCP tool for DevDuck agents with real-time streaming support.
 
-This module provides TCP server and client functionality for Strands Agents,
-allowing them to communicate over TCP/IP networks. The tool runs server operations
-in background threads, enabling concurrent communication without blocking the main agent.
+This module provides TCP server and client functionality for DevDuck agents,
+allowing them to communicate over TCP/IP networks with real-time response streaming.
+The tool runs server operations in background threads, enabling concurrent
+communication without blocking the main agent.
 
 Key Features:
-1. TCP Server: Listen for incoming connections and process them with an agent
-2. TCP Client: Connect to remote TCP servers and exchange messages
-3. Background Processing: Server runs in a background thread
-4. Per-Connection Agents: Creates a fresh agent for each client connection
+1. TCP Server: Listen for incoming connections and process them with a DevDuck agent
+2. Real-time Streaming: Responses stream to clients as they're generated (non-blocking)
+3. TCP Client: Connect to remote TCP servers and exchange messages
+4. Background Processing: Server runs in a background thread
+5. Per-Connection DevDuck: Creates a fresh DevDuck instance for each client connection
+6. Callback Handler: Uses Strands callback system for efficient streaming
 
-Usage with Strands Agent:
+How Streaming Works:
+-------------------
+Instead of blocking until the full response is ready, this implementation uses
+Strands' callback_handler mechanism to stream data as it's generated:
+
+- Text chunks stream immediately as the model generates them
+- Tool invocations are announced in real-time
+- Tool results are sent as they complete
+- No buffering delays - everything is instant
+
+Usage with DevDuck Agent:
 
 ```python
-from strands import Agent
-from strands_tools import tcp
+from devduck import devduck
 
-agent = Agent(tools=[tcp])
-
-# Start a TCP server
-result = agent.tool.tcp(
+# Start a streaming TCP server (each connection gets its own DevDuck instance)
+result = devduck.agent.tool.tcp(
     action="start_server",
     host="127.0.0.1",
     port=8000,
     system_prompt="You are a helpful TCP server assistant.",
 )
 
-# Connect to a TCP server as client
-result = agent.tool.tcp(
-    action="client_send", host="127.0.0.1", port=8000, message="Hello, server!"
+# Connect as a client and receive streaming responses
+result = devduck.agent.tool.tcp(
+    action="client_send",
+    host="127.0.0.1",
+    port=8000,
+    message="What's 2+2?"
 )
 
 # Stop the TCP server
-result = agent.tool.tcp(action="stop_server", port=8000)
+result = devduck.agent.tool.tcp(action="stop_server", port=8000)
+```
+
+For testing with netcat:
+```bash
+# Start server from devduck
+devduck "start a tcp server on port 8000"
+
+# Connect with netcat and chat in real-time
+nc localhost 8000
 ```
 
 See the tcp function docstring for more details on configuration options and parameters.
@@ -42,6 +64,7 @@ import logging
 import socket
 import threading
 import time
+import os
 from typing import Any
 
 from strands import Agent, tool
@@ -50,6 +73,87 @@ logger = logging.getLogger(__name__)
 
 # Global registry to store server threads
 SERVER_THREADS: dict[int, dict[str, Any]] = {}
+
+
+class TCPStreamingCallbackHandler:
+    """Callback handler that streams agent responses directly over TCP socket.
+
+    This handler implements real-time streaming of:
+    - Assistant responses (text chunks as they're generated)
+    - Tool invocations (names and status)
+    - Reasoning text (if enabled)
+    - Tool results (success/error status)
+
+    All data is sent immediately to the TCP client without buffering.
+    """
+
+    def __init__(self, client_socket: socket.socket):
+        """Initialize the streaming handler.
+
+        Args:
+            client_socket: The TCP socket to stream data to
+        """
+        self.socket = client_socket
+        self.tool_count = 0
+        self.previous_tool_use = None
+
+    def _send(self, data: str) -> None:
+        """Safely send data over TCP socket.
+
+        Args:
+            data: String data to send
+        """
+        try:
+            self.socket.sendall(data.encode())
+        except (BrokenPipeError, ConnectionResetError, OSError) as e:
+            logger.warning(f"Failed to send data over TCP: {e}")
+
+    def __call__(self, **kwargs: Any) -> None:
+        """Stream events to TCP socket in real-time.
+
+        Args:
+            **kwargs: Callback event data including:
+                - reasoningText (Optional[str]): Reasoning text to stream
+                - data (str): Text content to stream
+                - complete (bool): Whether this is the final chunk
+                - current_tool_use (dict): Current tool being invoked
+                - message (dict): Full message objects (for tool results)
+        """
+        reasoningText = kwargs.get("reasoningText", False)
+        data = kwargs.get("data", "")
+        complete = kwargs.get("complete", False)
+        current_tool_use = kwargs.get("current_tool_use", {})
+        message = kwargs.get("message", {})
+
+        # Skip reasoning text to keep output clean
+        if reasoningText:
+            self._send(reasoningText)
+
+        # Stream response text chunks
+        if data:
+            self._send(data)
+            if complete:
+                self._send("\n")
+
+        # Stream tool invocation notifications
+        if current_tool_use and current_tool_use.get("name"):
+            tool_name = current_tool_use.get("name", "Unknown tool")
+            if self.previous_tool_use != current_tool_use:
+                self.previous_tool_use = current_tool_use
+                self.tool_count += 1
+                self._send(f"\n🛠️  Tool #{self.tool_count}: {tool_name}\n")
+
+        # Stream tool results
+        if isinstance(message, dict) and message.get("role") == "user":
+            for content in message.get("content", []):
+                if isinstance(content, dict):
+                    tool_result = content.get("toolResult")
+                    if tool_result:
+                        status = tool_result.get("status", "unknown")
+                        if status == "success":
+                            self._send(f"✅ Tool completed successfully\n")
+                        else:
+                            self._send(f"❌ Tool failed\n")
 
 
 def handle_client(
@@ -62,34 +166,94 @@ def handle_client(
     callback_handler: Any = None,
     trace_attributes: dict | None = None,
 ) -> None:
-    """Handle a client connection in the TCP server.
+    """Handle a client connection in the TCP server with streaming responses.
 
     Args:
         client_socket: The socket for the client connection
         client_address: The address of the client
         system_prompt: System prompt for creating a new agent for this connection
         buffer_size: Size of the message buffer
-        model: Model instance from parent agent
-        parent_tools: Tools inherited from the parent agent
-        callback_handler: Callback handler from parent agent
-        trace_attributes: Trace attributes from the parent agent
+        model: Model instance from parent agent (unused with DevDuck)
+        parent_tools: Tools inherited from the parent agent (unused with DevDuck)
+        callback_handler: Callback handler from parent agent (unused with DevDuck)
+        trace_attributes: Trace attributes from the parent agent (unused with DevDuck)
     """
     logger.info(f"Connection established with {client_address}")
 
-    # Create a fresh agent instance for this client connection
+    # Create a streaming callback handler for this connection
+    streaming_handler = TCPStreamingCallbackHandler(client_socket)
+
+    # Create agent directly with callback handler (bypass DevDuck wrapper for proper callback support)
+    from strands import Agent
+    from strands.models.ollama import OllamaModel
+    from strands_tools.utils.models.model import create_model
+
+    # Check if MODEL_PROVIDER env variable is set
+    model_provider = os.getenv("MODEL_PROVIDER")
+
+    if model_provider:
+        agent_model = create_model(provider=model_provider)
+    else:
+        # Fallback to Ollama
+        ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+        ollama_model = os.getenv("OLLAMA_MODEL", "qwen3:1.7b")
+        agent_model = OllamaModel(
+            host=ollama_host,
+            model_id=ollama_model,
+            temperature=1,
+            keep_alive="5m",
+        )
+
+    # Import all tools
+    from strands_tools import (
+        shell,
+        editor,
+        file_read,
+        file_write,
+        python_repl,
+        current_time,
+        calculator,
+        journal,
+        image_reader,
+        use_agent,
+        load_tool,
+        environment,
+    )
+
+    # Create Agent with callback handler at initialization
     connection_agent = Agent(
-        model=model,
-        messages=[],
-        tools=parent_tools or [],
-        callback_handler=callback_handler,
-        system_prompt=system_prompt,
-        trace_attributes=trace_attributes or {},
+        model=agent_model,
+        tools=[
+            shell,
+            editor,
+            file_read,
+            file_write,
+            python_repl,
+            current_time,
+            calculator,
+            journal,
+            image_reader,
+            use_agent,
+            load_tool,
+            environment,
+        ],
+        system_prompt=(
+            system_prompt
+            if system_prompt
+            else "You are a helpful TCP server assistant."
+        ),
+        callback_handler=streaming_handler,  # Pass callback during init!
+        load_tools_from_directory=True,
     )
 
     try:
         # Send welcome message
-        welcome_msg = "Welcome to Strands TCP Server! Send a message or 'exit' to close the connection.\n"
-        client_socket.sendall(welcome_msg.encode())
+        welcome_msg = "🦆 Welcome to DevDuck TCP Server!\n"
+        welcome_msg += (
+            "Real-time streaming enabled - responses stream as they're generated.\n"
+        )
+        welcome_msg += "Send a message or 'exit' to close the connection.\n\n"
+        streaming_handler._send(welcome_msg)
 
         while True:
             # Receive data from the client
@@ -103,16 +267,24 @@ def handle_client(
             logger.info(f"Received from {client_address}: {message}")
 
             if message.lower() == "exit":
-                client_socket.sendall(b"Connection closed by client request.\n")
+                streaming_handler._send("Connection closed by client request.\n")
                 logger.info(f"Client {client_address} requested to exit")
                 break
 
-            # Process the message with the connection-specific agent
-            response = connection_agent(message)
-            response_text = str(response)
+            # Process the message - responses stream automatically via callback_handler
+            try:
+                streaming_handler._send(f"\n\n🦆: {message}\n\n")
 
-            # Send the response back to the client
-            client_socket.sendall((response_text + "\n").encode())
+                # The agent call will stream responses directly to the socket
+                # through the callback_handler - no need to collect the response
+                connection_agent(message)
+
+                # Send completion marker
+                streaming_handler._send("\n\n🦆\n\n")
+
+            except Exception as e:
+                logger.error(f"Error processing message: {e}")
+                streaming_handler._send(f"\n❌ Error processing message: {e}\n\n")
 
     except Exception as e:
         logger.error(f"Error handling client {client_address}: {e}")
@@ -223,19 +395,28 @@ def tcp(
     max_connections: int = 5,
     agent: Any = None,
 ) -> dict:
-    """Create and manage TCP servers and clients for network communication with connection handling.
+    """Create and manage TCP servers and clients with real-time streaming for DevDuck instances.
 
-    This function provides TCP server and client functionality for Strands agents,
+    This function provides TCP server and client functionality for DevDuck agents,
     allowing them to communicate over TCP/IP networks. Servers run in background
-    threads with a new, fresh agent instance for each client connection.
+    threads with a new, fresh DevDuck instance for each client connection.
+
+    **Real-time Streaming:** Unlike traditional blocking TCP responses, this
+    implementation streams data as it's generated using Strands' callback_handler
+    mechanism. Clients receive:
+    - Text chunks as the model generates them (no buffering)
+    - Tool invocation notifications in real-time
+    - Tool completion status immediately
+    - Reasoning text (if enabled)
 
     How It Works:
     ------------
     1. Server Mode:
        - Starts a TCP server in a background thread
-       - Creates a dedicated agent for EACH client connection
-       - Inherits tools from the parent agent
-       - Processes client messages and returns responses
+       - Creates a dedicated DevDuck instance for EACH client connection
+       - Attaches a streaming callback handler to send data immediately
+       - Each DevDuck has full self-healing, hot-reload, and all tools
+       - Processes client messages with non-blocking streaming responses
 
     2. Client Mode:
        - Connects to a TCP server
@@ -249,17 +430,18 @@ def tcp(
 
     Common Use Cases:
     ---------------
-    - Network service automation
-    - Inter-agent communication
-    - Remote command and control
-    - API gateway implementation
-    - IoT device management
+    - Network service automation with real-time feedback
+    - Inter-agent communication with streaming
+    - Remote command and control (instant responsiveness)
+    - API gateway implementation with SSE-like behavior
+    - IoT device management with live updates
+    - Interactive chat services over raw TCP
 
     Args:
         action: Action to perform (start_server, stop_server, get_status, client_send)
         host: Host address for server or client connection
         port: Port number for server or client connection
-        system_prompt: System prompt for the server agent (for start_server)
+        system_prompt: System prompt for the server DevDuck instances (for start_server)
         message: Message to send to the TCP server (for client_send action)
         timeout: Connection timeout in seconds (default: 90)
         buffer_size: Size of the message buffer in bytes (default: 4096)
@@ -270,9 +452,23 @@ def tcp(
 
     Notes:
         - Server instances persist until explicitly stopped
-        - Each client connection gets its own agent instance
-        - Connection agents inherit tools from the parent agent
+        - Each client connection gets its own DevDuck instance
+        - Connection DevDuck instances have all standard DevDuck capabilities
+        - Streaming is automatic via callback_handler (no configuration needed)
         - Client connections are stateless
+        - Compatible with any TCP client (netcat, telnet, custom clients)
+
+    Examples:
+        # Start a streaming server
+        devduck("start a tcp server on port 9000")
+
+        # Test with netcat
+        nc localhost 9000
+        > what is 2+2?
+        [Streaming response appears in real-time]
+
+        # Send message from another devduck instance
+        devduck("send 'hello world' to tcp server at localhost:9000")
     """
     # Get parent agent from tool context if available
     parent_agent = agent
@@ -282,7 +478,9 @@ def tcp(
         if port in SERVER_THREADS and SERVER_THREADS[port].get("running", False):
             return {
                 "status": "error",
-                "content": [{"text": f"❌ Error: TCP Server already running on port {port}"}],
+                "content": [
+                    {"text": f"❌ Error: TCP Server already running on port {port}"}
+                ],
             }
 
         # Create server thread
@@ -307,7 +505,9 @@ def tcp(
         if not SERVER_THREADS[port].get("running", False):
             return {
                 "status": "error",
-                "content": [{"text": f"❌ Error: Failed to start TCP Server on {host}:{port}"}],
+                "content": [
+                    {"text": f"❌ Error: Failed to start TCP Server on {host}:{port}"}
+                ],
             }
 
         return {
@@ -315,7 +515,14 @@ def tcp(
             "content": [
                 {"text": f"✅ TCP Server started successfully on {host}:{port}"},
                 {"text": f"System prompt: {system_prompt}"},
-                {"text": "Server creates a new agent instance for each connection"},
+                {"text": "🌊 Real-time streaming enabled (non-blocking responses)"},
+                {
+                    "text": "🦆 Server creates a new DevDuck instance for each connection"
+                },
+                {
+                    "text": "🛠️  Each DevDuck has full self-healing, hot-reload, and all tools"
+                },
+                {"text": f"📝 Test with: nc localhost {port}"},
             ],
         }
 
@@ -323,7 +530,9 @@ def tcp(
         if port not in SERVER_THREADS or not SERVER_THREADS[port].get("running", False):
             return {
                 "status": "error",
-                "content": [{"text": f"❌ Error: No TCP Server running on port {port}"}],
+                "content": [
+                    {"text": f"❌ Error: No TCP Server running on port {port}"}
+                ],
             }
 
         # Stop the server
@@ -350,7 +559,9 @@ def tcp(
             "status": "success",
             "content": [
                 {"text": f"✅ TCP Server on port {port} stopped successfully"},
-                {"text": f"Statistics: {connections} connections handled, uptime {uptime:.2f} seconds"},
+                {
+                    "text": f"Statistics: {connections} connections handled, uptime {uptime:.2f} seconds"
+                },
             ],
         }
 
@@ -366,7 +577,9 @@ def tcp(
             if data.get("running", False):
                 uptime = time.time() - data.get("start_time", time.time())
                 connections = data.get("connections", 0)
-                status_info.append(f"Port {port}: Running - {connections} connections, uptime {uptime:.2f}s")
+                status_info.append(
+                    f"Port {port}: Running - {connections} connections, uptime {uptime:.2f}s"
+                )
             else:
                 status_info.append(f"Port {port}: Stopped")
 
@@ -388,7 +601,9 @@ def tcp(
         if not message:
             return {
                 "status": "error",
-                "content": [{"text": "Error: No message provided for client_send action"}],
+                "content": [
+                    {"text": "Error: No message provided for client_send action"}
+                ],
             }
 
         # Create client socket
@@ -426,12 +641,20 @@ def tcp(
         except TimeoutError:
             return {
                 "status": "error",
-                "content": [{"text": f"Error: Connection to {host}:{port} timed out after {timeout} seconds"}],
+                "content": [
+                    {
+                        "text": f"Error: Connection to {host}:{port} timed out after {timeout} seconds"
+                    }
+                ],
             }
         except ConnectionRefusedError:
             return {
                 "status": "error",
-                "content": [{"text": f"Error: Connection to {host}:{port} refused - no server running on that port"}],
+                "content": [
+                    {
+                        "text": f"Error: Connection to {host}:{port} refused - no server running on that port"
+                    }
+                ],
             }
         except Exception as e:
             return {

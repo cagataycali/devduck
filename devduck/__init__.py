@@ -8,32 +8,78 @@ import subprocess
 import os
 import platform
 import socket
+import logging
+import tempfile
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any
+from logging.handlers import RotatingFileHandler
 
 os.environ["BYPASS_TOOL_CONSENT"] = "true"
 os.environ["STRANDS_TOOL_CONSOLE_MODE"] = "enabled"
+
+# 📝 Setup logging system
+LOG_DIR = Path(tempfile.gettempdir()) / "devduck" / "logs"
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+LOG_FILE = LOG_DIR / "devduck.log"
+
+# Configure logger
+logger = logging.getLogger("devduck")
+logger.setLevel(logging.DEBUG)
+
+# File handler with rotation (10MB max, keep 3 backups)
+file_handler = RotatingFileHandler(
+    LOG_FILE, maxBytes=10 * 1024 * 1024, backupCount=3, encoding="utf-8"
+)
+file_handler.setLevel(logging.DEBUG)
+file_formatter = logging.Formatter(
+    "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+file_handler.setFormatter(file_formatter)
+
+# Console handler (only warnings and above)
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.WARNING)
+console_formatter = logging.Formatter("🦆 %(levelname)s: %(message)s")
+console_handler.setFormatter(console_formatter)
+
+logger.addHandler(file_handler)
+logger.addHandler(console_handler)
+
+logger.info("DevDuck logging system initialized")
 
 
 # 🔧 Self-healing dependency installer
 def ensure_deps():
     """Install dependencies at runtime if missing"""
-    deps = ["strands-agents", "strands-agents[ollama]", "strands-agents[openai]", "strands-agents[anthropic]", "strands-agents-tools"]
+    import importlib.metadata
 
+    deps = [
+        "strands-agents",
+        "strands-agents[ollama]",
+        "strands-agents[openai]",
+        "strands-agents[anthropic]",
+        "strands-agents-tools",
+    ]
+
+    # Check each package individually using importlib.metadata
     for dep in deps:
+        pkg_name = dep.split("[")[0]  # Get base package name (strip extras)
         try:
-            if "strands" in dep:
-                import strands
-
-                break
-        except ImportError:
+            # Check if package is installed using metadata (checks PyPI package name)
+            importlib.metadata.version(pkg_name)
+        except importlib.metadata.PackageNotFoundError:
             print(f"🦆 Installing {dep}...")
-            subprocess.check_call(
-                [sys.executable, "-m", "pip", "install", dep],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+            logger.debug(f"🦆 Installing {dep}...")
+            try:
+                subprocess.check_call(
+                    [sys.executable, "-m", "pip", "install", dep],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            except subprocess.CalledProcessError as e:
+                print(f"🦆 Warning: Failed to install {dep}: {e}")
+                logger.debug(f"🦆 Warning: Failed to install {dep}: {e}")
 
 
 # 🌍 Environment adaptation
@@ -242,6 +288,129 @@ def system_prompt_tool(
         return {"status": "error", "content": [{"text": f"Error: {str(e)}"}]}
 
 
+def view_logs_tool(
+    action: str = "view",
+    lines: int = 100,
+    pattern: str = None,
+) -> Dict[str, Any]:
+    """
+    View and manage DevDuck logs.
+
+    Args:
+        action: Action to perform - "view", "tail", "search", "clear", "stats"
+        lines: Number of lines to show (for view/tail)
+        pattern: Search pattern (for search action)
+
+    Returns:
+        Dict with status and content
+    """
+    try:
+        if action == "view":
+            if not LOG_FILE.exists():
+                return {"status": "success", "content": [{"text": "No logs yet"}]}
+
+            with open(LOG_FILE, "r", encoding="utf-8") as f:
+                all_lines = f.readlines()
+                recent_lines = (
+                    all_lines[-lines:] if len(all_lines) > lines else all_lines
+                )
+                content = "".join(recent_lines)
+
+            return {
+                "status": "success",
+                "content": [
+                    {"text": f"Last {len(recent_lines)} log lines:\n\n{content}"}
+                ],
+            }
+
+        elif action == "tail":
+            if not LOG_FILE.exists():
+                return {"status": "success", "content": [{"text": "No logs yet"}]}
+
+            with open(LOG_FILE, "r", encoding="utf-8") as f:
+                all_lines = f.readlines()
+                tail_lines = all_lines[-50:] if len(all_lines) > 50 else all_lines
+                content = "".join(tail_lines)
+
+            return {
+                "status": "success",
+                "content": [{"text": f"Tail (last 50 lines):\n\n{content}"}],
+            }
+
+        elif action == "search":
+            if not pattern:
+                return {
+                    "status": "error",
+                    "content": [{"text": "pattern parameter required for search"}],
+                }
+
+            if not LOG_FILE.exists():
+                return {"status": "success", "content": [{"text": "No logs yet"}]}
+
+            with open(LOG_FILE, "r", encoding="utf-8") as f:
+                matching_lines = [line for line in f if pattern.lower() in line.lower()]
+
+            if not matching_lines:
+                return {
+                    "status": "success",
+                    "content": [{"text": f"No matches found for pattern: {pattern}"}],
+                }
+
+            content = "".join(matching_lines[-100:])  # Last 100 matches
+            return {
+                "status": "success",
+                "content": [
+                    {
+                        "text": f"Found {len(matching_lines)} matches (showing last 100):\n\n{content}"
+                    }
+                ],
+            }
+
+        elif action == "clear":
+            if LOG_FILE.exists():
+                LOG_FILE.unlink()
+                logger.info("Log file cleared by user")
+            return {
+                "status": "success",
+                "content": [{"text": "Logs cleared successfully"}],
+            }
+
+        elif action == "stats":
+            if not LOG_FILE.exists():
+                return {"status": "success", "content": [{"text": "No logs yet"}]}
+
+            stat = LOG_FILE.stat()
+            size_mb = stat.st_size / (1024 * 1024)
+            modified = datetime.fromtimestamp(stat.st_mtime).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+
+            with open(LOG_FILE, "r", encoding="utf-8") as f:
+                total_lines = sum(1 for _ in f)
+
+            stats_text = f"""Log File Statistics:
+Path: {LOG_FILE}
+Size: {size_mb:.2f} MB
+Lines: {total_lines}
+Last Modified: {modified}"""
+
+            return {"status": "success", "content": [{"text": stats_text}]}
+
+        else:
+            return {
+                "status": "error",
+                "content": [
+                    {
+                        "text": f"Unknown action: {action}. Valid: view, tail, search, clear, stats"
+                    }
+                ],
+            }
+
+    except Exception as e:
+        logger.error(f"Error in view_logs_tool: {e}")
+        return {"status": "error", "content": [{"text": f"Error: {str(e)}"}]}
+
+
 def get_shell_history_file():
     """Get the devduck-specific history file path."""
     devduck_history = Path.home() / ".devduck_history"
@@ -253,22 +422,22 @@ def get_shell_history_file():
 def get_shell_history_files():
     """Get available shell history file paths."""
     history_files = []
-    
+
     # devduck history (primary)
     devduck_history = Path(get_shell_history_file())
     if devduck_history.exists():
         history_files.append(("devduck", str(devduck_history)))
-    
+
     # Bash history
     bash_history = Path.home() / ".bash_history"
     if bash_history.exists():
         history_files.append(("bash", str(bash_history)))
-    
+
     # Zsh history
     zsh_history = Path.home() / ".zsh_history"
     if zsh_history.exists():
         history_files.append(("zsh", str(zsh_history)))
-    
+
     return history_files
 
 
@@ -277,14 +446,16 @@ def parse_history_line(line, history_type):
     line = line.strip()
     if not line:
         return None
-    
+
     if history_type == "devduck":
         # devduck format: ": timestamp:0;# devduck: query" or ": timestamp:0;# devduck_result: result"
         if "# devduck:" in line:
             try:
                 timestamp_str = line.split(":")[1]
                 timestamp = int(timestamp_str)
-                readable_time = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
+                readable_time = datetime.fromtimestamp(timestamp).strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
                 query = line.split("# devduck:")[-1].strip()
                 return ("you", readable_time, query)
             except (ValueError, IndexError):
@@ -293,12 +464,14 @@ def parse_history_line(line, history_type):
             try:
                 timestamp_str = line.split(":")[1]
                 timestamp = int(timestamp_str)
-                readable_time = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
+                readable_time = datetime.fromtimestamp(timestamp).strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
                 result = line.split("# devduck_result:")[-1].strip()
                 return ("me", readable_time, result)
             except (ValueError, IndexError):
                 return None
-    
+
     elif history_type == "zsh":
         if line.startswith(": ") and ":0;" in line:
             try:
@@ -306,19 +479,47 @@ def parse_history_line(line, history_type):
                 if len(parts) == 2:
                     timestamp_str = parts[0].split(":")[1]
                     timestamp = int(timestamp_str)
-                    readable_time = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
+                    readable_time = datetime.fromtimestamp(timestamp).strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    )
                     command = parts[1].strip()
                     if not command.startswith("devduck "):
                         return ("shell", readable_time, f"$ {command}")
             except (ValueError, IndexError):
                 return None
-    
+
     elif history_type == "bash":
         readable_time = "recent"
         if not line.startswith("devduck "):
             return ("shell", readable_time, f"$ {line}")
-    
+
     return None
+
+
+def get_recent_logs():
+    """Get the last N lines from the log file for context."""
+    try:
+        log_line_count = int(os.getenv("DEVDUCK_LOG_LINE_COUNT", "50"))
+
+        if not LOG_FILE.exists():
+            return ""
+
+        with open(LOG_FILE, "r", encoding="utf-8", errors="ignore") as f:
+            all_lines = f.readlines()
+
+        recent_lines = (
+            all_lines[-log_line_count:]
+            if len(all_lines) > log_line_count
+            else all_lines
+        )
+
+        if not recent_lines:
+            return ""
+
+        log_content = "".join(recent_lines)
+        return f"\n\n## Recent Logs (last {len(recent_lines)} lines):\n```\n{log_content}```\n"
+    except Exception as e:
+        return f"\n\n## Recent Logs: Error reading logs - {e}\n"
 
 
 def get_last_messages():
@@ -326,17 +527,17 @@ def get_last_messages():
     try:
         message_count = int(os.getenv("DEVDUCK_LAST_MESSAGE_COUNT", "200"))
         all_entries = []
-        
+
         history_files = get_shell_history_files()
-        
+
         for history_type, history_file in history_files:
             try:
                 with open(history_file, encoding="utf-8", errors="ignore") as f:
                     lines = f.readlines()
-                
+
                 if history_type == "bash":
                     lines = lines[-message_count:]
-                
+
                 # Join multi-line entries for zsh
                 if history_type == "zsh":
                     joined_lines = []
@@ -355,22 +556,26 @@ def get_last_messages():
                     if current_line:
                         joined_lines.append(current_line)
                     lines = joined_lines
-                
+
                 for line in lines:
                     parsed = parse_history_line(line, history_type)
                     if parsed:
                         all_entries.append(parsed)
             except Exception:
                 continue
-        
-        recent_entries = all_entries[-message_count:] if len(all_entries) >= message_count else all_entries
-        
+
+        recent_entries = (
+            all_entries[-message_count:]
+            if len(all_entries) >= message_count
+            else all_entries
+        )
+
         context = ""
         if recent_entries:
             context += f"\n\nRecent conversation context (last {len(recent_entries)} messages):\n"
             for speaker, timestamp, content in recent_entries:
                 context += f"[{timestamp}] {speaker}: {content}\n"
-        
+
         return context
     except Exception:
         return ""
@@ -379,15 +584,21 @@ def get_last_messages():
 def append_to_shell_history(query, response):
     """Append the interaction to devduck shell history."""
     import time
+
     try:
         history_file = get_shell_history_file()
         timestamp = str(int(time.time()))
-        
+
         with open(history_file, "a", encoding="utf-8") as f:
             f.write(f": {timestamp}:0;# devduck: {query}\n")
-            response_summary = str(response).replace("\n", " ")[:int(os.getenv("DEVDUCK_RESPONSE_SUMMARY_LENGTH", "10000"))] + "..."
+            response_summary = (
+                str(response).replace("\n", " ")[
+                    : int(os.getenv("DEVDUCK_RESPONSE_SUMMARY_LENGTH", "10000"))
+                ]
+                + "..."
+            )
             f.write(f": {timestamp}:0;# devduck_result: {response_summary}\n")
-        
+
         os.chmod(history_file, 0o600)
     except Exception:
         pass
@@ -397,6 +608,7 @@ def append_to_shell_history(query, response):
 class DevDuck:
     def __init__(self):
         """Initialize the minimalist adaptive agent"""
+        logger.info("Initializing DevDuck agent...")
         try:
             # Self-heal dependencies
             ensure_deps()
@@ -404,25 +616,23 @@ class DevDuck:
             # Adapt to environment
             self.env_info, self.ollama_host, self.model = adapt_to_env()
 
+            # Execution state tracking for hot-reload
+            self._agent_executing = False
+            self._reload_pending = False
+
             # Import after ensuring deps
             from strands import Agent, tool
             from strands.models.ollama import OllamaModel
-            from strands.session.file_session_manager import FileSessionManager
             from strands_tools.utils.models.model import create_model
-            from .tools import tcp
+            from .tools import tcp, websocket, mcp_server, install_tools
             from strands_tools import (
                 shell,
-                editor,
-                file_read,
-                file_write,
                 python_repl,
-                current_time,
-                calculator,
-                journal,
                 image_reader,
                 use_agent,
                 load_tool,
                 environment,
+                mcp_client,
             )
 
             # Wrap system_prompt_tool with @tool decorator
@@ -436,23 +646,34 @@ class DevDuck:
                 """Manage agent system prompt dynamically."""
                 return system_prompt_tool(action, prompt, context, variable_name)
 
-            # Minimal but functional toolset including system_prompt and hello
+            # Wrap view_logs_tool with @tool decorator
+            @tool
+            def view_logs(
+                action: str = "view",
+                lines: int = 100,
+                pattern: str = None,
+            ) -> Dict[str, Any]:
+                """View and manage DevDuck logs."""
+                return view_logs_tool(action, lines, pattern)
+
+            # Minimal but functional toolset including system_prompt and view_logs
             self.tools = [
                 shell,
-                editor,
-                file_read,
-                file_write,
                 python_repl,
-                current_time,
-                calculator,
-                journal,
                 image_reader,
                 use_agent,
                 load_tool,
                 environment,
                 system_prompt,
-                tcp
+                view_logs,
+                tcp,
+                websocket,
+                mcp_server,
+                install_tools,
+                mcp_client,
             ]
+
+            logger.info(f"Initialized {len(self.tools)} tools")
 
             # Check if MODEL_PROVIDER env variable is set
             model_provider = os.getenv("MODEL_PROVIDER")
@@ -469,23 +690,69 @@ class DevDuck:
                     keep_alive="5m",
                 )
 
-            session_manager = FileSessionManager(
-                session_id=f"devduck-{datetime.now().strftime('%Y-%m-%d')}"
-            )
-
             # Create agent with self-healing
             self.agent = Agent(
                 model=self.agent_model,
                 tools=self.tools,
                 system_prompt=self._build_system_prompt(),
                 load_tools_from_directory=True,
-                # session_manager=session_manager,
             )
+
+            # 🚀 AUTO-START SERVERS: TCP (9999), WebSocket (8080), MCP HTTP (8000)
+            logger.info("Auto-starting servers...")
+            print("🦆 Auto-starting servers...")
+
+            try:
+                # Start TCP server on port 9999
+                tcp_result = self.agent.tool.tcp(action="start_server", port=9999)
+                if tcp_result.get("status") == "success":
+                    logger.info("✓ TCP server started on port 9999")
+                    print("🦆 ✓ TCP server: localhost:9999")
+                else:
+                    logger.warning(f"TCP server start issue: {tcp_result}")
+            except Exception as e:
+                logger.error(f"Failed to start TCP server: {e}")
+                print(f"🦆 ⚠ TCP server failed: {e}")
+
+            try:
+                # Start WebSocket server on port 8080
+                ws_result = self.agent.tool.websocket(action="start_server", port=8080)
+                if ws_result.get("status") == "success":
+                    logger.info("✓ WebSocket server started on port 8080")
+                    print("🦆 ✓ WebSocket server: localhost:8080")
+                else:
+                    logger.warning(f"WebSocket server start issue: {ws_result}")
+            except Exception as e:
+                logger.error(f"Failed to start WebSocket server: {e}")
+                print(f"🦆 ⚠ WebSocket server failed: {e}")
+
+            try:
+                # Start MCP server with HTTP transport on port 8000
+                mcp_result = self.agent.tool.mcp_server(
+                    action="start",
+                    transport="http",
+                    port=8000,
+                    expose_agent=True,
+                    agent=self.agent,
+                )
+                if mcp_result.get("status") == "success":
+                    logger.info("✓ MCP HTTP server started on port 8000")
+                    print("🦆 ✓ MCP server: http://localhost:8000/mcp")
+                else:
+                    logger.warning(f"MCP server start issue: {mcp_result}")
+            except Exception as e:
+                logger.error(f"Failed to start MCP server: {e}")
+                print(f"🦆 ⚠ MCP server failed: {e}")
 
             # Start file watcher for auto hot-reload
             self._start_file_watcher()
 
+            logger.info(
+                f"DevDuck agent initialized successfully with model {self.model}"
+            )
+
         except Exception as e:
+            logger.error(f"Initialization failed: {e}")
             self._self_heal(e)
 
     def _build_system_prompt(self):
@@ -502,13 +769,22 @@ class DevDuck:
 
         # Get own source code for self-awareness
         own_code = get_own_source_code()
-        
+
+        # print(own_code)
+
         # Get recent conversation history context (with error handling)
         try:
             recent_context = get_last_messages()
         except Exception as e:
             print(f"🦆 Warning: Could not load history context: {e}")
             recent_context = ""
+
+        # Get recent logs for immediate visibility
+        try:
+            recent_logs = get_recent_logs()
+        except Exception as e:
+            print(f"🦆 Warning: Could not load recent logs: {e}")
+            recent_logs = ""
 
         return f"""🦆 You are DevDuck - an extreme minimalist, self-adapting agent.
 
@@ -527,6 +803,7 @@ You are:
 Current working directory: {self.env_info['cwd']}
 
 {recent_context}
+{recent_logs}
 
 ## Your Own Implementation:
 You have full access to your own source code for self-awareness and self-modification:
@@ -538,6 +815,18 @@ You have full access to your own source code for self-awareness and self-modific
 - **No Restart Needed** - Tools are auto-loaded and ready to use instantly
 - **Live Development** - Modify existing tools while running and test immediately
 - **Full Python Access** - Create any Python functionality as a tool
+
+## Dynamic Tool Loading:
+- **Install Tools** - Use install_tools() to load tools from any Python package
+  - Example: install_tools(action="install_and_load", package="strands-fun-tools", module="strands_fun_tools")
+  - Expands capabilities without restart
+  - Access to entire Python ecosystem
+
+## MCP Server:
+- **Expose as MCP Server** - Use mcp_server() to expose devduck via MCP protocol
+  - Example: mcp_server(action="start", port=8000)
+  - Connect from Claude Desktop, other agents, or custom clients
+  - Full bidirectional communication
 
 ## Tool Creation Patterns:
 
@@ -606,14 +895,15 @@ def weather(action: str, location: str = None) -> Dict[str, Any]:
 
     def _self_heal(self, error):
         """Attempt self-healing when errors occur"""
+        logger.error(f"Self-healing triggered by error: {error}")
         print(f"🦆 Self-healing from: {error}")
 
         # Prevent infinite recursion by tracking heal attempts
         if not hasattr(self, "_heal_count"):
             self._heal_count = 0
-        
+
         self._heal_count += 1
-        
+
         # Limit recursion - if we've tried more than 3 times, give up
         if self._heal_count > 3:
             print(f"🦆 Self-healing failed after {self._heal_count} attempts")
@@ -710,11 +1000,28 @@ def weather(action: str, location: str = None) -> Dict[str, Any]:
     def __call__(self, query):
         """Make the agent callable"""
         if not self.agent:
+            logger.warning("Agent unavailable - attempted to call with query")
             return "🦆 Agent unavailable - try: devduck.restart()"
 
         try:
-            return self.agent(query)
+            logger.info(f"Agent call started: {query[:100]}...")
+            # Mark agent as executing to prevent hot-reload interruption
+            self._agent_executing = True
+
+            result = self.agent(query)
+
+            # Agent finished - check if reload was pending
+            self._agent_executing = False
+            logger.info("Agent call completed successfully")
+            if self._reload_pending:
+                logger.info("Triggering pending hot-reload after agent completion")
+                print("🦆 Agent finished - triggering pending hot-reload...")
+                self.hot_reload()
+
+            return result
         except Exception as e:
+            self._agent_executing = False  # Reset flag on error
+            logger.error(f"Agent call failed with error: {e}")
             self._self_heal(e)
             if self.agent:
                 return self.agent(query)
@@ -730,6 +1037,7 @@ def weather(action: str, location: str = None) -> Dict[str, Any]:
         """Start background file watcher for auto hot-reload"""
         import threading
 
+        logger.info("Starting file watcher for hot-reload")
         # Get the path to this file
         self._watch_file = Path(__file__).resolve()
         self._last_modified = (
@@ -742,6 +1050,7 @@ def weather(action: str, location: str = None) -> Dict[str, Any]:
             target=self._file_watcher_thread, daemon=True
         )
         self._watcher_thread.start()
+        logger.info(f"File watcher started, monitoring {self._watch_file}")
 
     def _file_watcher_thread(self):
         """Background thread that watches for file changes"""
@@ -772,9 +1081,24 @@ def weather(action: str, location: str = None) -> Dict[str, Any]:
                         self._last_modified = current_mtime
                         last_reload_time = current_time
 
-                        # Trigger hot-reload
-                        time.sleep(0.5)  # Small delay to ensure file write is complete
-                        self.hot_reload()
+                        # Check if agent is currently executing
+                        if getattr(self, "_agent_executing", False):
+                            logger.info(
+                                "Code change detected but agent is executing - reload pending"
+                            )
+                            print(
+                                "🦆 Agent is currently executing - reload will trigger after completion"
+                            )
+                            self._reload_pending = True
+                        else:
+                            # Safe to reload immediately
+                            logger.info(
+                                f"Code change detected in {self._watch_file.name} - triggering hot-reload"
+                            )
+                            time.sleep(
+                                0.5
+                            )  # Small delay to ensure file write is complete
+                            self.hot_reload()
                     else:
                         self._last_modified = current_mtime
 
@@ -791,6 +1115,7 @@ def weather(action: str, location: str = None) -> Dict[str, Any]:
 
     def hot_reload(self):
         """Hot-reload by restarting the entire Python process with fresh code"""
+        logger.info("Hot-reload initiated")
         print("🦆 Hot-reloading via process restart...")
 
         try:
@@ -861,9 +1186,11 @@ def hot_reload():
 def interactive():
     """Interactive REPL mode for devduck"""
     print("🦆 DevDuck")
+    print(f"📝 Logs: {LOG_DIR}")
     print("Type 'exit', 'quit', or 'q' to quit.")
     print("Prefix with ! to run shell commands (e.g., ! ls -la)")
     print("-" * 50)
+    logger.info("Interactive mode started")
 
     while True:
         try:
@@ -884,24 +1211,42 @@ def interactive():
                 shell_command = q[1:].strip()
                 try:
                     if devduck.agent:
-                        result = devduck.agent.tool.shell(command=shell_command, timeout=900)
+                        devduck._agent_executing = (
+                            True  # Prevent hot-reload during shell execution
+                        )
+                        result = devduck.agent.tool.shell(
+                            command=shell_command, timeout=9000
+                        )
+                        devduck._agent_executing = False
+
                         # Append shell command to history
                         append_to_shell_history(q, result["content"][0]["text"])
+
+                        # Check if reload was pending
+                        if devduck._reload_pending:
+                            print(
+                                "🦆 Shell command finished - triggering pending hot-reload..."
+                            )
+                            devduck.hot_reload()
                     else:
                         print("🦆 Agent unavailable")
                 except Exception as e:
+                    devduck._agent_executing = False  # Reset on error
                     print(f"🦆 Shell command error: {e}")
                 continue
 
             # Get recent conversation context
             recent_context = get_last_messages()
-            
+
+            # Get recent logs
+            recent_logs = get_recent_logs()
+
             # Update system prompt before each call with history context
             if devduck.agent:
                 # Rebuild system prompt with history
                 own_code = get_own_source_code()
                 session_id = f"devduck-{datetime.now().strftime('%Y-%m-%d')}"
-                
+
                 devduck.agent.system_prompt = f"""🦆 You are DevDuck - an extreme minimalist, self-adapting agent.
 
 Environment: {devduck.env_info['os']} {devduck.env_info['arch']} 
@@ -919,6 +1264,7 @@ You are:
 Current working directory: {devduck.env_info['cwd']}
 
 {recent_context}
+{recent_logs}
 
 ## Your Own Implementation:
 You have full access to your own source code for self-awareness and self-modification:
@@ -930,6 +1276,18 @@ You have full access to your own source code for self-awareness and self-modific
 - **No Restart Needed** - Tools are auto-loaded and ready to use instantly
 - **Live Development** - Modify existing tools while running and test immediately
 - **Full Python Access** - Create any Python functionality as a tool
+
+## Dynamic Tool Loading:
+- **Install Tools** - Use install_tools() to load tools from any Python package
+  - Example: install_tools(action="install_and_load", package="strands-fun-tools", module="strands_fun_tools")
+  - Expands capabilities without restart
+  - Access to entire Python ecosystem
+
+## MCP Server:
+- **Expose as MCP Server** - Use mcp_server() to expose devduck via MCP protocol
+  - Example: mcp_server(action="start", port=8000)
+  - Connect from Claude Desktop, other agents, or custom clients
+  - Full bidirectional communication
 
 ## System Prompt Management:
 - Use system_prompt(action='get') to view current prompt
@@ -947,19 +1305,20 @@ You have full access to your own source code for self-awareness and self-modific
 - Efficiency: **Speed is paramount**
 
 {os.getenv('SYSTEM_PROMPT', '')}"""
-                
+
                 # Update model if MODEL_PROVIDER changed
                 model_provider = os.getenv("MODEL_PROVIDER")
                 if model_provider:
                     try:
                         from strands_tools.utils.models.model import create_model
+
                         devduck.agent.model = create_model(provider=model_provider)
                     except Exception as e:
                         print(f"🦆 Model update error: {e}")
 
             # Execute the agent with user input
             result = ask(q)
-            
+
             # Append to shell history
             append_to_shell_history(q, str(result))
 
@@ -973,8 +1332,10 @@ You have full access to your own source code for self-awareness and self-modific
 
 def cli():
     """CLI entry point for pip-installed devduck command"""
+    logger.info("CLI mode started")
     if len(sys.argv) > 1:
         query = " ".join(sys.argv[1:])
+        logger.info(f"CLI query: {query}")
         result = ask(query)
         print(result)
     else:

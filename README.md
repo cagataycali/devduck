@@ -15,16 +15,52 @@ Requires: Python 3.10+, Ollama running
 ## Use
 
 ```bash
-# CLI
-devduck "what's the time?"
-
-# Interactive
+# Start DevDuck (auto-starts TCP, WebSocket, MCP servers)
 devduck
+
+# CLI mode
+devduck "what's the time?"
 
 # Python
 import devduck
-
 devduck("calculate 2+2")
+```
+
+## Auto-Started Servers
+
+When you run `devduck`, three servers start automatically:
+
+- **🌐 Web UI**: [http://cagataycali.github.io/devduck](http://cagataycali.github.io/devduck) (auto-connects)
+- **🔌 TCP**: `nc localhost 9999` (raw socket)
+- **🌊 WebSocket**: `ws://localhost:8080` (structured JSON)
+- **🔗 MCP**: `http://localhost:8000/mcp` (Model Context Protocol)
+
+### Connect via MCP
+
+Add to your MCP client (e.g., Claude Desktop):
+
+```json
+{
+  "mcpServers": {
+    "devduck": {
+      "command": "uvx",
+      "args": [
+        "strands-mcp-server",
+        "--upstream-url",
+        "http://localhost:8000/mcp/"
+      ],
+      "disabled": false
+    }
+  }
+}
+```
+
+### Connect via Terminal
+
+```bash
+# Direct TCP connection
+nc localhost 9999
+> what's the time?
 ```
 
 ## Features
@@ -34,6 +70,7 @@ devduck("calculate 2+2")
 - **Adaptive** - Picks model based on OS (macOS: 1.7b, Linux: 30b)
 - **14 tools** - shell, editor, files, python, calculator, tcp, etc.
 - **History aware** - Remembers shell/conversation context
+- **Multi-protocol** - TCP, WebSocket, MCP, CLI, Python
 
 ## Create Tool
 
