@@ -26,6 +26,7 @@ from strands.tools.mcp import MCPClient
 try:
     from mcp.client.sse import sse_client
     from mcp.client.streamable_http import streamablehttp_client
+
     HTTP_TRANSPORT_AVAILABLE = True
 except ImportError:
     HTTP_TRANSPORT_AVAILABLE = False
@@ -43,7 +44,7 @@ def load_mcp_config() -> dict:
             return config.get("mcpServers", {})
         except json.JSONDecodeError:
             pass
-    
+
     # Fallback: hardcoded strands-agents-mcp-server
     return {"strands-agents": {"command": "uvx", "args": ["strands-agents-mcp-server"]}}
 
@@ -59,7 +60,7 @@ def create_mcp_clients() -> list:
             if command:
                 args = server_config.get("args", [])
                 env = server_config.get("env", {})
-                
+
                 client = MCPClient(
                     lambda cmd=command, arguments=args, environment=env: stdio_client(
                         StdioServerParameters(
@@ -70,17 +71,19 @@ def create_mcp_clients() -> list:
                     )
                 )
                 clients.append((server_name, client))
-            
+
             elif server_config.get("url") and HTTP_TRANSPORT_AVAILABLE:
                 url = server_config.get("url")
                 headers = server_config.get("headers", {})
-                
+
                 try:
                     client = MCPClient(lambda: sse_client(url, headers=headers))
                     clients.append((server_name, client))
                 except Exception:
                     try:
-                        client = MCPClient(lambda: streamablehttp_client(url, headers=headers))
+                        client = MCPClient(
+                            lambda: streamablehttp_client(url, headers=headers)
+                        )
                         clients.append((server_name, client))
                     except Exception:
                         continue
@@ -95,95 +98,71 @@ def build_system_prompt() -> str:
     base_prompt = os.getenv("SYSTEM_PROMPT", "")
     if not base_prompt:
         base_prompt = "You are an autonomous GitHub agent powered by DevDuck."
-    
+
     input_system_prompt = os.getenv("INPUT_SYSTEM_PROMPT", "")
     if input_system_prompt:
         base_prompt = f"{base_prompt}\n\n{input_system_prompt}"
-    
+
     github_context = os.environ.get("GITHUB_CONTEXT", "")
     if github_context:
         base_prompt = f"{base_prompt}\n\nGitHub Context:\n{github_context}"
-    
+
     return base_prompt
 
 
 def run_agent(query: str) -> str:
     """Run DevDuck agent with GitHub context and MCP tools."""
-    
+
     print("🦆 Creating DevDuck agent...")
-    
+
     # Create a new DevDuck instance without auto-starting servers
     duck = DevDuck(auto_start_servers=False)
     agent = duck.agent
-    
+
     # Build and append GitHub context to DevDuck's system prompt
     github_system_prompt = build_system_prompt()
     if agent and github_system_prompt:
         agent.system_prompt += "\n\nCustom system prompt:" + github_system_prompt
         print("✅ GitHub context appended to DevDuck's system prompt")
-    
-    # Knowledge base retrieval (before running agent)
-    knowledge_base_id = os.getenv("STRANDS_KNOWLEDGE_BASE_ID")
-    if knowledge_base_id and hasattr(agent, 'tool'):
-        try:
-            if "retrieve" in agent.tool_names:
-                print(f"📚 Retrieving from knowledge base: {knowledge_base_id}")
-                agent.tool.retrieve(text=query, knowledgeBaseId=knowledge_base_id)
-        except Exception as e:
-            print(f"⚠️  Knowledge base retrieval failed: {e}")
-    
+
     # Get MCP clients
     mcp_clients = create_mcp_clients()
-    
+
     # Run agent with MCP context
+    # NOTE: KB retrieval/storage now handled automatically in DevDuck.__call__
     result = None
     if mcp_clients:
         print(f"🔗 Loading {len(mcp_clients)} MCP servers...")
-        
+
         def run_with_mcp(clients, current_agent):
             if not clients:
                 return current_agent(query)
-            
+
             server_name, client = clients[0]
             remaining = clients[1:]
-            
+
             with client:
                 try:
                     mcp_tools = client.list_tools_sync()
                     print(f"✓ {server_name}: {len(mcp_tools)} tools loaded")
                 except Exception as e:
                     print(f"⚠️  {server_name} failed: {e}")
-                
+
                 return run_with_mcp(remaining, current_agent)
-        
+
         result = run_with_mcp(mcp_clients, agent)
     else:
         result = agent(query)
-    
-    # Store in knowledge base (after running agent)
-    if knowledge_base_id and hasattr(agent, 'tool'):
-        try:
-            if "store_in_kb" in agent.tool_names:
-                conversation_content = f"Input: {query}, Result: {result!s}"
-                conversation_title = f"DevDuck: {datetime.datetime.now().strftime('%Y-%m-%d')} | {query[:50]}"
-                agent.tool.store_in_kb(
-                    content=conversation_content,
-                    title=conversation_title,
-                    knowledge_base_id=knowledge_base_id,
-                )
-                print(f"💾 Stored in knowledge base: {knowledge_base_id}")
-        except Exception as e:
-            print(f"⚠️  Knowledge base storage failed: {e}")
-    
+
     return result
 
 
 def main():
     """Main entry point."""
-    
+
     # Multi-input task collection (priority-based)
     tasks = {}
-    
+
     # Priority 1: Piped input (stdin)
     if not sys.stdin.isatty():
         try:
@@ -192,26 +171,28 @@ def main():
                 tasks["pipe"] = pipe_task
         except Exception:
             pass
-    
+
     # Priority 2: Command line arguments
     if len(sys.argv) > 1:
         cmd_task = " ".join(sys.argv[1:])
         if cmd_task:
             tasks["command_line"] = cmd_task
-    
+
     # Priority 3: Environment variable
     env_task = os.getenv("INPUT_TASK")
     if env_task:
         tasks["environment"] = env_task
-    
+
     # No tasks found
     if not tasks:
-        print("❌ Error: No task provided. Use command line args, stdin, or INPUT_TASK env var.")
+        print(
+            "❌ Error: No task provided. Use command line args, stdin, or INPUT_TASK env var."
+        )
         sys.exit(1)
-    
+
     # Combine all tasks
     combined_task = "\n\n".join(tasks.values())
-    
+
     try:
         result = run_agent(combined_task)
         print(f"\n✅ Agent Execution Complete!")

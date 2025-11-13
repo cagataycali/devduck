@@ -36,10 +36,10 @@ result = agent.tool.create_subagent(
     repository="owner/repo",
     workflow_id="agent.yml",
     task="Analyze this dataset and provide insights",
-    model="us.anthropic.claude-3-5-haiku-20241022-v1:0",
+    model="us.anthropic.claude-sonnet-4-5-20250929-v1:0",
     provider="bedrock",
-    max_tokens=4096,
-    tools="file_read,python_repl,calculator",
+    max_tokens=60000,
+    tools="file_read,use_github,create_subagent,system_prompt,python_repl,calculator",
 )
 
 # Create a sub-agent with powerful model for complex reasoning with limited tools
@@ -47,10 +47,10 @@ result = agent.tool.create_subagent(
     repository="owner/repo",
     workflow_id="agent.yml",
     task="Complex multi-step analysis requiring deep reasoning",
-    model="us.anthropic.claude-opus-4-20250514-v1:0",
+    model="us.anthropic.claude-sonnet-4-5-20250929-v1:0",
     provider="bedrock",
-    max_tokens=8192,
-    tools="think,use_agent,retrieve",
+    max_tokens=60000,
+    tools="think,use_agent,retrieve,use_github,scraper",
 )
 ```
 """

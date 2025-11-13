@@ -10,6 +10,7 @@ import platform
 import socket
 import logging
 import tempfile
+from datetime import datetime
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any
@@ -605,7 +606,16 @@ def append_to_shell_history(query, response):
 
 # 🦆 The devduck agent
 class DevDuck:
-    def __init__(self, auto_start_servers=True):
+    def __init__(
+        self,
+        auto_start_servers=True,
+        tcp_port=9999,
+        ws_port=8080,
+        mcp_port=8000,
+        enable_tcp=True,
+        enable_ws=True,
+        enable_mcp=True,
+    ):
         """Initialize the minimalist adaptive agent"""
         logger.info("Initializing DevDuck agent...")
         try:
@@ -629,18 +639,41 @@ class DevDuck:
             try:
                 from strands.models.ollama import OllamaModel
             except ImportError:
-                logger.warning("strands-agents[ollama] not installed - Ollama model unavailable")
+                logger.warning(
+                    "strands-agents[ollama] not installed - Ollama model unavailable"
+                )
                 OllamaModel = None
 
             try:
                 from strands_tools.utils.models.model import create_model
             except ImportError:
-                logger.warning("strands-agents-tools not installed - create_model unavailable")
+                logger.warning(
+                    "strands-agents-tools not installed - create_model unavailable"
+                )
                 create_model = None
 
             try:
-                from .tools import tcp, websocket, mcp_server, install_tools
-                core_tools.extend([tcp, websocket, mcp_server, install_tools])
+                from .tools import (
+                    tcp,
+                    websocket,
+                    mcp_server,
+                    install_tools,
+                    use_github,
+                    create_subagent,
+                    store_in_kb,
+                )
+
+                core_tools.extend(
+                    [
+                        tcp,
+                        websocket,
+                        mcp_server,
+                        install_tools,
+                        use_github,
+                        create_subagent,
+                        store_in_kb,
+                    ]
+                )
             except ImportError as e:
                 logger.warning(f"devduck.tools import failed: {e}")
 
@@ -652,9 +685,14 @@ class DevDuck:
                     screen_reader,
                     yolo_vision,
                 )
-                core_tools.extend([listen, cursor, clipboard, screen_reader, yolo_vision])
+
+                core_tools.extend(
+                    [listen, cursor, clipboard, screen_reader, yolo_vision]
+                )
             except ImportError:
-                logger.info("strands-fun-tools not installed - vision/audio tools unavailable (install with: pip install devduck[all])")
+                logger.info(
+                    "strands-fun-tools not installed - vision/audio tools unavailable (install with: pip install devduck[all])"
+                )
 
             try:
                 from strands_tools import (
@@ -667,20 +705,27 @@ class DevDuck:
                     load_tool,
                     environment,
                     mcp_client,
+                    retrieve,
                 )
-                core_tools.extend([
-                    shell,
-                    editor,
-                    calculator,
-                    python_repl,
-                    image_reader,
-                    use_agent,
-                    load_tool,
-                    environment,
-                    mcp_client,
-                ])
+
+                core_tools.extend(
+                    [
+                        shell,
+                        editor,
+                        calculator,
+                        python_repl,
+                        image_reader,
+                        use_agent,
+                        load_tool,
+                        environment,
+                        mcp_client,
+                        retrieve,
+                    ]
+                )
             except ImportError:
-                logger.info("strands-agents-tools not installed - core tools unavailable (install with: pip install devduck[all])")
+                logger.info(
+                    "strands-agents-tools not installed - core tools unavailable (install with: pip install devduck[all])"
+                )
 
             # Wrap system_prompt_tool with @tool decorator
             @tool
@@ -705,7 +750,7 @@ class DevDuck:
 
             # Add built-in tools to the toolset
             core_tools.extend([system_prompt, view_logs])
-            
+
             # Assign tools
             self.tools = core_tools
 
@@ -738,54 +783,59 @@ class DevDuck:
                 load_tools_from_directory=True,
             )
 
-            # 🚀 AUTO-START SERVERS: TCP (9999), WebSocket (8080), MCP HTTP (8000)
+            # 🚀 AUTO-START SERVERS: TCP, WebSocket, MCP HTTP
             if auto_start_servers:
                 logger.info("Auto-starting servers...")
                 print("🦆 Auto-starting servers...")
 
-                try:
-                    # Start TCP server on port 9999
-                    tcp_result = self.agent.tool.tcp(action="start_server", port=9999)
-                    if tcp_result.get("status") == "success":
-                        logger.info("✓ TCP server started on port 9999")
-                        print("🦆 ✓ TCP server: localhost:9999")
-                    else:
-                        logger.warning(f"TCP server start issue: {tcp_result}")
-                except Exception as e:
-                    logger.error(f"Failed to start TCP server: {e}")
-                    print(f"🦆 ⚠ TCP server failed: {e}")
+                if enable_tcp:
+                    try:
+                        # Start TCP server on configurable port
+                        tcp_result = self.agent.tool.tcp(
+                            action="start_server", port=tcp_port
+                        )
+                        if tcp_result.get("status") == "success":
+                            logger.info(f"✓ TCP server started on port {tcp_port}")
+                            print(f"🦆 ✓ TCP server: localhost:{tcp_port}")
+                        else:
+                            logger.warning(f"TCP server start issue: {tcp_result}")
+                    except Exception as e:
+                        logger.error(f"Failed to start TCP server: {e}")
+                        print(f"🦆 ⚠ TCP server failed: {e}")
 
-                try:
-                    # Start WebSocket server on port 8080
-                    ws_result = self.agent.tool.websocket(
-                        action="start_server", port=8080
-                    )
-                    if ws_result.get("status") == "success":
-                        logger.info("✓ WebSocket server started on port 8080")
-                        print("🦆 ✓ WebSocket server: localhost:8080")
-                    else:
-                        logger.warning(f"WebSocket server start issue: {ws_result}")
-                except Exception as e:
-                    logger.error(f"Failed to start WebSocket server: {e}")
-                    print(f"🦆 ⚠ WebSocket server failed: {e}")
+                if enable_ws:
+                    try:
+                        # Start WebSocket server on configurable port
+                        ws_result = self.agent.tool.websocket(
+                            action="start_server", port=ws_port
+                        )
+                        if ws_result.get("status") == "success":
+                            logger.info(f"✓ WebSocket server started on port {ws_port}")
+                            print(f"🦆 ✓ WebSocket server: localhost:{ws_port}")
+                        else:
+                            logger.warning(f"WebSocket server start issue: {ws_result}")
+                    except Exception as e:
+                        logger.error(f"Failed to start WebSocket server: {e}")
+                        print(f"🦆 ⚠ WebSocket server failed: {e}")
 
-                try:
-                    # Start MCP server with HTTP transport on port 8000
-                    mcp_result = self.agent.tool.mcp_server(
-                        action="start",
-                        transport="http",
-                        port=8000,
-                        expose_agent=True,
-                        agent=self.agent,
-                    )
-                    if mcp_result.get("status") == "success":
-                        logger.info("✓ MCP HTTP server started on port 8000")
-                        print("🦆 ✓ MCP server: http://localhost:8000/mcp")
-                    else:
-                        logger.warning(f"MCP server start issue: {mcp_result}")
-                except Exception as e:
-                    logger.error(f"Failed to start MCP server: {e}")
-                    print(f"🦆 ⚠ MCP server failed: {e}")
+                if enable_mcp:
+                    try:
+                        # Start MCP server with HTTP transport on configurable port
+                        mcp_result = self.agent.tool.mcp_server(
+                            action="start",
+                            transport="http",
+                            port=mcp_port,
+                            expose_agent=True,
+                            agent=self.agent,
+                        )
+                        if mcp_result.get("status") == "success":
+                            logger.info(f"✓ MCP HTTP server started on port {mcp_port}")
+                            print(f"🦆 ✓ MCP server: http://localhost:{mcp_port}/mcp")
+                        else:
+                            logger.warning(f"MCP server start issue: {mcp_result}")
+                    except Exception as e:
+                        logger.error(f"Failed to start MCP server: {e}")
+                        print(f"🦆 ⚠ MCP server failed: {e}")
 
                 # Start file watcher for auto hot-reload
                 self._start_file_watcher()
@@ -870,6 +920,12 @@ You have full access to your own source code for self-awareness and self-modific
   - Example: mcp_server(action="start", port=8000)
   - Connect from Claude Desktop, other agents, or custom clients
   - Full bidirectional communication
+
+## Knowledge Base Integration:
+- **Automatic RAG** - Set STRANDS_KNOWLEDGE_BASE_ID to enable automatic retrieval/storage
+  - Before each query: Retrieves relevant context from knowledge base
+  - After each response: Stores conversation for future reference
+  - Seamless memory across sessions without manual tool calls
 
 ## Tool Creation Patterns:
 
@@ -1020,7 +1076,7 @@ def weather(action: str, location: str = None) -> Dict[str, Any]:
             self.agent = None
 
     def __call__(self, query):
-        """Make the agent callable"""
+        """Make the agent callable with automatic knowledge base integration"""
         if not self.agent:
             logger.warning("Agent unavailable - attempted to call with query")
             return "🦆 Agent unavailable - try: devduck.restart()"
@@ -1030,7 +1086,36 @@ def weather(action: str, location: str = None) -> Dict[str, Any]:
             # Mark agent as executing to prevent hot-reload interruption
             self._agent_executing = True
 
+            # 📚 Knowledge Base Retrieval (BEFORE agent runs)
+            knowledge_base_id = os.getenv("STRANDS_KNOWLEDGE_BASE_ID")
+            if knowledge_base_id and hasattr(self.agent, "tool"):
+                try:
+                    if "retrieve" in self.agent.tool_names:
+                        logger.info(f"Retrieving context from KB: {knowledge_base_id}")
+                        self.agent.tool.retrieve(
+                            text=query, knowledgeBaseId=knowledge_base_id
+                        )
+                except Exception as e:
+                    logger.warning(f"KB retrieval failed: {e}")
+
+            # Run the agent
             result = self.agent(query)
+
+            # 💾 Knowledge Base Storage (AFTER agent runs)
+            if knowledge_base_id and hasattr(self.agent, "tool"):
+                try:
+                    if "store_in_kb" in self.agent.tool_names:
+
+                        conversation_content = f"Input: {query}, Result: {result!s}"
+                        conversation_title = f"DevDuck: {datetime.now().strftime('%Y-%m-%d')} | {query[:500]}"
+                        self.agent.tool.store_in_kb(
+                            content=conversation_content,
+                            title=conversation_title,
+                            knowledge_base_id=knowledge_base_id,
+                        )
+                        logger.info(f"Stored conversation in KB: {knowledge_base_id}")
+                except Exception as e:
+                    logger.warning(f"KB storage failed: {e}")
 
             # Agent finished - check if reload was pending
             self._agent_executing = False
@@ -1181,9 +1266,24 @@ def weather(action: str, location: str = None) -> Dict[str, Any]:
 
 
 # 🦆 Auto-initialize when imported
-# Check environment variable to control auto-start servers
+# Check environment variables to control server configuration
 _auto_start = os.getenv("DEVDUCK_AUTO_START_SERVERS", "true").lower() == "true"
-devduck = DevDuck(auto_start_servers=_auto_start)
+_tcp_port = int(os.getenv("DEVDUCK_TCP_PORT", "9999"))
+_ws_port = int(os.getenv("DEVDUCK_WS_PORT", "8080"))
+_mcp_port = int(os.getenv("DEVDUCK_MCP_PORT", "8000"))
+_enable_tcp = os.getenv("DEVDUCK_ENABLE_TCP", "true").lower() == "true"
+_enable_ws = os.getenv("DEVDUCK_ENABLE_WS", "true").lower() == "true"
+_enable_mcp = os.getenv("DEVDUCK_ENABLE_MCP", "true").lower() == "true"
+
+devduck = DevDuck(
+    auto_start_servers=_auto_start,
+    tcp_port=_tcp_port,
+    ws_port=_ws_port,
+    mcp_port=_mcp_port,
+    enable_tcp=_enable_tcp,
+    enable_ws=_enable_ws,
+    enable_mcp=_enable_mcp,
+)
 
 
 # 🚀 Convenience functions
@@ -1452,9 +1552,75 @@ You have full access to your own source code for self-awareness and self-modific
 
 def cli():
     """CLI entry point for pip-installed devduck command"""
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="🦆 DevDuck - Extreme minimalist self-adapting agent",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  devduck                          # Start interactive mode
+  devduck "your query here"        # One-shot query
+  devduck --tcp-port 9000          # Custom TCP port
+  devduck --no-tcp --no-ws         # Disable TCP and WebSocket
+  devduck --mcp-port 3000          # Custom MCP port
+        """,
+    )
+
+    # Query argument
+    parser.add_argument("query", nargs="*", help="Query to send to the agent")
+
+    # Server configuration
+    parser.add_argument(
+        "--tcp-port", type=int, default=9999, help="TCP server port (default: 9999)"
+    )
+    parser.add_argument(
+        "--ws-port",
+        type=int,
+        default=8080,
+        help="WebSocket server port (default: 8080)",
+    )
+    parser.add_argument(
+        "--mcp-port",
+        type=int,
+        default=8000,
+        help="MCP HTTP server port (default: 8000)",
+    )
+
+    # Server enable/disable flags
+    parser.add_argument("--no-tcp", action="store_true", help="Disable TCP server")
+    parser.add_argument("--no-ws", action="store_true", help="Disable WebSocket server")
+    parser.add_argument("--no-mcp", action="store_true", help="Disable MCP server")
+    parser.add_argument(
+        "--no-servers",
+        action="store_true",
+        help="Disable all servers (no TCP, WebSocket, or MCP)",
+    )
+
+    args = parser.parse_args()
+
     logger.info("CLI mode started")
-    if len(sys.argv) > 1:
-        query = " ".join(sys.argv[1:])
+
+    # Determine server configuration
+    enable_tcp = not args.no_tcp and not args.no_servers
+    enable_ws = not args.no_ws and not args.no_servers
+    enable_mcp = not args.no_mcp and not args.no_servers
+    auto_start = enable_tcp or enable_ws or enable_mcp
+
+    # Initialize devduck with custom configuration
+    global devduck
+    devduck = DevDuck(
+        auto_start_servers=auto_start,
+        tcp_port=args.tcp_port,
+        ws_port=args.ws_port,
+        mcp_port=args.mcp_port,
+        enable_tcp=enable_tcp,
+        enable_ws=enable_ws,
+        enable_mcp=enable_mcp,
+    )
+
+    if args.query:
+        query = " ".join(args.query)
         logger.info(f"CLI query: {query}")
         result = ask(query)
         print(result)
