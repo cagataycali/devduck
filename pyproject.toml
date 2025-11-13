@@ -7,7 +7,7 @@ name = "devduck"
 dynamic = ["version"]
 description = "🦆 Extreme minimalist self-adapting AI agent - one file, self-healing, runtime dependencies"
 readme = "README.md"
-license = "MIT"
+license = {text = "Apache-2.0"}
 authors = [
     {name = "duck", email = "hey@devduck.dev"}
 ]
