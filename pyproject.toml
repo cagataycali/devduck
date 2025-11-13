@@ -35,8 +35,11 @@ dependencies = [
     "strands-agents[openai]",
     "strands-agents[anthropic]",
     "strands-agents-tools",
+    "strands-fun-tools[audio]",
+    "strands-fun-tools[vision]",
     "strands-fun-tools[all]",
     "websockets",
+    "prompt_toolkit",
 ]
 
 [project.scripts]

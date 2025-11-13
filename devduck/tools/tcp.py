@@ -161,10 +161,7 @@ def handle_client(
     client_address: tuple,
     system_prompt: str,
     buffer_size: int,
-    model: Any,
-    parent_tools: list | None = None,
-    callback_handler: Any = None,
-    trace_attributes: dict | None = None,
+    devduck_instance: Any = None,
 ) -> None:
     """Handle a client connection in the TCP server with streaming responses.
 
@@ -173,78 +170,50 @@ def handle_client(
         client_address: The address of the client
         system_prompt: System prompt for creating a new agent for this connection
         buffer_size: Size of the message buffer
-        model: Model instance from parent agent (unused with DevDuck)
-        parent_tools: Tools inherited from the parent agent (unused with DevDuck)
-        callback_handler: Callback handler from parent agent (unused with DevDuck)
-        trace_attributes: Trace attributes from the parent agent (unused with DevDuck)
+        devduck_instance: Parent DevDuck instance to clone settings from
     """
     logger.info(f"Connection established with {client_address}")
 
     # Create a streaming callback handler for this connection
     streaming_handler = TCPStreamingCallbackHandler(client_socket)
 
-    # Create agent directly with callback handler (bypass DevDuck wrapper for proper callback support)
-    from strands import Agent
-    from strands.models.ollama import OllamaModel
-    from strands_tools.utils.models.model import create_model
-
-    # Check if MODEL_PROVIDER env variable is set
-    model_provider = os.getenv("MODEL_PROVIDER")
-
-    if model_provider:
-        agent_model = create_model(provider=model_provider)
-    else:
-        # Fallback to Ollama
-        ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-        ollama_model = os.getenv("OLLAMA_MODEL", "qwen3:1.7b")
+    # Import DevDuck and create a new instance for this connection
+    # This gives us full DevDuck capabilities: system prompt building, self-healing, etc.
+    try:
+        from devduck import DevDuck
+        
+        # Create a new DevDuck instance with auto_start_servers=False to avoid recursion
+        connection_devduck = DevDuck(auto_start_servers=False)
+        
+        # Override the callback handler to enable streaming
+        if connection_devduck.agent:
+            connection_devduck.agent.callback_handler = streaming_handler
+            
+            # Optionally override system prompt if provided
+            if system_prompt:
+                connection_devduck.agent.system_prompt = system_prompt
+                
+        connection_agent = connection_devduck.agent
+        
+    except Exception as e:
+        logger.error(f"Failed to create DevDuck instance: {e}", exc_info=True)
+        # Fallback to basic Agent if DevDuck fails
+        from strands import Agent
+        from strands.models.ollama import OllamaModel
+        
         agent_model = OllamaModel(
-            host=ollama_host,
-            model_id=ollama_model,
+            host=os.getenv("OLLAMA_HOST", "http://localhost:11434"),
+            model_id=os.getenv("OLLAMA_MODEL", "qwen3:1.7b"),
             temperature=1,
             keep_alive="5m",
         )
-
-    # Import all tools
-    from strands_tools import (
-        shell,
-        editor,
-        file_read,
-        file_write,
-        python_repl,
-        current_time,
-        calculator,
-        journal,
-        image_reader,
-        use_agent,
-        load_tool,
-        environment,
-    )
-
-    # Create Agent with callback handler at initialization
-    connection_agent = Agent(
-        model=agent_model,
-        tools=[
-            shell,
-            editor,
-            file_read,
-            file_write,
-            python_repl,
-            current_time,
-            calculator,
-            journal,
-            image_reader,
-            use_agent,
-            load_tool,
-            environment,
-        ],
-        system_prompt=(
-            system_prompt
-            if system_prompt
-            else "You are a helpful TCP server assistant."
-        ),
-        callback_handler=streaming_handler,  # Pass callback during init!
-        load_tools_from_directory=True,
-    )
+        
+        connection_agent = Agent(
+            model=agent_model,
+            tools=[],
+            system_prompt=system_prompt or "You are a helpful TCP server assistant.",
+            callback_handler=streaming_handler,
+        )
 
     try:
         # Send welcome message
@@ -299,9 +268,9 @@ def run_server(
     system_prompt: str,
     max_connections: int,
     buffer_size: int,
-    parent_agent: Agent | None = None,
+    devduck_instance: Any = None,
 ) -> None:
-    """Run a TCP server that processes client requests with per-connection Strands agents.
+    """Run a TCP server that processes client requests with per-connection DevDuck instances.
 
     Args:
         host: Host address to bind the server
@@ -309,23 +278,12 @@ def run_server(
         system_prompt: System prompt for the server agents
         max_connections: Maximum number of concurrent connections
         buffer_size: Size of the message buffer
-        parent_agent: Parent agent to inherit tools from
+        devduck_instance: Parent DevDuck instance to pass to connections
     """
     # Store server state
     SERVER_THREADS[port]["running"] = True
     SERVER_THREADS[port]["connections"] = 0
     SERVER_THREADS[port]["start_time"] = time.time()
-
-    # Get model, tools, callback_handler and trace attributes from parent agent
-    model = None
-    callback_handler = None
-    parent_tools = []
-    trace_attributes = {}
-    if parent_agent:
-        model = parent_agent.model
-        callback_handler = parent_agent.callback_handler
-        parent_tools = list(parent_agent.tool_registry.registry.values())
-        trace_attributes = parent_agent.trace_attributes
 
     # Create server socket
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -347,7 +305,7 @@ def run_server(
                 client_socket, client_address = server_socket.accept()
                 SERVER_THREADS[port]["connections"] += 1
 
-                # Handle client in a new thread with a fresh agent
+                # Handle client in a new thread with a fresh DevDuck instance
                 client_thread = threading.Thread(
                     target=handle_client,
                     args=(
@@ -355,10 +313,7 @@ def run_server(
                         client_address,
                         system_prompt,
                         buffer_size,
-                        model,
-                        parent_tools,
-                        callback_handler,
-                        trace_attributes,
+                        devduck_instance,
                     ),
                 )
                 client_thread.daemon = True
@@ -393,7 +348,6 @@ def tcp(
     timeout: int = 90,
     buffer_size: int = 4096,
     max_connections: int = 5,
-    agent: Any = None,
 ) -> dict:
     """Create and manage TCP servers and clients with real-time streaming for DevDuck instances.
 
@@ -470,9 +424,6 @@ def tcp(
         # Send message from another devduck instance
         devduck("send 'hello world' to tcp server at localhost:9000")
     """
-    # Get parent agent from tool context if available
-    parent_agent = agent
-
     if action == "start_server":
         # Check if server already running on this port
         if port in SERVER_THREADS and SERVER_THREADS[port].get("running", False):
@@ -493,7 +444,7 @@ def tcp(
                 system_prompt,
                 max_connections,
                 buffer_size,
-                parent_agent,
+                None,  # No parent instance needed
             ),
         )
         server_thread.daemon = True

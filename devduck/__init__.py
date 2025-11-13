@@ -606,7 +606,7 @@ def append_to_shell_history(query, response):
 
 # 🦆 The devduck agent
 class DevDuck:
-    def __init__(self):
+    def __init__(self, auto_start_servers=True):
         """Initialize the minimalist adaptive agent"""
         logger.info("Initializing DevDuck agent...")
         try:
@@ -625,8 +625,17 @@ class DevDuck:
             from strands.models.ollama import OllamaModel
             from strands_tools.utils.models.model import create_model
             from .tools import tcp, websocket, mcp_server, install_tools
+            from strands_fun_tools import (
+                listen,
+                cursor,
+                clipboard,
+                screen_reader,
+                yolo_vision,
+            )
             from strands_tools import (
                 shell,
+                editor,
+                calculator,
                 python_repl,
                 image_reader,
                 use_agent,
@@ -659,6 +668,8 @@ class DevDuck:
             # Minimal but functional toolset including system_prompt and view_logs
             self.tools = [
                 shell,
+                editor,
+                calculator,
                 python_repl,
                 image_reader,
                 use_agent,
@@ -671,6 +682,11 @@ class DevDuck:
                 mcp_server,
                 install_tools,
                 mcp_client,
+                listen,
+                cursor,
+                clipboard,
+                screen_reader,
+                yolo_vision,
             ]
 
             logger.info(f"Initialized {len(self.tools)} tools")
@@ -699,58 +715,59 @@ class DevDuck:
             )
 
             # 🚀 AUTO-START SERVERS: TCP (9999), WebSocket (8080), MCP HTTP (8000)
-            logger.info("Auto-starting servers...")
-            print("🦆 Auto-starting servers...")
-
-            try:
-                # Start TCP server on port 9999
-                tcp_result = self.agent.tool.tcp(action="start_server", port=9999)
-                if tcp_result.get("status") == "success":
-                    logger.info("✓ TCP server started on port 9999")
-                    print("🦆 ✓ TCP server: localhost:9999")
-                else:
-                    logger.warning(f"TCP server start issue: {tcp_result}")
-            except Exception as e:
-                logger.error(f"Failed to start TCP server: {e}")
-                print(f"🦆 ⚠ TCP server failed: {e}")
-
-            try:
-                # Start WebSocket server on port 8080
-                ws_result = self.agent.tool.websocket(action="start_server", port=8080)
-                if ws_result.get("status") == "success":
-                    logger.info("✓ WebSocket server started on port 8080")
-                    print("🦆 ✓ WebSocket server: localhost:8080")
-                else:
-                    logger.warning(f"WebSocket server start issue: {ws_result}")
-            except Exception as e:
-                logger.error(f"Failed to start WebSocket server: {e}")
-                print(f"🦆 ⚠ WebSocket server failed: {e}")
-
-            try:
-                # Start MCP server with HTTP transport on port 8000
-                mcp_result = self.agent.tool.mcp_server(
-                    action="start",
-                    transport="http",
-                    port=8000,
-                    expose_agent=True,
-                    agent=self.agent,
+            if auto_start_servers:
+                logger.info("Auto-starting servers...")
+                print("🦆 Auto-starting servers...")
+    
+                try:
+                    # Start TCP server on port 9999
+                    tcp_result = self.agent.tool.tcp(action="start_server", port=9999)
+                    if tcp_result.get("status") == "success":
+                        logger.info("✓ TCP server started on port 9999")
+                        print("🦆 ✓ TCP server: localhost:9999")
+                    else:
+                        logger.warning(f"TCP server start issue: {tcp_result}")
+                except Exception as e:
+                    logger.error(f"Failed to start TCP server: {e}")
+                    print(f"🦆 ⚠ TCP server failed: {e}")
+    
+                try:
+                    # Start WebSocket server on port 8080
+                    ws_result = self.agent.tool.websocket(action="start_server", port=8080)
+                    if ws_result.get("status") == "success":
+                        logger.info("✓ WebSocket server started on port 8080")
+                        print("🦆 ✓ WebSocket server: localhost:8080")
+                    else:
+                        logger.warning(f"WebSocket server start issue: {ws_result}")
+                except Exception as e:
+                    logger.error(f"Failed to start WebSocket server: {e}")
+                    print(f"🦆 ⚠ WebSocket server failed: {e}")
+    
+                try:
+                    # Start MCP server with HTTP transport on port 8000
+                    mcp_result = self.agent.tool.mcp_server(
+                        action="start",
+                        transport="http",
+                        port=8000,
+                        expose_agent=True,
+                        agent=self.agent,
+                    )
+                    if mcp_result.get("status") == "success":
+                        logger.info("✓ MCP HTTP server started on port 8000")
+                        print("🦆 ✓ MCP server: http://localhost:8000/mcp")
+                    else:
+                        logger.warning(f"MCP server start issue: {mcp_result}")
+                except Exception as e:
+                    logger.error(f"Failed to start MCP server: {e}")
+                    print(f"🦆 ⚠ MCP server failed: {e}")
+    
+                # Start file watcher for auto hot-reload
+                self._start_file_watcher()
+    
+                logger.info(
+                    f"DevDuck agent initialized successfully with model {self.model}"
                 )
-                if mcp_result.get("status") == "success":
-                    logger.info("✓ MCP HTTP server started on port 8000")
-                    print("🦆 ✓ MCP server: http://localhost:8000/mcp")
-                else:
-                    logger.warning(f"MCP server start issue: {mcp_result}")
-            except Exception as e:
-                logger.error(f"Failed to start MCP server: {e}")
-                print(f"🦆 ⚠ MCP server failed: {e}")
-
-            # Start file watcher for auto hot-reload
-            self._start_file_watcher()
-
-            logger.info(
-                f"DevDuck agent initialized successfully with model {self.model}"
-            )
-
+    
         except Exception as e:
             logger.error(f"Initialization failed: {e}")
             self._self_heal(e)
@@ -909,27 +926,6 @@ def weather(action: str, location: str = None) -> Dict[str, Any]:
             print(f"🦆 Self-healing failed after {self._heal_count} attempts")
             print("🦆 Please fix the issue manually and restart")
             sys.exit(1)
-
-        # Handle tool validation errors by resetting session
-        if "Expected toolResult blocks" in str(error):
-            print("🦆 Tool validation error detected - resetting session...")
-            # Add timestamp postfix to create fresh session
-            postfix = datetime.now().strftime("%H%M%S")
-            new_session_id = f"devduck-{datetime.now().strftime('%Y-%m-%d')}-{postfix}"
-            print(f"🦆 New session: {new_session_id}")
-
-            # Update session manager with new session
-            try:
-                from strands.session.file_session_manager import FileSessionManager
-
-                self.agent.session_manager = FileSessionManager(
-                    session_id=new_session_id
-                )
-                print("🦆 Session reset successful - continuing with fresh history")
-                self._heal_count = 0  # Reset counter on success
-                return  # Early return - no need for full restart
-            except Exception as session_error:
-                print(f"🦆 Session reset failed: {session_error}")
 
         # Common healing strategies
         if "not found" in str(error).lower() and "model" in str(error).lower():
@@ -1183,8 +1179,85 @@ def hot_reload():
     devduck.hot_reload()
 
 
+def extract_commands_from_history():
+    """Extract commonly used commands from shell history for auto-completion."""
+    commands = set()
+    history_files = get_shell_history_files()
+
+    # Limit the number of recent commands to process for performance
+    max_recent_commands = 100
+
+    for history_type, history_file in history_files:
+        try:
+            with open(history_file, encoding="utf-8", errors="ignore") as f:
+                lines = f.readlines()
+
+            # Take recent commands for better relevance
+            recent_lines = (
+                lines[-max_recent_commands:]
+                if len(lines) > max_recent_commands
+                else lines
+            )
+
+            for line in recent_lines:
+                line = line.strip()
+                if not line:
+                    continue
+
+                if history_type == "devduck":
+                    # Extract devduck commands
+                    if "# devduck:" in line:
+                        try:
+                            query = line.split("# devduck:")[-1].strip()
+                            # Extract first word as command
+                            first_word = query.split()[0] if query.split() else None
+                            if (
+                                first_word and len(first_word) > 2
+                            ):  # Only meaningful commands
+                                commands.add(first_word.lower())
+                        except (ValueError, IndexError):
+                            continue
+
+                elif history_type == "zsh":
+                    # Zsh format: ": timestamp:0;command"
+                    if line.startswith(": ") and ":0;" in line:
+                        try:
+                            parts = line.split(":0;", 1)
+                            if len(parts) == 2:
+                                full_command = parts[1].strip()
+                                # Extract first word as command
+                                first_word = (
+                                    full_command.split()[0]
+                                    if full_command.split()
+                                    else None
+                                )
+                                if (
+                                    first_word and len(first_word) > 1
+                                ):  # Only meaningful commands
+                                    commands.add(first_word.lower())
+                        except (ValueError, IndexError):
+                            continue
+
+                elif history_type == "bash":
+                    # Bash format: simple command per line
+                    first_word = line.split()[0] if line.split() else None
+                    if first_word and len(first_word) > 1:  # Only meaningful commands
+                        commands.add(first_word.lower())
+
+        except Exception:
+            # Skip files that can't be read
+            continue
+
+    return list(commands)
+
+
 def interactive():
     """Interactive REPL mode for devduck"""
+    from prompt_toolkit import prompt
+    from prompt_toolkit.auto_suggest import AutoSuggestFromHistory
+    from prompt_toolkit.completion import WordCompleter
+    from prompt_toolkit.history import FileHistory
+
     print("🦆 DevDuck")
     print(f"📝 Logs: {LOG_DIR}")
     print("Type 'exit', 'quit', or 'q' to quit.")
@@ -1192,10 +1265,29 @@ def interactive():
     print("-" * 50)
     logger.info("Interactive mode started")
 
+    # Set up prompt_toolkit with history
+    history_file = get_shell_history_file()
+    history = FileHistory(history_file)
+
+    # Create completions from common commands and shell history
+    base_commands = ["exit", "quit", "q", "help", "clear", "status", "reload"]
+    history_commands = extract_commands_from_history()
+
+    # Combine base commands with commands from history
+    all_commands = list(set(base_commands + history_commands))
+    completer = WordCompleter(all_commands, ignore_case=True)
+
     while True:
         try:
-            # Get user input
-            q = input("\n🦆 ")
+            # Use prompt_toolkit for enhanced input with arrow key support
+            q = prompt(
+                "\n🦆 ",
+                history=history,
+                auto_suggest=AutoSuggestFromHistory(),
+                completer=completer,
+                complete_while_typing=True,
+                mouse_support=False,  # breaks scrolling when enabled
+            )
 
             # Check for exit command
             if q.lower() in ["exit", "quit", "q"]:
