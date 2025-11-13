@@ -677,29 +677,33 @@ class DevDuck:
             except ImportError as e:
                 logger.warning(f"devduck.tools import failed: {e}")
 
-            try:
-                from strands_fun_tools import (
-                    listen,
-                    cursor,
-                    clipboard,
-                    screen_reader,
-                    yolo_vision,
-                )
+            # Skip fun tools in --mcp mode (they're not needed for MCP server)
+            if "--mcp" not in sys.argv:
+                try:
+                    from strands_fun_tools import (
+                        listen,
+                        cursor,
+                        clipboard,
+                        screen_reader,
+                        yolo_vision,
+                    )
 
-                core_tools.extend(
-                    [listen, cursor, clipboard, screen_reader, yolo_vision]
-                )
-            except ImportError:
-                logger.info(
-                    "strands-fun-tools not installed - vision/audio tools unavailable (install with: pip install devduck[all])"
-                )
+                    core_tools.extend(
+                        [listen, cursor, clipboard, screen_reader, yolo_vision]
+                    )
+                except ImportError:
+                    logger.info(
+                        "strands-fun-tools not installed - vision/audio tools unavailable (install with: pip install devduck[all])"
+                    )
+            else:
+                logger.info("--mcp mode: skipping vision/audio tools")
 
             try:
                 from strands_tools import (
                     shell,
                     editor,
                     calculator,
-                    python_repl,
+                    # python_repl,
                     image_reader,
                     use_agent,
                     load_tool,
@@ -713,7 +717,7 @@ class DevDuck:
                         shell,
                         editor,
                         calculator,
-                        python_repl,
+                        # python_repl,
                         image_reader,
                         use_agent,
                         load_tool,
@@ -1267,7 +1271,13 @@ def weather(action: str, location: str = None) -> Dict[str, Any]:
 
 # 🦆 Auto-initialize when imported
 # Check environment variables to control server configuration
+# Also check if --mcp flag is present to skip auto-starting servers
 _auto_start = os.getenv("DEVDUCK_AUTO_START_SERVERS", "true").lower() == "true"
+
+# Disable auto-start if --mcp flag is present (stdio mode)
+if "--mcp" in sys.argv:
+    _auto_start = False
+
 _tcp_port = int(os.getenv("DEVDUCK_TCP_PORT", "9999"))
 _ws_port = int(os.getenv("DEVDUCK_WS_PORT", "8080"))
 _mcp_port = int(os.getenv("DEVDUCK_MCP_PORT", "8000"))
@@ -1561,14 +1571,32 @@ def cli():
 Examples:
   devduck                          # Start interactive mode
   devduck "your query here"        # One-shot query
+  devduck --mcp                    # MCP stdio mode (for Claude Desktop)
   devduck --tcp-port 9000          # Custom TCP port
   devduck --no-tcp --no-ws         # Disable TCP and WebSocket
   devduck --mcp-port 3000          # Custom MCP port
+
+Claude Desktop Config:
+  {
+    "mcpServers": {
+      "devduck": {
+        "command": "uvx",
+        "args": ["devduck", "--mcp"]
+      }
+    }
+  }
         """,
     )
 
     # Query argument
     parser.add_argument("query", nargs="*", help="Query to send to the agent")
+
+    # MCP stdio mode flag
+    parser.add_argument(
+        "--mcp",
+        action="store_true",
+        help="Start MCP server in stdio mode (for Claude Desktop integration)",
+    )
 
     # Server configuration
     parser.add_argument(
@@ -1600,6 +1628,30 @@ Examples:
     args = parser.parse_args()
 
     logger.info("CLI mode started")
+
+    # Handle --mcp flag for stdio mode
+    if args.mcp:
+        logger.info("Starting MCP server in stdio mode (blocking, foreground)")
+        print("🦆 Starting MCP stdio server...", file=sys.stderr)
+
+        # Don't auto-start HTTP/TCP/WS servers for stdio mode
+        if devduck.agent:
+            try:
+                # Start MCP server in stdio mode - this BLOCKS until terminated
+                devduck.agent.tool.mcp_server(
+                    action="start",
+                    transport="stdio",
+                    expose_agent=True,
+                    agent=devduck.agent,
+                )
+            except Exception as e:
+                logger.error(f"Failed to start MCP stdio server: {e}")
+                print(f"🦆 Error: {e}", file=sys.stderr)
+                sys.exit(1)
+        else:
+            print("🦆 Agent not available", file=sys.stderr)
+            sys.exit(1)
+        return
 
     if args.query:
         query = " ".join(args.query)

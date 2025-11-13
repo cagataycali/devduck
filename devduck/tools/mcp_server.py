@@ -190,9 +190,11 @@ def _start_mcp_server(
             agent_invoke_tool = types.Tool(
                 name="devduck",
                 description=(
-                    "Invoke the full DevDuck agent with a natural language prompt. "
-                    "Use this for complex queries that require reasoning across multiple tools "
-                    "or when you need a conversational response from the agent."
+                    "Invoke a FULL DevDuck instance with complete capabilities. "
+                    "Each invocation creates a fresh DevDuck agent with self-healing, "
+                    "hot-reload, all tools, knowledge base integration, and system prompt building. "
+                    "Use this for complex queries requiring reasoning, multi-tool orchestration, "
+                    "or when you need the complete DevDuck experience via MCP."
                 ),
                 inputSchema={
                     "type": "object",
@@ -228,7 +230,7 @@ def _start_mcp_server(
             try:
                 logger.debug(f"call_tool: name={name}, arguments={arguments}")
 
-                # Handle agent invocation tool - use the devduck instance directly
+                # Handle agent invocation tool - create a full DevDuck instance
                 if name == "devduck" and expose_agent:
                     prompt = arguments.get("prompt")
                     if not prompt:
@@ -241,8 +243,34 @@ def _start_mcp_server(
 
                     logger.debug(f"Invoking devduck with prompt: {prompt[:100]}...")
 
-                    # Use the devduck agent directly (don't create a new instance)
-                    result = agent(prompt)
+                    # Create a NEW DevDuck instance for this MCP invocation
+                    # This gives full DevDuck power: self-healing, hot-reload, all tools, etc.
+                    try:
+                        from devduck import DevDuck
+
+                        # Create fresh DevDuck instance (no auto-start to avoid recursion)
+                        mcp_devduck = DevDuck(auto_start_servers=False)
+                        mcp_agent = mcp_devduck.agent
+
+                        if not mcp_agent:
+                            return [
+                                types.TextContent(
+                                    type="text",
+                                    text="❌ Error: Failed to create DevDuck instance",
+                                )
+                            ]
+
+                        # Execute with full DevDuck capabilities
+                        result = mcp_agent(prompt)
+
+                    except Exception as e:
+                        logger.error(f"DevDuck creation failed: {e}", exc_info=True)
+                        return [
+                            types.TextContent(
+                                type="text",
+                                text=f"❌ Error creating DevDuck instance: {str(e)}",
+                            )
+                        ]
 
                     # Extract text response from agent result
                     response_text = str(result)

@@ -38,6 +38,7 @@ dependencies = [
     "beautifulsoup4",
     "colorama",
     "websockets",
+    "strands-mcp-server",
 ]
 
 [project.optional-dependencies]
@@ -47,7 +48,6 @@ all = [
     "strands-fun-tools[audio]",
     "strands-fun-tools[vision]",
     "strands-fun-tools[all]",
-    "strands-mcp-server",
 ]
 
 [project.scripts]
