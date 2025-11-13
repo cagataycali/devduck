@@ -334,15 +334,6 @@ export DEVDUCK_LOG_LINE_COUNT=20
 export DEVDUCK_LAST_MESSAGE_COUNT=50
 ```
 
-**GitHub Actions timeout:**
-```yaml
-# Increase timeout in workflow
-- uses: cagataycali/devduck@main
-  with:
-    task: "Complex task"
-    timeout: "30m"  # Default is 10m
-```
-
 ---
 
 ## GitHub Actions Integration
@@ -369,10 +360,8 @@ jobs:
         with:
           task: "Analyze and help with this issue or PR"
           provider: "github"
-          model: "gpt-4o"
+          model: "gpt-4o" # default bedrock
           tools: "shell,editor,use_github,calculator"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 **Sub-agent workflows:**
