@@ -126,168 +126,6 @@ def get_own_source_code():
     except Exception as e:
         return f"Error reading own source code: {e}"
 
-
-# 🛠️ System prompt tool (with .prompt file persistence)
-def system_prompt_tool(
-    action: str,
-    prompt: str | None = None,
-    context: str | None = None,
-    variable_name: str = "SYSTEM_PROMPT",
-) -> Dict[str, Any]:
-    """
-    Manage the agent's system prompt dynamically with file persistence.
-
-    Args:
-        action: "view", "update", "add_context", or "reset"
-        prompt: New system prompt text (required for "update")
-        context: Additional context to prepend (for "add_context")
-        variable_name: Environment variable name (default: SYSTEM_PROMPT)
-
-    Returns:
-        Dict with status and content
-    """
-    from pathlib import Path
-    import tempfile
-
-    def _get_prompt_file_path() -> Path:
-        """Get the .prompt file path in temp directory."""
-        temp_dir = Path(tempfile.gettempdir()) / ".devduck"
-        temp_dir.mkdir(exist_ok=True, mode=0o700)  # Create with restrictive permissions
-        return temp_dir / ".prompt"
-
-    def _write_prompt_file(prompt_text: str) -> None:
-        """Write prompt to .prompt file in temp directory."""
-        prompt_file = _get_prompt_file_path()
-        try:
-            # Create file with restrictive permissions
-            with open(
-                prompt_file,
-                "w",
-                encoding="utf-8",
-                opener=lambda path, flags: os.open(path, flags, 0o600),
-            ) as f:
-                f.write(prompt_text)
-        except (OSError, PermissionError):
-            try:
-                prompt_file.write_text(prompt_text, encoding="utf-8")
-                prompt_file.chmod(0o600)
-            except (OSError, PermissionError):
-                prompt_file.write_text(prompt_text, encoding="utf-8")
-
-    def _get_system_prompt(var_name: str) -> str:
-        """Get current system prompt from environment variable."""
-        return os.environ.get(var_name, "")
-
-    def _update_system_prompt(new_prompt: str, var_name: str) -> None:
-        """Update system prompt in both environment and .prompt file."""
-        os.environ[var_name] = new_prompt
-        if var_name == "SYSTEM_PROMPT":
-            _write_prompt_file(new_prompt)
-
-    try:
-        if action == "view":
-            current = _get_system_prompt(variable_name)
-            return {
-                "status": "success",
-                "content": [
-                    {"text": f"Current system prompt from {variable_name}:{current}"}
-                ],
-            }
-
-        elif action == "update":
-            if not prompt:
-                return {
-                    "status": "error",
-                    "content": [
-                        {"text": "Error: prompt parameter required for update action"}
-                    ],
-                }
-
-            _update_system_prompt(prompt, variable_name)
-
-            if variable_name == "SYSTEM_PROMPT":
-                message = f"System prompt updated (env: {variable_name}, file: .prompt)"
-            else:
-                message = f"System prompt updated (env: {variable_name})"
-
-            return {"status": "success", "content": [{"text": message}]}
-
-        elif action == "add_context":
-            if not context:
-                return {
-                    "status": "error",
-                    "content": [
-                        {
-                            "text": "Error: context parameter required for add_context action"
-                        }
-                    ],
-                }
-
-            current = _get_system_prompt(variable_name)
-            new_prompt = f"{current} {context}" if current else context
-            _update_system_prompt(new_prompt, variable_name)
-
-            if variable_name == "SYSTEM_PROMPT":
-                message = f"Context added to system prompt (env: {variable_name}, file: .prompt)"
-            else:
-                message = f"Context added to system prompt (env: {variable_name})"
-
-            return {"status": "success", "content": [{"text": message}]}
-
-        elif action == "reset":
-            os.environ.pop(variable_name, None)
-
-            if variable_name == "SYSTEM_PROMPT":
-                prompt_file = _get_prompt_file_path()
-                if prompt_file.exists():
-                    try:
-                        prompt_file.unlink()
-                    except (OSError, PermissionError):
-                        pass
-                message = (
-                    f"System prompt reset (env: {variable_name}, file: .prompt cleared)"
-                )
-            else:
-                message = f"System prompt reset (env: {variable_name})"
-
-            return {"status": "success", "content": [{"text": message}]}
-
-        elif action == "get":
-            # Backward compatibility
-            current = _get_system_prompt(variable_name)
-            return {
-                "status": "success",
-                "content": [{"text": f"System prompt: {current}"}],
-            }
-
-        elif action == "set":
-            # Backward compatibility
-            if prompt is None:
-                return {"status": "error", "content": [{"text": "No prompt provided"}]}
-
-            if context:
-                prompt = f"{context} {prompt}"
-
-            _update_system_prompt(prompt, variable_name)
-            return {
-                "status": "success",
-                "content": [{"text": "System prompt updated successfully"}],
-            }
-
-        else:
-            return {
-                "status": "error",
-                "content": [
-                    {
-                        "text": f"Unknown action '{action}'. Valid: view, update, add_context, reset"
-                    }
-                ],
-            }
-
-    except Exception as e:
-        return {"status": "error", "content": [{"text": f"Error: {str(e)}"}]}
-
-
 def view_logs_tool(
     action: str = "view",
     lines: int = 100,
@@ -661,6 +499,7 @@ class DevDuck:
                     use_github,
                     create_subagent,
                     store_in_kb,
+                    system_prompt,
                 )
 
                 core_tools.extend(
@@ -672,6 +511,7 @@ class DevDuck:
                         use_github,
                         create_subagent,
                         store_in_kb,
+                        system_prompt
                     ]
                 )
             except ImportError as e:
@@ -731,17 +571,6 @@ class DevDuck:
                     "strands-agents-tools not installed - core tools unavailable (install with: pip install devduck[all])"
                 )
 
-            # Wrap system_prompt_tool with @tool decorator
-            @tool
-            def system_prompt(
-                action: str,
-                prompt: str = None,
-                context: str = None,
-                variable_name: str = "SYSTEM_PROMPT",
-            ) -> Dict[str, Any]:
-                """Manage agent system prompt dynamically."""
-                return system_prompt_tool(action, prompt, context, variable_name)
-
             # Wrap view_logs_tool with @tool decorator
             @tool
             def view_logs(
@@ -753,7 +582,7 @@ class DevDuck:
                 return view_logs_tool(action, lines, pattern)
 
             # Add built-in tools to the toolset
-            core_tools.extend([system_prompt, view_logs])
+            core_tools.extend([view_logs])
 
             # Assign tools
             self.tools = core_tools
@@ -980,9 +809,20 @@ def weather(action: str, location: str = None) -> Dict[str, Any]:
 ```
 
 ## System Prompt Management:
-- Use system_prompt(action='get') to view current prompt
-- Use system_prompt(action='set', prompt='new text') to update
-- Changes persist in SYSTEM_PROMPT environment variable
+- **View**: system_prompt(action='view') - See current prompt
+- **Update Local**: system_prompt(action='update', prompt='new text') - Updates env var + .prompt file
+- **Update GitHub**: system_prompt(action='update', prompt='text', repository='cagataycali/devduck') - Syncs to repo variables
+- **Variable Name**: system_prompt(action='update', prompt='text', variable_name='CUSTOM_PROMPT') - Use custom var
+- **Add Context**: system_prompt(action='add_context', context='new learning') - Append without replacing
+
+### 🧠 Self-Improvement Pattern:
+When you learn something valuable during conversations:
+1. Identify the new insight or pattern
+2. Use system_prompt(action='add_context', context='...')  to append it
+3. Sync to GitHub: system_prompt(action='update', prompt=new_full_prompt, repository='owner/repo')
+4. New learnings persist across sessions via SYSTEM_PROMPT env var
+
+**Repository Integration**: Set repository='cagataycali/devduck' to sync prompts across deployments
 
 ## Shell Commands:
 - Prefix with ! to execute shell commands directly
@@ -1520,9 +1360,20 @@ You have full access to your own source code for self-awareness and self-modific
   - Full bidirectional communication
 
 ## System Prompt Management:
-- Use system_prompt(action='get') to view current prompt
-- Use system_prompt(action='set', prompt='new text') to update
-- Changes persist in SYSTEM_PROMPT environment variable
+- **View**: system_prompt(action='view') - See current prompt
+- **Update Local**: system_prompt(action='update', prompt='new text') - Updates env var + .prompt file
+- **Update GitHub**: system_prompt(action='update', prompt='text', repository='cagataycali/devduck') - Syncs to repo variables
+- **Variable Name**: system_prompt(action='update', prompt='text', variable_name='CUSTOM_PROMPT') - Use custom var
+- **Add Context**: system_prompt(action='add_context', context='new learning') - Append without replacing
+
+### 🧠 Self-Improvement Pattern:
+When you learn something valuable during conversations:
+1. Identify the new insight or pattern
+2. Use system_prompt(action='add_context', context='...')  to append it
+3. Optionally sync to GitHub: system_prompt(action='update', prompt=new_full_prompt, repository='owner/repo')
+4. New learnings persist across sessions via SYSTEM_PROMPT env var
+
+**Repository Integration**: Set repository='cagataycali/devduck' to sync prompts across deployments
 
 ## Shell Commands:
 - Prefix with ! to execute shell commands directly

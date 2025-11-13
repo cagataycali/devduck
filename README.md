@@ -6,8 +6,20 @@ Minimalist AI that adapts to your environment and fixes itself when things break
 
 ## Install
 
+**Homebrew (macOS/Linux):**
+```bash
+brew tap cagataycali/devduck
+brew install devduck
+```
+
+**pipx (all platforms):**
 ```bash
 pipx install "devduck[all]"  # Full install (recommended)
+```
+
+**uvx (instant run, no install):**
+```bash
+uvx devduck "hello world"
 ```
 
 Requires: Python 3.10+, Ollama (or set `MODEL_PROVIDER`)
@@ -201,11 +213,22 @@ Log location: `/tmp/devduck/logs/devduck.log`
 Run DevDuck in CI/CD:
 
 ```yaml
-- name: DevDuck Analysis
-  uses: cagataycali/devduck@main
-  with:
-    query: "analyze test coverage"
-    model: "us.anthropic.claude-sonnet-4-20250514-v1:0"
+name: AI Assistant
+on: [issues, pull_request]
+
+jobs:
+  assistant:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: cagataycali/devduck@main
+        with:
+          task: "Help with this issue or PR"
+          provider: "github"
+          model: "openai/o4-mini"
 ```
 
 ---
