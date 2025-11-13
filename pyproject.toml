@@ -32,6 +32,8 @@ requires-python = ">=3.10"
 dependencies = [
     "strands-agents",
     "prompt_toolkit",
+    "strands-agents-tools",
+    "strands-agentcore-tools",
 ]
 
 [project.optional-dependencies]
@@ -39,12 +41,10 @@ all = [
     "strands-agents[ollama]",
     "strands-agents[openai]",
     "strands-agents[anthropic]",
-    "strands-agents-tools",
     "strands-fun-tools[audio]",
     "strands-fun-tools[vision]",
     "strands-fun-tools[all]",
     "strands-mcp-server",
-    "strands-agentcore-tools",
     "websockets",
 ]
 

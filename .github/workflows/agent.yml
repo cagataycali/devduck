@@ -20,11 +20,11 @@ on:
   workflow_dispatch:
     inputs:
       task:
-        description: 'Specific task for the agent to perform'
+        description: 'Task'
         required: false
         type: string
       system_prompt:
-        description: 'Additional system prompt instructions'
+        description: 'System prompt'
         required: false
         type: string
       tools:
@@ -32,7 +32,7 @@ on:
         required: false
         type: string
       provider:
-        description: 'Model provider'
+        description: 'Provider'
         default: "bedrock"
         required: false
         type: choice
@@ -94,7 +94,7 @@ jobs:
             echo "authorized=false" >> $GITHUB_OUTPUT
           fi
 
-  run-internal-agent:
+  agent:
     needs: check-permissions
     runs-on: ubuntu-latest
     # Only run if user is authorized
