@@ -1,4 +1,4 @@
-name: Agent
+name: DevDuck
 
 on:
   schedule:
@@ -45,12 +45,12 @@ on:
           - llamaapi
       model:
         description: 'Model ID'
-        default: "us.anthropic.claude-sonnet-4-20250514-v1:0"
+        default: "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
         required: false
         type: string
       max_tokens:
         description: 'Max tokens'
-        default: "32768"
+        default: "60000"
         required: false
         type: string
       temperature:
@@ -62,6 +62,7 @@ on:
         description: 'MCP servers configuration (JSON string)'
         required: false
         type: string
+        default: '{"mcpServers":{"strands-docs":{"command":"uvx","args":["strands-agents-mcp-server"],"timeout":30000}}}'
       additional_request_fields:
         description: 'Additional request fields JSON (e.g., thinking, anthropic_beta)'
         required: false

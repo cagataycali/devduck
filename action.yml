@@ -165,7 +165,7 @@ runs:
       shell: bash
       env:
         # GitHub Configuration - Priority: Input > Repository Variable > Default Gist
-        AGENT_RUNNER: ${{ inputs.agent_runner || 'https://gist.githubusercontent.com/cagataycali/6a1336633f1fbf92a470f872de8edaaf/raw/23a19fffbcbb91afaf870cd0f75ca70eae322ade/agent_runner.py' }}
+        AGENT_RUNNER: ${{ inputs.agent_runner || 'https://gist.githubusercontent.com/cagataycali/f67df59c34c0d7ff13adbba3b0f8d3d9/raw/bb324e37d19948f0d36d0ca9ce721ca64deb13a1/agent_runner.py' }}
       run: |
         curl -s -o agent_runner.py $AGENT_RUNNER
 
