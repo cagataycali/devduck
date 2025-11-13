@@ -1,5 +1,4 @@
 strands-agents
 strands-agents-tools
-strands_agents_builder
 beautifulsoup4
 colorama

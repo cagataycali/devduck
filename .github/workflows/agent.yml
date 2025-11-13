@@ -110,6 +110,7 @@ jobs:
         uses: ./
         env:
           PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+          MODEL_PROVIDER: "bedrock"
         with:
           task: |
             ${{ 
