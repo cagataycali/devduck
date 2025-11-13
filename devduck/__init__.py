@@ -51,19 +51,18 @@ logger.info("DevDuck logging system initialized")
 
 # 🔧 Self-healing dependency installer
 def ensure_deps():
-    """Install dependencies at runtime if missing"""
+    """Install core dependencies at runtime if missing"""
     import importlib.metadata
 
-    deps = [
+    # Only ensure core deps - everything else is optional
+    core_deps = [
         "strands-agents",
-        "strands-agents[ollama]",
-        "strands-agents[openai]",
-        "strands-agents[anthropic]",
+        "prompt_toolkit",
         "strands-agents-tools",
     ]
 
     # Check each package individually using importlib.metadata
-    for dep in deps:
+    for dep in core_deps:
         pkg_name = dep.split("[")[0]  # Get base package name (strip extras)
         try:
             # Check if package is installed using metadata (checks PyPI package name)
@@ -622,27 +621,66 @@ class DevDuck:
 
             # Import after ensuring deps
             from strands import Agent, tool
-            from strands.models.ollama import OllamaModel
-            from strands_tools.utils.models.model import create_model
-            from .tools import tcp, websocket, mcp_server, install_tools
-            from strands_fun_tools import (
-                listen,
-                cursor,
-                clipboard,
-                screen_reader,
-                yolo_vision,
-            )
-            from strands_tools import (
-                shell,
-                editor,
-                calculator,
-                python_repl,
-                image_reader,
-                use_agent,
-                load_tool,
-                environment,
-                mcp_client,
-            )
+
+            # Core tools (always available)
+            core_tools = []
+
+            # Try importing optional tools gracefully
+            try:
+                from strands.models.ollama import OllamaModel
+            except ImportError:
+                logger.warning("strands-agents[ollama] not installed - Ollama model unavailable")
+                OllamaModel = None
+
+            try:
+                from strands_tools.utils.models.model import create_model
+            except ImportError:
+                logger.warning("strands-agents-tools not installed - create_model unavailable")
+                create_model = None
+
+            try:
+                from .tools import tcp, websocket, mcp_server, install_tools
+                core_tools.extend([tcp, websocket, mcp_server, install_tools])
+            except ImportError as e:
+                logger.warning(f"devduck.tools import failed: {e}")
+
+            try:
+                from strands_fun_tools import (
+                    listen,
+                    cursor,
+                    clipboard,
+                    screen_reader,
+                    yolo_vision,
+                )
+                core_tools.extend([listen, cursor, clipboard, screen_reader, yolo_vision])
+            except ImportError:
+                logger.info("strands-fun-tools not installed - vision/audio tools unavailable (install with: pip install devduck[all])")
+
+            try:
+                from strands_tools import (
+                    shell,
+                    editor,
+                    calculator,
+                    python_repl,
+                    image_reader,
+                    use_agent,
+                    load_tool,
+                    environment,
+                    mcp_client,
+                )
+                core_tools.extend([
+                    shell,
+                    editor,
+                    calculator,
+                    python_repl,
+                    image_reader,
+                    use_agent,
+                    load_tool,
+                    environment,
+                    mcp_client,
+                ])
+            except ImportError:
+                logger.info("strands-agents-tools not installed - core tools unavailable (install with: pip install devduck[all])")
 
             # Wrap system_prompt_tool with @tool decorator
             @tool
@@ -665,45 +703,31 @@ class DevDuck:
                 """View and manage DevDuck logs."""
                 return view_logs_tool(action, lines, pattern)
 
-            # Minimal but functional toolset including system_prompt and view_logs
-            self.tools = [
-                shell,
-                editor,
-                calculator,
-                python_repl,
-                image_reader,
-                use_agent,
-                load_tool,
-                environment,
-                system_prompt,
-                view_logs,
-                tcp,
-                websocket,
-                mcp_server,
-                install_tools,
-                mcp_client,
-                listen,
-                cursor,
-                clipboard,
-                screen_reader,
-                yolo_vision,
-            ]
+            # Add built-in tools to the toolset
+            core_tools.extend([system_prompt, view_logs])
+            
+            # Assign tools
+            self.tools = core_tools
 
             logger.info(f"Initialized {len(self.tools)} tools")
 
             # Check if MODEL_PROVIDER env variable is set
             model_provider = os.getenv("MODEL_PROVIDER")
 
-            if model_provider:
+            if model_provider and create_model:
                 # Use create_model utility for any provider (bedrock, anthropic, etc.)
                 self.agent_model = create_model(provider=model_provider)
-            else:
+            elif OllamaModel:
                 # Fallback to default Ollama behavior
                 self.agent_model = OllamaModel(
                     host=self.ollama_host,
                     model_id=self.model,
                     temperature=1,
                     keep_alive="5m",
+                )
+            else:
+                raise ImportError(
+                    "No model provider available. Install with: pip install devduck[all]"
                 )
 
             # Create agent with self-healing
@@ -1157,7 +1181,9 @@ def weather(action: str, location: str = None) -> Dict[str, Any]:
 
 
 # 🦆 Auto-initialize when imported
-devduck = DevDuck()
+# Check environment variable to control auto-start servers
+_auto_start = os.getenv("DEVDUCK_AUTO_START_SERVERS", "true").lower() == "true"
+devduck = DevDuck(auto_start_servers=_auto_start)
 
 
 # 🚀 Convenience functions

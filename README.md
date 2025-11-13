@@ -7,10 +7,14 @@ Minimalist AI agent that fixes itself when things break.
 ## Install
 
 ```bash
+# Minimal install
 pipx install devduck
+
+# Full install (all tools)
+pipx install "devduck[all]"
 ```
 
-Requires: Python 3.10+, Ollama running
+Requires: Python 3.10+, Ollama running (or set MODEL_PROVIDER)
 
 ## Use
 

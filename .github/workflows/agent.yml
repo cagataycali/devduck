@@ -1,0 +1,161 @@
+name: Agent
+
+on:
+  schedule:
+    - cron: '0 8 * * *'
+  issues:
+    types: [opened, edited, closed, reopened, assigned, unassigned, labeled, unlabeled]
+  issue_comment:
+    types: [created, edited, deleted]
+  pull_request:
+    types: [opened, closed, edited, reopened, synchronize, ready_for_review]
+  pull_request_review:
+    types: [submitted, edited]
+  discussion:
+    types: [created, edited, answered, unanswered, category_changed, labeled, unlabeled, transferred, pinned, unpinned, locked, unlocked]
+  discussion_comment:
+    types: [created, edited, deleted]
+  pull_request_review_comment:
+    types: [created, edited]
+  workflow_dispatch:
+    inputs:
+      task:
+        description: 'Specific task for the agent to perform'
+        required: false
+        type: string
+      system_prompt:
+        description: 'Additional system prompt instructions'
+        required: false
+        type: string
+      tools:
+        description: 'Comma-separated list of tools to enable for the agent'
+        required: false
+        type: string
+      provider:
+        description: 'Model provider'
+        default: "bedrock"
+        required: false
+        type: choice
+        options:
+          - bedrock
+          - openai
+          - github
+          - anthropic
+          - litellm
+          - llamaapi
+      model:
+        description: 'Model ID'
+        default: "us.anthropic.claude-sonnet-4-20250514-v1:0"
+        required: false
+        type: string
+      max_tokens:
+        description: 'Max tokens'
+        default: "32768"
+        required: false
+        type: string
+      temperature:
+        description: 'Temperature (0.0-1.0)'
+        default: "1"
+        required: false
+        type: string
+      mcp_servers:
+        description: 'MCP servers configuration (JSON string)'
+        required: false
+        type: string
+      additional_request_fields:
+        description: 'Additional request fields JSON (e.g., thinking, anthropic_beta)'
+        required: false
+        type: string
+
+permissions: write-all
+
+jobs:
+  check-permissions:
+    runs-on: ubuntu-latest
+    outputs:
+      authorized: ${{ steps.check.outputs.authorized }}
+    steps:
+      - name: Check user authorization
+        id: check  
+        run: |
+          # 🔐 CONFIGURE AUTHORIZED USERS HERE
+          # Add your authorized usernames (comma-separated)
+          AUTHORIZED_USERS="${{ secrets.AUTHORIZED_USERS }}"
+          
+          echo "Checking authorization for user: ${{ github.actor }}"
+          
+          # Check if the triggering user is in the authorized list
+          if [[ ",$AUTHORIZED_USERS," == *",${{ github.actor }},"* ]]; then
+            echo "✅ User ${{ github.actor }} is authorized"
+            echo "authorized=true" >> $GITHUB_OUTPUT
+          else
+            echo "❌ User ${{ github.actor }} is NOT authorized"
+            echo "Authorized users: $AUTHORIZED_USERS"
+            echo "authorized=false" >> $GITHUB_OUTPUT
+          fi
+
+  run-internal-agent:
+    needs: check-permissions
+    runs-on: ubuntu-latest
+    # Only run if user is authorized
+    if: needs.check-permissions.outputs.authorized == 'true'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Run Strands Agent
+        uses: ./
+        env:
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+        with:
+          task: |
+            ${{ 
+              github.event.inputs.task ||
+              'I received a GitHub event and am running autonomously. I will analyze the context and take appropriate action. I have full GitHub event details available.'
+            }}
+
+          # Model configuration
+          provider: ${{ github.event.inputs.provider || vars.STRANDS_PROVIDER || 'bedrock' }}
+          model: ${{ github.event.inputs.model || vars.STRANDS_MODEL_ID || 'us.anthropic.claude-sonnet-4-5-20250929-v1:0' }}
+          max_tokens: ${{ github.event.inputs.max_tokens || vars.STRANDS_MAX_TOKENS || '60000' }}
+          temperature: ${{ github.event.inputs.temperature || vars.STRANDS_TEMPERATURE || '1' }}
+
+          # System prompt configuration
+          system_prompt: ${{ github.event.inputs.system_prompt || vars.SYSTEM_PROMPT || vars.INPUT_SYSTEM_PROMPT || 'You are a restricted GitHub agent for this repository, powered by Strands Agents SDK. Only authorized users can trigger your execution.' }}
+
+          # Tool configuration
+          tools: ${{ github.event.inputs.tools || vars.STRANDS_TOOLS}}
+
+          # AWS configuration
+          aws_role_arn: ${{ secrets.AWS_ROLE_ARN }}
+          aws_region: ${{ secrets.AWS_REGION || 'us-west-2' }}
+
+          # Knowledge base
+          knowledge_base_id: ${{ secrets.STRANDS_KNOWLEDGE_BASE_ID }}
+
+          # Advanced configuration
+          additional_request_fields: ${{ github.event.inputs.additional_request_fields || vars.STRANDS_ADDITIONAL_REQUEST_FIELDS }}
+          bypass_tool_consent: "true"
+
+          # MCP configuration
+          mcp_servers: ${{ github.event.inputs.mcp_servers || vars.MCP_SERVERS }}
+
+  unauthorized-notice:
+    needs: check-permissions
+    runs-on: ubuntu-latest
+    # Only run if user is NOT authorized
+    if: needs.check-permissions.outputs.authorized == 'false'
+    steps:
+      - name: Unauthorized access attempt
+        run: |
+          echo "🚫 UNAUTHORIZED ACCESS ATTEMPT"
+          echo "User: ${{ github.actor }}"
+          echo "Repository: ${{ github.repository }}"
+          echo "Event: ${{ github.event_name }}"
+          echo "Time: $(date)"
+          echo ""
+          echo "This incident has been logged."
+          echo "Contact repository administrators for access."
+          exit 1

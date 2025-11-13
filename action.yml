@@ -1,0 +1,212 @@
+name: 'DevDuck'
+description: 'Quack.'
+author: 'Cagatay Cali'
+
+branding:
+  icon: 'bot'
+  color: 'blue'
+
+inputs:
+  # Core Task Configuration
+  task:
+    description: 'Specific task for the agent to perform'
+    required: true
+  
+  system_prompt:
+    description: 'Additional system prompt instructions for the agent'
+    required: false
+    default: ''
+  
+  # Model Configuration
+  provider:
+    description: 'Model provider (bedrock, openai, github, anthropic, litellm, llamaapi)'
+    required: false
+    default: 'bedrock'
+  
+  model:
+    description: 'Model ID to use'
+    required: false
+    default: 'us.anthropic.claude-sonnet-4-20250514-v1:0'
+  
+  max_tokens:
+    description: 'Maximum tokens for the model'
+    required: false
+    default: '32768'
+  
+  temperature:
+    description: 'Temperature for model generation (0.0-1.0)'
+    required: false
+    default: '1'
+  
+  # Tool Configuration
+  tools:
+    description: 'Comma-separated list of tools to enable'
+    required: false
+    default: 'current_time'
+  
+  # Authentication & Access
+  github_token:
+    description: 'GitHub token for API access'
+    required: false
+    default: ${{ github.token }}
+  
+  # AWS Configuration (for Bedrock)
+  aws_region:
+    description: 'AWS region for Bedrock'
+    required: false
+    default: 'us-west-2'
+  
+  aws_role_arn:
+    description: 'AWS role ARN for OIDC authentication'
+    required: false
+  
+  # Knowledge Base Configuration
+  knowledge_base_id:
+    description: 'Strands Knowledge Base ID for memory'
+    required: false
+  
+  # Advanced Configuration
+  additional_request_fields:
+    description: 'Additional request fields JSON (e.g., thinking, anthropic_beta)'
+    required: false
+    default: ''
+  
+  bypass_tool_consent:
+    description: 'Skip tool consent prompts'
+    required: false
+    default: 'true'
+
+  # MCP Configuration
+  mcp_servers:
+    description: 'MCP servers configuration (JSON string)'
+    required: false
+    # default: '{"mcpServers":{"strands-docs":{"command":"uvx","args":["strands-agents-mcp-server"],"timeout":30000}}}'
+
+  # Agent Runner Configuration
+  agent_runner:
+    description: 'URL to custom agent_runner.py script. Falls back to repository variable AGENT_RUNNER, then default gist'
+    required: false
+
+outputs:
+  result:
+    description: 'Result from the agent execution'
+  
+  success:
+    description: 'Whether the agent execution was successful'
+  
+  error:
+    description: 'Error message if execution failed'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Use Homebrew Python 3.13
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        echo "/opt/homebrew/opt/python@3.13/libexec/bin" >> $GITHUB_PATH
+        echo "/opt/homebrew/bin" >> $GITHUB_PATH
+
+    - name: Set up Python
+      if: runner.os != 'macOS'
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.13'
+
+    - name: Cache UV dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/uv
+        key: ${{ runner.os }}-python${{ matrix.python-version || '3.13' }}-uv-${{ hashFiles('requirements.txt', 'requirements-local.txt') }}-v2
+        restore-keys: |
+          ${{ runner.os }}-python${{ matrix.python-version || '3.13' }}-uv-
+
+    - name: Clean UV cache on failure
+      if: failure()
+      shell: bash
+      run: |
+        uv cache clean || true
+        rm -rf ~/.cache/uv/* || true
+
+    - name: Install UV
+      shell: bash
+      run: |
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+    - name: Install Strands Agents
+      shell: bash
+      run: |
+        uv pip install --system -r requirements.txt --quiet
+
+    - name: Install Local Dependencies
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        uv pip install --system -r requirements-local.txt --quiet
+
+    - name: Configure Git
+      shell: bash
+      run: |
+        git config --global user.name "DevDuck" 2>/dev/null
+        git config --global user.email "hey@strands.my" 2>/dev/null
+
+    - name: Configure AWS credentials
+      if: inputs.aws_role_arn != ''
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ inputs.aws_role_arn }}
+        role-session-name: GitHubActions-StrandsAgent-${{ github.run_id }}
+        aws-region: ${{ inputs.aws_region }}
+        mask-aws-account-id: true
+
+    - name: Download agent script
+      shell: bash
+      env:
+        # GitHub Configuration - Priority: Input > Repository Variable > Default Gist
+        AGENT_RUNNER: ${{ inputs.agent_runner || 'https://gist.githubusercontent.com/cagataycali/6a1336633f1fbf92a470f872de8edaaf/raw/23a19fffbcbb91afaf870cd0f75ca70eae322ade/agent_runner.py' }}
+      run: |
+        curl -s -o agent_runner.py $AGENT_RUNNER
+
+    - name: Run Strands Agent
+      shell: bash
+      env:
+        # GitHub Configuration
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        GITHUB_CONTEXT: ${{ toJson(github) }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_EVENT_NAME: ${{ github.event_name }}
+        GITHUB_ACTOR: ${{ github.actor }}
+
+        # Model Configuration
+        STRANDS_PROVIDER: ${{ inputs.provider }}
+        STRANDS_MODEL_ID: ${{ inputs.model }}
+        STRANDS_MAX_TOKENS: ${{ inputs.max_tokens }}
+        STRANDS_TEMPERATURE: ${{ inputs.temperature }}
+        STRANDS_ADDITIONAL_REQUEST_FIELDS: ${{ inputs.additional_request_fields }}
+
+        # Tool Configuration
+        STRANDS_TOOLS: ${{ inputs.tools }}
+        BYPASS_TOOL_CONSENT: ${{ inputs.bypass_tool_consent }}
+        STRANDS_TOOL_CONSOLE_MODE: "enabled"
+
+        # Task Configuration
+        INPUT_TASK: ${{ inputs.task }}
+        INPUT_SYSTEM_PROMPT: ${{ inputs.system_prompt }}
+        
+        # AWS Configuration
+        AWS_REGION: ${{ inputs.aws_region }}
+
+        # Knowledge Base
+        STRANDS_KNOWLEDGE_BASE_ID: ${{ inputs.knowledge_base_id }}
+        
+        # MCP Configuration
+        MCP_SERVERS: ${{ inputs.mcp_servers }}
+      run: |
+        AGENT_INPUT="$INPUT_TASK"
+        
+        echo "🤖 Starting Strands Agent..."
+        
+        # Run the agent with UV
+        uv run agent_runner.py "$AGENT_INPUT"
