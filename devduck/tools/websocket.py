@@ -261,7 +261,7 @@ async def handle_websocket_client(websocket, system_prompt: str):
         # Send welcome message
         welcome = {
             "type": "connected",
-            "data": "🦆 Welcome to DevDuck WebSocket Server! Real-time streaming enabled.",
+            "data": "🦆 Welcome to DevDuck!",
             "timestamp": time.time(),
         }
         await websocket.send(json.dumps(welcome))
