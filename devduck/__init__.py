@@ -1601,24 +1601,6 @@ Examples:
 
     logger.info("CLI mode started")
 
-    # Determine server configuration
-    enable_tcp = not args.no_tcp and not args.no_servers
-    enable_ws = not args.no_ws and not args.no_servers
-    enable_mcp = not args.no_mcp and not args.no_servers
-    auto_start = enable_tcp or enable_ws or enable_mcp
-
-    # Initialize devduck with custom configuration
-    global devduck
-    devduck = DevDuck(
-        auto_start_servers=auto_start,
-        tcp_port=args.tcp_port,
-        ws_port=args.ws_port,
-        mcp_port=args.mcp_port,
-        enable_tcp=enable_tcp,
-        enable_ws=enable_ws,
-        enable_mcp=enable_mcp,
-    )
-
     if args.query:
         query = " ".join(args.query)
         logger.info(f"CLI query: {query}")
