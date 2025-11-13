@@ -126,6 +126,7 @@ def get_own_source_code():
     except Exception as e:
         return f"Error reading own source code: {e}"
 
+
 def view_logs_tool(
     action: str = "view",
     lines: int = 100,
@@ -511,7 +512,7 @@ class DevDuck:
                         use_github,
                         create_subagent,
                         store_in_kb,
-                        system_prompt
+                        system_prompt,
                     ]
                 )
             except ImportError as e:
