@@ -9,17 +9,38 @@ One Python file that adapts to your environment, fixes itself, and expands capab
 
 ---
 
-**Requirements:** Python ≥3.10, Ollama (or any Strands-supported provider)
+**Requirements:** 
+- Python ≥3.10, <3.14
+- Ollama (or any Strands-supported provider)
+- **tkinter** (required for ambient overlay - install separately)
 
 ```bash
 # Quick install
-pipx install "devduck[all]"
+pipx install "devduck"
 
 # Or instant run (no install)
 uvx devduck "analyze this code"
 
 # Or Homebrew
 brew tap cagataycali/devduck && brew install devduck
+```
+
+**⚠️ Installing tkinter:**
+
+tkinter is not included in the Python package and must be installed separately:
+
+```bash
+# macOS (Homebrew Python)
+brew install python-tk@3.13
+
+# Ubuntu/Debian
+sudo apt-get install python3-tk
+
+# Fedora
+sudo dnf install python3-tkinter
+
+# Windows
+# tkinter is included with official Python installers from python.org
 ```
 
 ---
@@ -45,27 +66,43 @@ nc localhost 9999
 > help me debug this error
 ```
 
+**Ambient overlay:**
+```bash
+devduck
+🦆 ambient(action="start")
+# Modern glassmorphism UI appears - press ESC to hide, Enter to send
+```
+
+**System tray app:**
+```bash
+devduck
+🦆 tray(action="start")
+# 🦆 appears in menu bar with server controls
+```
+
 ---
 
 ## Architecture
 
 ```mermaid
 graph TB
-    A[User Input] -->|CLI/TCP/WS/MCP| B[DevDuck Core]
+    A[User Input] -->|CLI/TCP/WS/MCP/IPC| B[DevDuck Core]
     B -->|Auto RAG| C[Knowledge Base]
     C -.->|Context Retrieval| B
-    B -->|Tool Calls| D[19+ Built-in Tools]
-    D --> E[shell/editor/calculator]
+    B -->|Tool Calls| D[27+ Built-in Tools]
+    D --> E[shell/file_read/file_write/calculator]
     D --> F[GitHub/subagents]
-    D --> G[TCP/WebSocket/MCP]
-    B -->|Hot-reload| H[./tools/*.py]
-    H -.->|Load Instantly| D
-    B -->|Response| I[User Output]
-    I -.->|Store Memory| C
+    D --> G[TCP/WebSocket/MCP/IPC]
+    D --> H[tray/ambient/listen/cursor]
+    B -->|Hot-reload| I[./tools/*.py]
+    I -.->|Load Instantly| D
+    B -->|Response| J[User Output]
+    J -.->|Store Memory| C
     
     style B fill:#e1f5ff
     style C fill:#d4edda
-    style H fill:#fff3cd
+    style I fill:#fff3cd
+    style H fill:#ffe6f0
 ```
 
 **Self-adapting loop:** User queries → RAG retrieval → Tool execution → Response → Memory storage → Hot-reload new capabilities → Repeat.
@@ -79,7 +116,7 @@ graph TB
 ### 1. Install & Start
 
 ```bash
-pipx install "devduck[all]"
+pipx install "devduck"
 devduck
 ```
 
@@ -87,12 +124,13 @@ devduck
 - 🔌 TCP server (port 9999)
 - 🌊 WebSocket server (port 8080)
 - 🔗 MCP server (port 8000)
+- 🔌 IPC server (Unix socket at /tmp/devduck_main.sock)
 - 📁 File watcher (hot-reload)
 
 ### 2. Use Built-in Tools
 
 ```python
-from devduck import devduck
+import devduck
 
 # Code editing
 devduck("Create a FastAPI server in ./app.py")
@@ -105,6 +143,9 @@ devduck("Create a gist with my training notes")
 
 # Multi-agent workflows
 devduck("Delegate data analysis to a subagent")
+
+# System tray integration
+devduck("Start the tray app and show ambient overlay")
 ```
 
 ### 3. Extend with Hot-Reload
@@ -141,6 +182,7 @@ def weather(city: str) -> str:
 | **TCP** | `localhost:9999` | `nc localhost 9999` |
 | **WebSocket** | `ws://localhost:8080` | Browser/Node.js clients |
 | **MCP** | `http://localhost:8000/mcp` | Claude Desktop, other agents |
+| **IPC** | `/tmp/devduck_main.sock` | Local processes (tray, ambient) |
 | **Web UI** | [cagataycali.github.io/devduck](http://cagataycali.github.io/devduck) | Browser interface |
 
 **Custom ports:**
@@ -148,6 +190,7 @@ def weather(city: str) -> str:
 export DEVDUCK_TCP_PORT=9000
 export DEVDUCK_WS_PORT=8001
 export DEVDUCK_MCP_PORT=3000
+export DEVDUCK_IPC_SOCKET=/tmp/custom.sock
 devduck
 ```
 
@@ -159,7 +202,8 @@ devduck
 |------|---------|
 | **Development** |
 | `shell` | Execute shell commands with PTY support |
-| `editor` | Read/write/modify files with syntax highlighting |
+| `file_read` | Read files with multiple modes (view, lines, chunk, search, stats, preview, diff) |
+| `file_write` | Write content to files with proper formatting |
 | `python_repl` | Run Python code in isolated environment |
 | `load_tool` | Load custom tools from `.py` files |
 | `environment` | Manage environment variables |
@@ -174,7 +218,16 @@ devduck
 | `websocket` | WebSocket server with concurrency |
 | `mcp_server` | Expose as MCP server (HTTP/stdio) |
 | `mcp_client` | Connect to external MCP servers |
+| `ipc` | Unix socket IPC server for local processes |
 | `http_request` | HTTP client with retry logic |
+| **UI & System** |
+| `tray` | System tray app with menu controls (macOS) |
+| `ambient` | Ambient AI input overlay with glassmorphism UI |
+| `listen` | Background speech transcription with Whisper |
+| `cursor` | Mouse and keyboard control |
+| `clipboard` | Clipboard monitoring and control |
+| `screen_reader` | Screen OCR and UI element detection |
+| `yolo_vision` | Background object detection with YOLO |
 | **AI & Memory** |
 | `use_agent` | Nested agent instances with different prompts |
 | `install_tools` | Load tools from Python packages at runtime |
@@ -186,6 +239,46 @@ devduck
 | `scraper` | BeautifulSoup4 HTML/XML parsing |
 | `system_prompt` | View/modify agent system prompt |
 | `view_logs` | Search/analyze devduck logs |
+
+---
+
+## UI Features
+
+### Ambient Overlay
+
+**Modern glassmorphism input overlay with real-time streaming:**
+
+```python
+devduck("start ambient overlay")
+```
+
+**Features:**
+- 🎨 Modern glassmorphism UI
+- ⚡ Blinking cursor with auto-focus
+- 🌊 Real-time IPC streaming from devduck
+- 📦 Structured message handling
+- ⌨️ ESC to hide, Enter to send
+- 📜 Preserves scroll position during updates
+
+**Requires:** tkinter (install separately - see above)
+
+### System Tray App
+
+**Menu bar integration with server controls (macOS only):**
+
+```python
+devduck("start tray app")
+```
+
+**Features:**
+- 🦆 Lives in menu bar
+- 🎛️ Server controls (TCP, WebSocket, MCP)
+- 🌊 Live streaming status
+- 🤖 Quick agent actions (clipboard, listening, screen reader, YOLO)
+- 📊 Recent results history
+- 💬 Native macOS notifications
+
+**Requires:** rumps (macOS only)
 
 ---
 
@@ -283,9 +376,11 @@ export STRANDS_MODEL_ID="openai/gpt-4o"
 | `DEVDUCK_TCP_PORT` | `9999` | TCP server port |
 | `DEVDUCK_WS_PORT` | `8080` | WebSocket port |
 | `DEVDUCK_MCP_PORT` | `8000` | MCP server port |
+| `DEVDUCK_IPC_SOCKET` | `/tmp/devduck_main.sock` | IPC Unix socket path |
 | `DEVDUCK_ENABLE_TCP` | `true` | Enable TCP server |
 | `DEVDUCK_ENABLE_WS` | `true` | Enable WebSocket |
 | `DEVDUCK_ENABLE_MCP` | `true` | Enable MCP server |
+| `DEVDUCK_ENABLE_IPC` | `true` | Enable IPC server |
 | `DEVDUCK_LOG_LINE_COUNT` | `50` | Log lines in system prompt context |
 | `SYSTEM_PROMPT` | - | Custom system prompt override |
 
@@ -293,6 +388,7 @@ export STRANDS_MODEL_ID="openai/gpt-4o"
 ```bash
 export DEVDUCK_ENABLE_TCP=false
 export DEVDUCK_ENABLE_WS=false
+export DEVDUCK_ENABLE_IPC=false
 devduck  # Only MCP server
 ```
 
@@ -334,6 +430,24 @@ export DEVDUCK_LOG_LINE_COUNT=20
 export DEVDUCK_LAST_MESSAGE_COUNT=50
 ```
 
+**Ambient overlay not starting:**
+```bash
+# Make sure tkinter is installed
+python3 -c "import tkinter"
+
+# Install tkinter if missing (see installation section above)
+brew install python-tk@3.13  # macOS
+```
+
+**Tray app not starting (macOS):**
+```bash
+# Install rumps
+pip install rumps
+
+# Or reinstall devduck
+pip install -e .
+```
+
 ---
 
 ## GitHub Actions Integration
@@ -360,8 +474,8 @@ jobs:
         with:
           task: "Analyze and help with this issue or PR"
           provider: "github"
-          model: "gpt-4o" # default bedrock
-          tools: "shell,editor,use_github,calculator"
+          model: "gpt-4o"
+          tools: "shell,file_read,file_write,use_github,calculator"
 ```
 
 **Sub-agent workflows:**

@@ -18,6 +18,7 @@ from logging.handlers import RotatingFileHandler
 
 os.environ["BYPASS_TOOL_CONSENT"] = "true"
 os.environ["STRANDS_TOOL_CONSOLE_MODE"] = "enabled"
+os.environ["EDITOR_DISABLE_BACKUP"] = "true"
 
 # 📝 Setup logging system
 LOG_DIR = Path(tempfile.gettempdir()) / "devduck" / "logs"
@@ -451,9 +452,11 @@ class DevDuck:
         tcp_port=9999,
         ws_port=8080,
         mcp_port=8000,
+        ipc_socket=None,
         enable_tcp=True,
         enable_ws=True,
         enable_mcp=True,
+        enable_ipc=True,
     ):
         """Initialize the minimalist adaptive agent"""
         logger.info("Initializing DevDuck agent...")
@@ -495,24 +498,30 @@ class DevDuck:
                 from .tools import (
                     tcp,
                     websocket,
+                    ipc,
                     mcp_server,
                     install_tools,
                     use_github,
                     create_subagent,
                     store_in_kb,
                     system_prompt,
+                    tray,
+                    ambient,
                 )
 
                 core_tools.extend(
                     [
                         tcp,
                         websocket,
+                        ipc,
                         mcp_server,
                         install_tools,
                         use_github,
                         create_subagent,
                         store_in_kb,
                         system_prompt,
+                        tray,
+                        ambient,
                     ]
                 )
             except ImportError as e:
@@ -543,6 +552,8 @@ class DevDuck:
                 from strands_tools import (
                     shell,
                     editor,
+                    file_read,
+                    file_write,
                     calculator,
                     # python_repl,
                     image_reader,
@@ -557,6 +568,8 @@ class DevDuck:
                     [
                         shell,
                         editor,
+                        file_read,
+                        file_write,
                         calculator,
                         # python_repl,
                         image_reader,
@@ -670,6 +683,22 @@ class DevDuck:
                     except Exception as e:
                         logger.error(f"Failed to start MCP server: {e}")
                         print(f"🦆 ⚠ MCP server failed: {e}")
+
+                if enable_ipc:
+                    try:
+                        # Start IPC server for local process communication
+                        ipc_socket_path = ipc_socket or "/tmp/devduck_main.sock"
+                        ipc_result = self.agent.tool.ipc(
+                            action="start_server", socket_path=ipc_socket_path
+                        )
+                        if ipc_result.get("status") == "success":
+                            logger.info(f"✓ IPC server started on {ipc_socket_path}")
+                            print(f"🦆 ✓ IPC server: {ipc_socket_path}")
+                        else:
+                            logger.warning(f"IPC server start issue: {ipc_result}")
+                    except Exception as e:
+                        logger.error(f"Failed to start IPC server: {e}")
+                        print(f"🦆 ⚠ IPC server failed: {e}")
 
                 # Start file watcher for auto hot-reload
                 self._start_file_watcher()
@@ -1122,18 +1151,22 @@ if "--mcp" in sys.argv:
 _tcp_port = int(os.getenv("DEVDUCK_TCP_PORT", "9999"))
 _ws_port = int(os.getenv("DEVDUCK_WS_PORT", "8080"))
 _mcp_port = int(os.getenv("DEVDUCK_MCP_PORT", "8000"))
+_ipc_socket = os.getenv("DEVDUCK_IPC_SOCKET", None)
 _enable_tcp = os.getenv("DEVDUCK_ENABLE_TCP", "true").lower() == "true"
 _enable_ws = os.getenv("DEVDUCK_ENABLE_WS", "true").lower() == "true"
 _enable_mcp = os.getenv("DEVDUCK_ENABLE_MCP", "true").lower() == "true"
+_enable_ipc = os.getenv("DEVDUCK_ENABLE_IPC", "true").lower() == "true"
 
 devduck = DevDuck(
     auto_start_servers=_auto_start,
     tcp_port=_tcp_port,
     ws_port=_ws_port,
     mcp_port=_mcp_port,
+    ipc_socket=_ipc_socket,
     enable_tcp=_enable_tcp,
     enable_ws=_enable_ws,
     enable_mcp=_enable_mcp,
+    enable_ipc=_enable_ipc,
 )
 
 

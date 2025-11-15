@@ -216,10 +216,6 @@ def handle_client(
         )
 
     try:
-        # Send welcome message
-        welcome_msg = "🦆 Welcome to DevDuck TCP Server!\n"
-        welcome_msg += "Send a message or 'exit' to close the connection.\n\n"
-        streaming_handler._send(welcome_msg)
 
         while True:
             # Receive data from the client

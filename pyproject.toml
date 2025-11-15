@@ -9,7 +9,7 @@ description = "🦆 Extreme minimalist self-adapting AI agent - one file, self-h
 readme = "README.md"
 license = {text = "Apache-2.0"}
 authors = [
-    {name = "duck", email = "hey@devduck.dev"}
+    {name = "Cagatay Cali", email = "cagataycali@icloud.com"}
 ]
 keywords = ["ai", "agent", "minimalist", "self-healing", "ollama", "strands-agents"]
 classifiers = [
@@ -28,30 +28,29 @@ classifiers = [
     "Topic :: System :: Systems Administration",
     "Topic :: Utilities",
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.10,<3.14"
 dependencies = [
     "strands-agents",
     "prompt_toolkit",
     "strands-agents[ollama]",
+    "strands-agents[anthropic]",
+    "strands-agents[openai]",
+    "strands-agents[otel]",
     "strands-agents-tools",
+    "strands-agents-tools[all]; sys_platform == 'darwin'",
     "strands-agentcore-tools",
+    "strands-fun-tools[all]; sys_platform == 'darwin'",
+    "strands-fun-tools[audio]; sys_platform == 'darwin'",
     "beautifulsoup4",
     "colorama",
     "websockets",
     "strands-mcp-server",
-]
-
-[project.optional-dependencies]
-all = [
-    "strands-agents[openai]",
-    "strands-agents[anthropic]",
-    "strands-fun-tools[audio]",
-    "strands-fun-tools[vision]",
-    "strands-fun-tools[all]",
+    "rumps; sys_platform == 'darwin'",
 ]
 
 [project.scripts]
 devduck = "devduck:cli"
+d = "devduck:cli"
 
 [project.urls]
 Homepage = "https://github.com/cagataycali/devduck"
