@@ -37,8 +37,6 @@ dependencies = [
     "strands-agents[openai]",
     "strands-agents[otel]",
     "strands-agents-tools",
-    "strands-agents-tools[all]; sys_platform == 'darwin'",
-    "strands-agentcore-tools",
     "strands-fun-tools[all]; sys_platform == 'darwin'",
     "strands-fun-tools[audio]; sys_platform == 'darwin'",
     "beautifulsoup4",
