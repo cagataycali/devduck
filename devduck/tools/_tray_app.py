@@ -83,6 +83,14 @@ class DevDuckTray(rumps.App):
         """Build menu with server controls and agent capabilities"""
         self.menu.clear()
 
+        # Test Button - First item for easy testing
+        self.menu.add(
+            rumps.MenuItem(
+                "🧪 Test Agent", callback=self._create_callback("what time is it?")
+            )
+        )
+        self.menu.add(rumps.separator)
+
         # Active Streams Section
         if self.active_streams:
             self.menu.add(rumps.MenuItem("🌊 Active Streams", callback=None))

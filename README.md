@@ -1,84 +1,36 @@
 # 🦆 DevDuck
 
-[![PyPI version](https://badge.fury.io/py/devduck.svg)](https://pypi.org/project/devduck/)
-[![Homebrew](https://img.shields.io/badge/homebrew-available-orange)](https://github.com/cagataycali/homebrew-devduck)
+[![PyPI](https://badge.fury.io/py/devduck.svg)](https://pypi.org/project/devduck/) [![Homebrew](https://img.shields.io/badge/homebrew-available-orange)](https://github.com/cagataycali/homebrew-devduck)
 
-**Self-healing AI agent with hot-reload, RAG memory, and multi-protocol servers**
+**Self-modifying AI agent that hot-reloads its own code—builds itself as it runs.**
 
 One Python file that adapts to your environment, fixes itself, and expands capabilities at runtime.
 
 ---
 
-**Requirements:** 
-- Python ≥3.10, <3.14
-- Ollama (or any Strands-supported provider)
-- **tkinter** (required for ambient overlay - install separately)
+## Install & Run
 
-```bash
-# Quick install
-pipx install "devduck"
+| Method | Command |
+|--------|---------|
+| **pipx** | `pipx install devduck && devduck` |
+| **uvx** | `uvx devduck "create a Flask API"` |
+| **Homebrew** | `brew tap cagataycali/devduck && brew install devduck` |
+| **Python** | `pip install devduck` → `import devduck; devduck("query")` |
 
-# Or instant run (no install)
-uvx devduck "analyze this code"
-
-# Or Homebrew
-brew tap cagataycali/devduck && brew install devduck
-```
-
-**⚠️ Installing tkinter:**
-
-tkinter is not included in the Python package and must be installed separately:
-
-```bash
-# macOS (Homebrew Python)
-brew install python-tk@3.13
-
-# Ubuntu/Debian
-sudo apt-get install python3-tk
-
-# Fedora
-sudo dnf install python3-tkinter
-
-# Windows
-# tkinter is included with official Python installers from python.org
-```
+**Requirements:** Python 3.10-3.13, Bedrock (or Ollama/Anthropic/GitHub/MLX)
 
 ---
 
-## Quick Start
+## What It Does
 
-**CLI:**
-```bash
-devduck                      # Interactive + auto-start servers
-devduck "calculate 15 * 7"   # One-shot query
-```
-
-**Python API:**
-```python
-from devduck import devduck
-
-devduck("Create a Flask API for weather data")
-```
-
-**TCP client:**
-```bash
-nc localhost 9999
-> help me debug this error
-```
-
-**Ambient overlay:**
-```bash
-devduck
-🦆 ambient(action="start")
-# Modern glassmorphism UI appears - press ESC to hide, Enter to send
-```
-
-**System tray app:**
-```bash
-devduck
-🦆 tray(action="start")
-# 🦆 appears in menu bar with server controls
-```
+| Feature | Description | Example |
+|---------|-------------|---------|
+| 🔥 **Hot-Reload** | Agent reloads its own code + custom tools instantly | Modify agent code → auto-restart, or add `weather.py` → use immediately |
+| 🧠 **Auto-RAG** | Remembers past conversations | "I prefer FastAPI" → later uses FastAPI automatically |
+| 🌊 **Multi-Protocol** | CLI, Python, TCP, WebSocket, MCP, IPC | `devduck "query"` or `nc localhost 9999` |
+| ☁️ **AWS Deploy** | One-command serverless deployment | `agentcore_config(auto_launch=True)` |
+| 🛠️ **30+ Tools** | Shell, GitHub, file editing, math, UI control | `devduck("create GitHub issue")` |
+| 🎛️ **Flexible Config** | Load only tools you need | `DEVDUCK_TOOLS="strands_tools:shell,editor"` |
 
 ---
 
@@ -89,12 +41,12 @@ graph TB
     A[User Input] -->|CLI/TCP/WS/MCP/IPC| B[DevDuck Core]
     B -->|Auto RAG| C[Knowledge Base]
     C -.->|Context Retrieval| B
-    B -->|Tool Calls| D[27+ Built-in Tools]
-    D --> E[shell/file_read/file_write/calculator]
-    D --> F[GitHub/subagents]
+    B -->|Tool Calls| D[30+ Built-in Tools]
+    D --> E[shell/editor/calculator]
+    D --> F[GitHub/AgentCore]
     D --> G[TCP/WebSocket/MCP/IPC]
-    D --> H[tray/ambient/listen/cursor]
-    B -->|Hot-reload| I[./tools/*.py]
+    D --> H[tray/ambient/cursor/clipboard]
+    B -->|Hot-reload| I[./tools/*.py + __init__.py]
     I -.->|Load Instantly| D
     B -->|Response| J[User Output]
     J -.->|Store Memory| C
@@ -109,48 +61,116 @@ graph TB
 
 ---
 
-## Core Workflow
-
-**3 steps: Install → Run → Extend**
-
-### 1. Install & Start
+## Quick Start
 
 ```bash
-pipx install "devduck"
+# 1. Install
+pipx install devduck
+
+# 2. Start (auto-launches TCP/WS/MCP/IPC servers)
+devduck
+
+# 3. Use
+🦆 create a REST API with FastAPI
+🦆 !ls -la
+🦆 exit
+```
+
+**One-shot:**
+```bash
+devduck "analyze this error: ImportError: No module named 'flask'"
+```
+
+**Python API:**
+```python
+import devduck
+devduck("refactor my code to use async/await")
+```
+
+---
+
+## Model Setup
+
+| Provider | Setup | When to Use |
+|----------|-------|-------------|
+| **Bedrock** (auto-detected) | [Get API key](https://console.aws.amazon.com/bedrock) → `export AWS_BEARER_TOKEN_BEDROCK=...` | Production (auto-selected if credentials found) |
+| **MLX** (macOS auto-detected) | Auto-detected on Apple Silicon | Local, optimized for M-series Macs |
+| **Ollama** (fallback) | `ollama pull qwen3:1.7b` | Local, free, private (used if Bedrock/MLX unavailable) |
+| **Anthropic** | `export ANTHROPIC_API_KEY=...` | Claude API direct access |
+| **GitHub** | `export GITHUB_TOKEN=...` | Free GPT-4o for GitHub users |
+
+**Quick Bedrock setup:**
+```bash
+export MODEL_PROVIDER=bedrock
+export AWS_BEARER_TOKEN_BEDROCK=your_token  # From AWS console
 devduck
 ```
 
-**Auto-starts:**
-- 🔌 TCP server (port 9999)
-- 🌊 WebSocket server (port 8080)
-- 🔗 MCP server (port 8000)
-- 🔌 IPC server (Unix socket at /tmp/devduck_main.sock)
-- 📁 File watcher (hot-reload)
+---
 
-### 2. Use Built-in Tools
+## Core Tools
 
-```python
-import devduck
+| Category | Tools | Use Case |
+|----------|-------|----------|
+| **Dev** | `shell`, `editor`, `file_read`, `calculator` | Code, test, debug |
+| **GitHub** | `use_github`, `create_subagent` | Issues, PRs, CI/CD automation |
+| **Network** | `tcp`, `websocket`, `mcp_server`, `ipc` | Serve agents over protocols |
+| **AWS** | `agentcore_config`, `agentcore_invoke`, `agentcore_logs` | Deploy to serverless |
+| **AI** | `use_agent`, `retrieve`, `store_in_kb` | Multi-agent, memory |
+| **UI** (macOS) | `tray`, `ambient`, `cursor`, `clipboard` | Desktop automation |
 
-# Code editing
-devduck("Create a FastAPI server in ./app.py")
+<details>
+<summary><strong>📋 Full tool list (click to expand)</strong></summary>
 
-# Shell commands
-devduck("Install dependencies and run tests")
+### DevDuck Core Tools
+- `tcp` - TCP server with streaming
+- `websocket` - WebSocket server with concurrent messaging
+- `ipc` - Unix socket IPC server
+- `mcp_server` - MCP server (HTTP/stdio)
+- `install_tools` - Dynamic tool loading from packages
+- `use_github` - GitHub GraphQL API operations
+- `create_subagent` - Spawn sub-agents via GitHub Actions
+- `store_in_kb` - Store content in Bedrock Knowledge Base
+- `system_prompt` - Manage agent system prompt
+- `tray` - System tray app control (macOS)
+- `ambient` - Ambient AI input overlay (macOS)
 
-# GitHub integration
-devduck("Create a gist with my training notes")
+### AgentCore Tools (AWS)
+- `agentcore_config` - Configure & launch on Bedrock AgentCore
+- `agentcore_invoke` - Invoke deployed agents
+- `agentcore_logs` - View CloudWatch logs
+- `agentcore_agents` - List/manage agent runtimes
 
-# Multi-agent workflows
-devduck("Delegate data analysis to a subagent")
+### strands-agents-tools
+- `shell` - Interactive shell with PTY support
+- `editor` - File editing (view/create/replace/insert)
+- `file_read` - Multi-file reading with search
+- `file_write` - Write content to files
+- `calculator` - SymPy-powered math operations
+- `image_reader` - Read images for Converse API
+- `use_agent` - Nested agent with different model
+- `load_tool` - Load custom tools at runtime
+- `environment` - Environment variable management
+- `mcp_client` - Connect to external MCP servers
+- `retrieve` - Bedrock Knowledge Base retrieval
 
-# System tray integration
-devduck("Start the tray app and show ambient overlay")
-```
+### strands-fun-tools (macOS)
+- `listen` - Background speech transcription with Whisper
+- `cursor` - Mouse & keyboard control
+- `clipboard` - Clipboard monitoring & control
+- `screen_reader` - OCR & UI element detection
+- `yolo_vision` - Object detection with YOLO
 
-### 3. Extend with Hot-Reload
+### Hot-Reload Tools
+- Custom tools in `./tools/*.py` load instantly
+- Agent code changes trigger auto-restart
 
-**Create custom tool:**
+</details>
+
+---
+
+## Hot-Reload Example
+
 ```python
 # ./tools/weather.py
 from strands import tool
@@ -158,163 +178,59 @@ import requests
 
 @tool
 def weather(city: str) -> str:
-    """Get current weather for a city."""
-    api_key = "your_key"
-    url = f"https://api.openweathermap.org/data/2.5/weather?q={city}&appid={api_key}"
-    data = requests.get(url).json()
-    return f"{city}: {data['weather'][0]['description']}, {data['main']['temp']}°K"
+    """Get weather for a city."""
+    r = requests.get(f"https://wttr.in/{city}?format=%C+%t")
+    return r.text
 ```
 
-**Save → Use instantly (no restart):**
+**Save → use instantly:**
 ```bash
-🦆 weather(city="London")
-# London: clear sky, 285.3°K
+🦆 weather(city="Tokyo")
+# Clear sky +15°C
 ```
+
+No restart. No configuration. Just works.
 
 ---
 
-## Multi-Protocol Access
+## Access Methods
 
-| Protocol | Endpoint | Usage |
-|----------|----------|-------|
-| **CLI** | Terminal | `devduck "query"` |
-| **Python** | API | `from devduck import devduck` |
-| **TCP** | `localhost:9999` | `nc localhost 9999` |
-| **WebSocket** | `ws://localhost:8080` | Browser/Node.js clients |
-| **MCP** | `http://localhost:8000/mcp` | Claude Desktop, other agents |
-| **IPC** | `/tmp/devduck_main.sock` | Local processes (tray, ambient) |
-| **Web UI** | [cagataycali.github.io/devduck](http://cagataycali.github.io/devduck) | Browser interface |
+| Protocol | Endpoint | Test Command |
+|----------|----------|--------------|
+| CLI | Terminal | `devduck "query"` |
+| Python | Import | `from devduck import devduck` |
+| TCP | `localhost:9999` | `nc localhost 9999` |
+| WebSocket | `ws://localhost:8080` | `wscat -c ws://localhost:8080` |
+| MCP | `http://localhost:8000/mcp` | Add to Claude Desktop config |
+| IPC | `/tmp/devduck_main.sock` | `nc -U /tmp/devduck_main.sock` |
 
-**Custom ports:**
+**Custom ports:** `export DEVDUCK_TCP_PORT=9000`
+
+---
+
+## Configuration
+
+| Variable | Default | Options |
+|----------|---------|---------|
+| `MODEL_PROVIDER` | Auto-detect | `bedrock`, `anthropic`, `github`, `mlx`, `ollama` |
+| `STRANDS_MODEL_ID` | Auto | Model name (e.g., `qwen3:1.7b`, `claude-sonnet-4`) |
+| `DEVDUCK_TOOLS` | All | `pkg:tool1,tool2:pkg2:tool3` |
+| `DEVDUCK_KNOWLEDGE_BASE_ID` | - | Bedrock KB ID for auto-RAG |
+| `DEVDUCK_TCP_PORT` | `9999` | TCP server port |
+| `DEVDUCK_ENABLE_TCP` | `true` | Enable/disable TCP |
+
+**Minimal config (shell + editor only):**
 ```bash
-export DEVDUCK_TCP_PORT=9000
-export DEVDUCK_WS_PORT=8001
-export DEVDUCK_MCP_PORT=3000
-export DEVDUCK_IPC_SOCKET=/tmp/custom.sock
+export DEVDUCK_TOOLS="strands_tools:shell,editor"
 devduck
 ```
 
 ---
 
-## Built-in Tools
-
-| Tool | Purpose |
-|------|---------|
-| **Development** |
-| `shell` | Execute shell commands with PTY support |
-| `file_read` | Read files with multiple modes (view, lines, chunk, search, stats, preview, diff) |
-| `file_write` | Write content to files with proper formatting |
-| `python_repl` | Run Python code in isolated environment |
-| `load_tool` | Load custom tools from `.py` files |
-| `environment` | Manage environment variables |
-| **GitHub & CI/CD** |
-| `use_github` | GraphQL API operations (issues, PRs, repos) |
-| `create_subagent` | Spawn GitHub Actions sub-agents |
-| `gist` | Create/manage gists |
-| `add_comment` | Comment on issues/PRs |
-| `list_issues` / `list_pull_requests` | List repo items |
-| **Network & Servers** |
-| `tcp` | Start/manage TCP servers (streaming) |
-| `websocket` | WebSocket server with concurrency |
-| `mcp_server` | Expose as MCP server (HTTP/stdio) |
-| `mcp_client` | Connect to external MCP servers |
-| `ipc` | Unix socket IPC server for local processes |
-| `http_request` | HTTP client with retry logic |
-| **UI & System** |
-| `tray` | System tray app with menu controls (macOS) |
-| `ambient` | Ambient AI input overlay with glassmorphism UI |
-| `listen` | Background speech transcription with Whisper |
-| `cursor` | Mouse and keyboard control |
-| `clipboard` | Clipboard monitoring and control |
-| `screen_reader` | Screen OCR and UI element detection |
-| `yolo_vision` | Background object detection with YOLO |
-| **AI & Memory** |
-| `use_agent` | Nested agent instances with different prompts |
-| `install_tools` | Load tools from Python packages at runtime |
-| `retrieve` | RAG retrieval from Bedrock Knowledge Base |
-| `store_in_kb` | Store content in Knowledge Base |
-| **Utilities** |
-| `calculator` | SymPy-powered math (calculus, matrices, equations) |
-| `image_reader` | Read images for vision models |
-| `scraper` | BeautifulSoup4 HTML/XML parsing |
-| `system_prompt` | View/modify agent system prompt |
-| `view_logs` | Search/analyze devduck logs |
-
----
-
-## UI Features
-
-### Ambient Overlay
-
-**Modern glassmorphism input overlay with real-time streaming:**
-
-```python
-devduck("start ambient overlay")
-```
-
-**Features:**
-- 🎨 Modern glassmorphism UI
-- ⚡ Blinking cursor with auto-focus
-- 🌊 Real-time IPC streaming from devduck
-- 📦 Structured message handling
-- ⌨️ ESC to hide, Enter to send
-- 📜 Preserves scroll position during updates
-
-**Requires:** tkinter (install separately - see above)
-
-### System Tray App
-
-**Menu bar integration with server controls (macOS only):**
-
-```python
-devduck("start tray app")
-```
-
-**Features:**
-- 🦆 Lives in menu bar
-- 🎛️ Server controls (TCP, WebSocket, MCP)
-- 🌊 Live streaming status
-- 🤖 Quick agent actions (clipboard, listening, screen reader, YOLO)
-- 📊 Recent results history
-- 💬 Native macOS notifications
-
-**Requires:** rumps (macOS only)
-
----
-
-## RAG Memory
-
-**Enable automatic context retrieval and storage:**
-
-```bash
-export STRANDS_KNOWLEDGE_BASE_ID="your-kb-id"
-devduck
-```
-
-**How it works:**
-1. **Before each query:** Retrieves relevant past conversations
-2. **After each response:** Stores the interaction for future reference
-3. **Zero manual calls:** Fully automatic
-
-**Example:**
-```python
-# Session 1
-devduck("I prefer FastAPI over Flask")
-# Stored automatically
-
-# Session 2 (days later)
-devduck("Create a web API for me")
-# Retrieves preference → uses FastAPI automatically
-```
-
-Works with AWS Bedrock Knowledge Bases.
-
----
 
 ## MCP Integration
 
-**Claude Desktop config:**
-
+**Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json`):
 ```json
 {
   "mcpServers": {
@@ -326,71 +242,7 @@ Works with AWS Bedrock Knowledge Bases.
 }
 ```
 
-**Or connect as MCP client:**
-```python
-devduck("Connect to MCP server at http://localhost:9000/mcp")
-```
-
----
-
-## Multi-Model Support
-
-**Switch providers via environment:**
-
-```bash
-# Bedrock (Claude Sonnet 4.5)
-export MODEL_PROVIDER="bedrock"
-export STRANDS_MODEL_ID="us.anthropic.claude-sonnet-4-5-20250929-v1:0"
-export STRANDS_MAX_TOKENS="60000"
-export STRANDS_ADDITIONAL_REQUEST_FIELDS='{"anthropic_beta": ["interleaved-thinking-2025-05-14", "context-1m-2025-08-07"], "thinking": {"type": "enabled", "budget_tokens": 2048}}'
-
-# Anthropic API
-export MODEL_PROVIDER="anthropic"
-export STRANDS_MODEL_ID="claude-sonnet-4-20250514"
-
-# Ollama (default - lightweight)
-export MODEL_PROVIDER="ollama"
-export OLLAMA_HOST="http://localhost:11434"
-
-# GitHub Models
-export MODEL_PROVIDER="github"
-export STRANDS_MODEL_ID="openai/gpt-4o"
-```
-
-**Adaptive defaults:**
-- macOS: `qwen3:1.7b` (lightweight)
-- Linux: `qwen3:30b` (more power)
-- Windows: `qwen3:8b` (balanced)
-
----
-
-## Advanced Configuration
-
-**Environment variables:**
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `MODEL_PROVIDER` | `ollama` | Model provider (bedrock, anthropic, ollama, github) |
-| `STRANDS_MODEL_ID` | Auto | Specific model ID |
-| `STRANDS_KNOWLEDGE_BASE_ID` | - | Enable auto-RAG |
-| `DEVDUCK_TCP_PORT` | `9999` | TCP server port |
-| `DEVDUCK_WS_PORT` | `8080` | WebSocket port |
-| `DEVDUCK_MCP_PORT` | `8000` | MCP server port |
-| `DEVDUCK_IPC_SOCKET` | `/tmp/devduck_main.sock` | IPC Unix socket path |
-| `DEVDUCK_ENABLE_TCP` | `true` | Enable TCP server |
-| `DEVDUCK_ENABLE_WS` | `true` | Enable WebSocket |
-| `DEVDUCK_ENABLE_MCP` | `true` | Enable MCP server |
-| `DEVDUCK_ENABLE_IPC` | `true` | Enable IPC server |
-| `DEVDUCK_LOG_LINE_COUNT` | `50` | Log lines in system prompt context |
-| `SYSTEM_PROMPT` | - | Custom system prompt override |
-
-**Disable servers:**
-```bash
-export DEVDUCK_ENABLE_TCP=false
-export DEVDUCK_ENABLE_WS=false
-export DEVDUCK_ENABLE_IPC=false
-devduck  # Only MCP server
-```
+Restart Claude → DevDuck tools appear automatically.
 
 ---
 
@@ -435,8 +287,10 @@ export DEVDUCK_LAST_MESSAGE_COUNT=50
 # Make sure tkinter is installed
 python3 -c "import tkinter"
 
-# Install tkinter if missing (see installation section above)
+# Install tkinter if missing
 brew install python-tk@3.13  # macOS
+sudo apt-get install python3-tk  # Ubuntu/Debian
+sudo dnf install python3-tkinter  # Fedora
 ```
 
 **Tray app not starting (macOS):**
@@ -448,9 +302,11 @@ pip install rumps
 pip install -e .
 ```
 
+**View logs:** `devduck` → `🦆 view_logs()`
+
 ---
 
-## GitHub Actions Integration
+## GitHub Actions
 
 **Run DevDuck in CI/CD pipelines:**
 
@@ -476,6 +332,8 @@ jobs:
           provider: "github"
           model: "gpt-4o"
           tools: "shell,file_read,file_write,use_github,calculator"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 **Sub-agent workflows:**
@@ -499,10 +357,12 @@ devduck("Create a sub-agent to analyze test coverage")
 ```bibtex
 @software{devduck2025,
   author = {Cagatay Cali},
-  title = {DevDuck: Self-Healing AI Agent with Hot-Reload and Multi-Protocol Servers},
+  title = {DevDuck: Self-Modifying AI Agent with Hot-Reload and Multi-Protocol Servers},
   year = {2025},
   url = {https://github.com/cagataycali/devduck}
 }
 ```
 
-**Apache 2 License** | Built with [Strands Agents SDK](https://strandsagents.com)
+---
+
+**Apache 2.0** | Built with [Strands Agents](https://strandsagents.com) | [@cagataycali](https://github.com/cagataycali)

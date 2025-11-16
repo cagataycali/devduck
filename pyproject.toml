@@ -43,12 +43,14 @@ dependencies = [
     "colorama",
     "websockets",
     "strands-mcp-server",
+    "bedrock-agentcore-starter-toolkit",
+    "bedrock-agentcore",
     "rumps; sys_platform == 'darwin'",
+    "strands-mlx; sys_platform == 'darwin' and platform_machine == 'arm64'",
 ]
 
 [project.scripts]
 devduck = "devduck:cli"
-d = "devduck:cli"
 
 [project.urls]
 Homepage = "https://github.com/cagataycali/devduck"
@@ -58,6 +60,12 @@ Documentation = "https://github.com/cagataycali/devduck#readme"
 
 [tool.setuptools]
 packages = ["devduck", "devduck.tools"]
+
+[tool.setuptools.package-data]
+devduck = [
+    "agentcore_handler.py", 
+    "requirements.txt",
+]
 
 [tool.setuptools_scm]
 write_to = "devduck/_version.py"
