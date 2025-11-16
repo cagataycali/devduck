@@ -20,6 +20,32 @@ One Python file that adapts to your environment, fixes itself, and expands capab
 
 ---
 
+## Developer Setup
+
+**Clone and develop:**
+```bash
+git clone git@github.com:cagataycali/devduck.git
+cd devduck
+python3.13 -m venv .venv
+source .venv/bin/activate
+.venv/bin/pip3.13 install -e .
+
+# Now which devduck points to .venv
+which devduck
+# /path/to/devduck/.venv/bin/devduck
+```
+
+**Make changes → test instantly:**
+```bash
+# Edit devduck/__init__.py or tools/
+code .
+
+# Run immediately (hot-reloads on save)
+devduck
+```
+
+---
+
 ## What It Does
 
 | Feature | Description | Example |
