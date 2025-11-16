@@ -9,6 +9,7 @@ import socket
 import json
 import tempfile
 import os
+import sys
 import time
 import signal
 from pathlib import Path
@@ -86,7 +87,7 @@ def tray(
             }
 
         _tray_process = subprocess.Popen(
-            ["python3", str(tray_script)],
+            [sys.executable, str(tray_script)],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )

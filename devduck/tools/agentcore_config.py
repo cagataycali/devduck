@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """AgentCore Configuration and Launch Tool"""
 import os
 import subprocess

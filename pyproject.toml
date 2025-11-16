@@ -46,7 +46,7 @@ dependencies = [
     "bedrock-agentcore-starter-toolkit",
     "bedrock-agentcore",
     "rumps; sys_platform == 'darwin'",
-    "strands-mlx; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "strands-mlx; sys_platform == 'darwin'",
 ]
 
 [project.scripts]
