@@ -347,8 +347,14 @@ def run_websocket_server(
         asyncio.set_event_loop(loop)
         WS_SERVER_THREADS[port]["loop"] = loop
         loop.run_until_complete(start_server())
+    except OSError as e:
+        # Port conflict - handled upstream, no need for scary errors
+        if "Address already in use" in str(e) or "address already in use" in str(e):
+            logger.debug(f"Port {port} unavailable (handled upstream)")
+        else:
+            logger.error(f"WebSocket server error on {host}:{port}: {e}")
     except Exception as e:
-        logger.error(f"WebSocket server error on {host}:{port}: {e}", exc_info=True)
+        logger.error(f"WebSocket server error on {host}:{port}: {e}")
     finally:
         logger.info(f"WebSocket Server on {host}:{port} stopped")
         WS_SERVER_THREADS[port]["running"] = False

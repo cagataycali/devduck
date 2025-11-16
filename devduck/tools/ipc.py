@@ -322,8 +322,11 @@ def handle_ipc_client(client_socket, client_id, system_prompt: str, socket_path:
                         )
                         continue
 
+    except BrokenPipeError:
+        # Normal disconnect - client closed connection
+        logger.debug(f"IPC client {client_id} disconnected")
     except Exception as e:
-        logger.error(f"Error handling IPC client {client_id}: {e}", exc_info=True)
+        logger.error(f"Error handling IPC client {client_id}: {e}")
     finally:
         try:
             client_socket.close()

@@ -11,6 +11,7 @@ from .use_github import use_github
 from .create_subagent import create_subagent
 from .store_in_kb import store_in_kb
 from .system_prompt import system_prompt
+from .state_manager import state_manager
 
 # AgentCore tools (conditionally available)
 try:
@@ -29,6 +30,7 @@ try:
         "create_subagent",
         "store_in_kb",
         "system_prompt",
+        "state_manager",
         "tray",
         "ambient",
         "agentcore_config",
@@ -47,6 +49,7 @@ except ImportError:
         "create_subagent",
         "store_in_kb",
         "system_prompt",
+        "state_manager",
         "tray",
         "ambient",
     ]

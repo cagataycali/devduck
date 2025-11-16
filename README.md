@@ -6,6 +6,17 @@
 
 One Python file that adapts to your environment, fixes itself, and expands capabilities at runtime.
 
+## 🎬 See It In Action
+
+| Feature | What You'll See | Video |
+|---------|----------------|-------|
+| 🔥 **Hot-Reload** | Agent detects code changes and restarts instantly—no manual intervention needed. Edit your agent code or tools while running, save the file, and watch it reload automatically. | [Watch Demo](https://redduck.dev/videos/hot-reload.mp4) |
+| 🌐 **Web UI** | Clean, modern web interface for chatting with DevDuck. Real-time streaming responses, tool execution visibility, and beautiful markdown rendering. | [Watch Demo](https://redduck.dev/videos/web-ui.mp4) |
+| 🛠️ **Dynamic Tool Creation** | Create a new tool by simply saving a `.py` file in the `./tools/` directory. No restart, no configuration—the agent loads it instantly and starts using it. Pure hot-reload magic. | [Watch Demo](https://redduck.dev/videos/dynamic-tool-creation.mp4) |
+| 🌊 **TCP Streaming Server** | Connect from any client (netcat, custom apps, other agents) via TCP. Real-time streaming responses with parallel tool execution. Multi-protocol access to the same agent. | [Watch Demo](https://redduck.dev/videos/tcp.mp4) |
+| 🔌 **IPC & macOS Tray** | Unix socket-based inter-process communication with native macOS menu bar integration. DevDuck runs in your menu bar with quick actions, status indicators, and seamless IPC streaming via `/tmp/devduck_main.sock`. | ![Demo](docs/mac-os-tray.jpg) |
+| 💬 **Ambient Overlay** | Floating AI input overlay with glassmorphism UI. Real-time IPC streaming from devduck, auto-focus with blinking cursor, and ESC to hide / Enter to send. Perfect for desktop AI interactions. | [Watch Demo](https://redduck.dev/videos/floating-input.mp4) |
+
 ---
 
 ## Install & Run
@@ -54,7 +65,7 @@ devduck
 | 🧠 **Auto-RAG** | Remembers past conversations | "I prefer FastAPI" → later uses FastAPI automatically |
 | 🌊 **Multi-Protocol** | CLI, Python, TCP, WebSocket, MCP, IPC | `devduck "query"` or `nc localhost 9999` |
 | ☁️ **AWS Deploy** | One-command serverless deployment | `agentcore_config(auto_launch=True)` |
-| 🛠️ **30+ Tools** | Shell, GitHub, file editing, math, UI control | `devduck("create GitHub issue")` |
+| 🛠️ **35+ Tools** | Shell, GitHub, file editing, math, UI control | `devduck("create GitHub issue")` |
 | 🎛️ **Flexible Config** | Load only tools you need | `DEVDUCK_TOOLS="strands_tools:shell,editor"` |
 
 ---
@@ -66,7 +77,7 @@ graph TB
     A[User Input] -->|CLI/TCP/WS/MCP/IPC| B[DevDuck Core]
     B -->|Auto RAG| C[Knowledge Base]
     C -.->|Context Retrieval| B
-    B -->|Tool Calls| D[30+ Built-in Tools]
+    B -->|Tool Calls| D[35+ Built-in Tools]
     D --> E[shell/editor/calculator]
     D --> F[GitHub/AgentCore]
     D --> G[TCP/WebSocket/MCP/IPC]
@@ -140,8 +151,8 @@ devduck
 | **Dev** | `shell`, `editor`, `file_read`, `calculator` | Code, test, debug |
 | **GitHub** | `use_github`, `create_subagent` | Issues, PRs, CI/CD automation |
 | **Network** | `tcp`, `websocket`, `mcp_server`, `ipc` | Serve agents over protocols |
-| **AWS** | `agentcore_config`, `agentcore_invoke`, `agentcore_logs` | Deploy to serverless |
-| **AI** | `use_agent`, `retrieve`, `store_in_kb` | Multi-agent, memory |
+| **AWS** | `agentcore_config`, `agentcore_invoke`, `agentcore_logs`, `agentcore_agents` | Deploy to serverless |
+| **AI** | `use_agent`, `retrieve`, `store_in_kb`, `state_manager` | Multi-agent, memory, state |
 | **UI** (macOS) | `tray`, `ambient`, `cursor`, `clipboard` | Desktop automation |
 
 <details>
@@ -157,6 +168,7 @@ devduck
 - `create_subagent` - Spawn sub-agents via GitHub Actions
 - `store_in_kb` - Store content in Bedrock Knowledge Base
 - `system_prompt` - Manage agent system prompt
+- `state_manager` - Agent state management with time-travel capabilities
 - `tray` - System tray app control (macOS)
 - `ambient` - Ambient AI input overlay (macOS)
 
@@ -178,6 +190,12 @@ devduck
 - `environment` - Environment variable management
 - `mcp_client` - Connect to external MCP servers
 - `retrieve` - Bedrock Knowledge Base retrieval
+- `scraper` - HTML/XML parsing with BeautifulSoup4
+- `fetch_github_tool` - Fetch and load tools from GitHub
+- `gist` - Comprehensive GitHub Gist management
+- `add_comment` - Add comments to GitHub issues/PRs
+- `list_issues` - List GitHub issues
+- `list_pull_requests` - List GitHub pull requests
 
 ### strands-fun-tools (macOS)
 - `listen` - Background speech transcription with Whisper

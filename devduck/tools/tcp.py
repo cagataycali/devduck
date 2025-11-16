@@ -316,6 +316,12 @@ def run_server(
                 if SERVER_THREADS[port]["running"]:
                     logger.error(f"Error accepting connection: {e}")
 
+    except OSError as e:
+        # Port conflict - handled upstream, no need for scary errors
+        if "Address already in use" in str(e):
+            logger.debug(f"Port {port} unavailable (handled upstream)")
+        else:
+            logger.error(f"Server error on {host}:{port}: {e}")
     except Exception as e:
         logger.error(f"Server error on {host}:{port}: {e}")
     finally:
