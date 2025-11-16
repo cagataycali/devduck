@@ -1,6 +1,6 @@
 # 🦆 DevDuck
 
-[![PyPI](https://badge.fury.io/py/devduck.svg)](https://pypi.org/project/devduck/) [![Homebrew](https://img.shields.io/badge/homebrew-available-orange)](https://github.com/cagataycali/homebrew-devduck)
+[![PyPI](https://badge.fury.io/py/devduck.svg)](https://pypi.org/project/devduck/)
 
 **Self-modifying AI agent that hot-reloads its own code—builds itself as it runs.**
 
@@ -14,7 +14,6 @@ One Python file that adapts to your environment, fixes itself, and expands capab
 |--------|---------|
 | **pipx** | `pipx install devduck && devduck` |
 | **uvx** | `uvx devduck "create a Flask API"` |
-| **Homebrew** | `brew tap cagataycali/devduck && brew install devduck` |
 | **Python** | `pip install devduck` → `import devduck; devduck("query")` |
 
 **Requirements:** Python 3.10-3.13, Bedrock (or Ollama/Anthropic/GitHub/MLX)
@@ -348,7 +347,6 @@ devduck("Create a sub-agent to analyze test coverage")
 - **Strands SDK:** [github.com/strands-agents/sdk-python](https://github.com/strands-agents/sdk-python)
 - **Documentation:** [strandsagents.com](https://strandsagents.com)
 - **Web UI:** [cagataycali.github.io/devduck](http://cagataycali.github.io/devduck)
-- **Homebrew:** [github.com/cagataycali/homebrew-devduck](https://github.com/cagataycali/homebrew-devduck)
 
 ---
 
