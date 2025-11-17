@@ -6,6 +6,8 @@
 
 One Python file that adapts to your environment, fixes itself, and expands capabilities at runtime.
 
+Learn more: https://duck.nyc
+
 ## 🎬 See It In Action
 
 | Feature | What You'll See | Video |
