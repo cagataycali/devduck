@@ -130,7 +130,7 @@ runs:
     - name: Install DevDuck
       shell: bash
       run: |
-        uv pip install devduck --quiet
+        uv pip install devduck --system --quiet
 
     - name: Configure Git
       shell: bash
