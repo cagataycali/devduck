@@ -20,7 +20,7 @@ from logging.handlers import RotatingFileHandler
 warnings.filterwarnings("ignore", message=".*pkg_resources is deprecated.*")
 warnings.filterwarnings("ignore", message=".*cache_prompt is deprecated.*")
 
-os.environ["BYPASS_TOOL_CONSENT"] = "true"
+os.environ["BYPASS_TOOL_CONSENT"] = os.getenv("BYPASS_TOOL_CONSENT", "true")
 os.environ["STRANDS_TOOL_CONSOLE_MODE"] = "enabled"
 os.environ["EDITOR_DISABLE_BACKUP"] = "true"
 
@@ -679,9 +679,9 @@ class DevDuck:
             self.agent_model, self.model = self._select_model()
 
             # Create agent with self-healing
-            # load_tools_from_directory controlled by DEVDUCK_LOAD_TOOLS_FROM_DIR (default: false)
+            # load_tools_from_directory controlled by DEVDUCK_LOAD_TOOLS_FROM_DIR (default: true)
             load_from_dir = (
-                os.getenv("DEVDUCK_LOAD_TOOLS_FROM_DIR", "false").lower() == "true"
+                os.getenv("DEVDUCK_LOAD_TOOLS_FROM_DIR", "true").lower() == "true"
             )
 
             self.agent = Agent(
@@ -863,25 +863,82 @@ class DevDuck:
 
     def _select_model(self):
         """
-        Smart model selection with fallback: Bedrock → MLX → Ollama
+        Smart model selection with fallback based on available credentials.
+        
+        Priority: Bedrock → Anthropic → OpenAI → GitHub → Gemini → Cohere → 
+                  Writer → Mistral → LiteLLM → LlamaAPI → SageMaker → 
+                  LlamaCpp → MLX → Ollama
 
         Returns:
             Tuple of (model_instance, model_name)
         """
         provider = os.getenv("MODEL_PROVIDER")
+        
+        # Read common model parameters from environment
+        max_tokens = int(os.getenv("STRANDS_MAX_TOKENS", "60000"))
+        temperature = float(os.getenv("STRANDS_TEMPERATURE", "1.0"))
 
         if not provider:
-            # Auto-detect: Bedrock → MLX → Ollama
+            # Auto-detect based on API keys and credentials
+            # 1. Try Bedrock (AWS bearer token or STS credentials)
             try:
-                # Try Bedrock if AWS credentials available
-                import boto3
-
-                boto3.client("sts").get_caller_identity()
-                provider = "bedrock"
-                print("🦆 Using Bedrock")
+                # Check for bearer token first
+                if os.getenv("AWS_BEARER_TOKEN_BEDROCK"):
+                    provider = "bedrock"
+                    print("🦆 Using Bedrock (bearer token)")
+                else:
+                    # Try STS credentials
+                    import boto3
+                    boto3.client("sts").get_caller_identity()
+                    provider = "bedrock"
+                    print("🦆 Using Bedrock")
             except:
-                # Try MLX on Apple Silicon
-                if platform.system() == "Darwin" and platform.machine() in [
+                # 2. Try Anthropic
+                if os.getenv("ANTHROPIC_API_KEY"):
+                    provider = "anthropic"
+                    print("🦆 Using Anthropic")
+                # 3. Try OpenAI
+                elif os.getenv("OPENAI_API_KEY"):
+                    provider = "openai"
+                    print("🦆 Using OpenAI")
+                # 4. Try GitHub Models
+                elif os.getenv("GITHUB_TOKEN") or os.getenv("PAT_TOKEN"):
+                    provider = "github"
+                    print("🦆 Using GitHub Models")
+                # 5. Try Gemini
+                elif os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY"):
+                    provider = "gemini"
+                    print("🦆 Using Gemini")
+                # 6. Try Cohere
+                elif os.getenv("COHERE_API_KEY"):
+                    provider = "cohere"
+                    print("🦆 Using Cohere")
+                # 7. Try Writer
+                elif os.getenv("WRITER_API_KEY"):
+                    provider = "writer"
+                    print("🦆 Using Writer")
+                # 8. Try Mistral
+                elif os.getenv("MISTRAL_API_KEY"):
+                    provider = "mistral"
+                    print("🦆 Using Mistral")
+                # 9. Try LiteLLM
+                elif os.getenv("LITELLM_API_KEY"):
+                    provider = "litellm"
+                    print("🦆 Using LiteLLM")
+                # 10. Try LlamaAPI
+                elif os.getenv("LLAMAAPI_API_KEY"):
+                    provider = "llamaapi"
+                    print("🦆 Using LlamaAPI")
+                # 11. Try SageMaker
+                elif os.getenv("SAGEMAKER_ENDPOINT_NAME"):
+                    provider = "sagemaker"
+                    print("🦆 Using SageMaker")
+                # 12. Try LlamaCpp
+                elif os.getenv("LLAMACPP_MODEL_PATH"):
+                    provider = "llamacpp"
+                    print("🦆 Using LlamaCpp")
+                # 13. Try MLX on Apple Silicon
+                elif platform.system() == "Darwin" and platform.machine() in [
                     "arm64",
                     "aarch64",
                 ]:
@@ -889,48 +946,69 @@ class DevDuck:
                         from strands_mlx import MLXModel
 
                         provider = "mlx"
-                        print("🦆 Using MLX")
+                        print("🦆 Using MLX (Apple Silicon)")
                     except ImportError:
                         provider = "ollama"
-                        print("🦆 Using Ollama")
+                        print("🦆 Using Ollama (fallback)")
+                # 14. Fallback to Ollama
                 else:
                     provider = "ollama"
-                    print("🦆 Using Ollama")
+                    print("🦆 Using Ollama (fallback)")
 
         # Create model based on provider
         if provider == "mlx":
             from strands_mlx import MLXModel
 
-            model_name = "mlx-community/Qwen3-1.7B-4bit"
-            return MLXModel(model_id=model_name, temperature=1), model_name
+            model_name = os.getenv("STRANDS_MODEL_ID", "mlx-community/Qwen3-1.7B-4bit")
+            return MLXModel(
+                model_id=model_name,
+                params={"temperature": temperature, "max_tokens": max_tokens}
+            ), model_name
+
+        elif provider == "gemini":
+            from strands.models.gemini import GeminiModel
+
+            model_name = os.getenv("STRANDS_MODEL_ID", "gemini-2.5-flash")
+            api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+            return (
+                GeminiModel(
+                    client_args={"api_key": api_key},
+                    model_id=model_name,
+                    params={"temperature": temperature, "max_tokens": max_tokens}
+                ),
+                model_name,
+            )
 
         elif provider == "ollama":
             from strands.models.ollama import OllamaModel
 
+            # Smart model selection based on OS
             os_type = platform.system()
             if os_type == "Darwin":
-                model_name = "qwen3:1.7b"
+                model_name = os.getenv("STRANDS_MODEL_ID", "qwen3:1.7b")
             elif os_type == "Linux":
-                model_name = "qwen3:30b"
+                model_name = os.getenv("STRANDS_MODEL_ID", "qwen3:30b")
             else:
-                model_name = "qwen3:8b"
+                model_name = os.getenv("STRANDS_MODEL_ID", "qwen3:8b")
 
             return (
                 OllamaModel(
-                    host="http://localhost:11434",
+                    host=os.getenv("OLLAMA_HOST", "http://localhost:11434"),
                     model_id=model_name,
-                    temperature=1,
+                    temperature=temperature,
+                    num_predict=max_tokens,
                     keep_alive="5m",
                 ),
                 model_name,
             )
 
         else:
-            # Bedrock or other providers via create_model
+            # All other providers via create_model utility
+            # Supports: bedrock, anthropic, openai, github, cohere, writer, mistral, litellm
             from strands_tools.utils.models.model import create_model
 
             model = create_model(provider=provider)
-            model_name = os.getenv("STRANDS_MODEL_ID", "bedrock")
+            model_name = os.getenv("STRANDS_MODEL_ID", provider)
             return model, model_name
 
     def _build_system_prompt(self):
