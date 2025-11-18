@@ -864,16 +864,16 @@ class DevDuck:
     def _select_model(self):
         """
         Smart model selection with fallback based on available credentials.
-        
-        Priority: Bedrock → Anthropic → OpenAI → GitHub → Gemini → Cohere → 
-                  Writer → Mistral → LiteLLM → LlamaAPI → SageMaker → 
+
+        Priority: Bedrock → Anthropic → OpenAI → GitHub → Gemini → Cohere →
+                  Writer → Mistral → LiteLLM → LlamaAPI → SageMaker →
                   LlamaCpp → MLX → Ollama
 
         Returns:
             Tuple of (model_instance, model_name)
         """
         provider = os.getenv("MODEL_PROVIDER")
-        
+
         # Read common model parameters from environment
         max_tokens = int(os.getenv("STRANDS_MAX_TOKENS", "60000"))
         temperature = float(os.getenv("STRANDS_TEMPERATURE", "1.0"))
@@ -889,6 +889,7 @@ class DevDuck:
                 else:
                     # Try STS credentials
                     import boto3
+
                     boto3.client("sts").get_caller_identity()
                     provider = "bedrock"
                     print("🦆 Using Bedrock")
@@ -960,10 +961,13 @@ class DevDuck:
             from strands_mlx import MLXModel
 
             model_name = os.getenv("STRANDS_MODEL_ID", "mlx-community/Qwen3-1.7B-4bit")
-            return MLXModel(
-                model_id=model_name,
-                params={"temperature": temperature, "max_tokens": max_tokens}
-            ), model_name
+            return (
+                MLXModel(
+                    model_id=model_name,
+                    params={"temperature": temperature, "max_tokens": max_tokens},
+                ),
+                model_name,
+            )
 
         elif provider == "gemini":
             from strands.models.gemini import GeminiModel
@@ -974,7 +978,7 @@ class DevDuck:
                 GeminiModel(
                     client_args={"api_key": api_key},
                     model_id=model_name,
-                    params={"temperature": temperature, "max_tokens": max_tokens}
+                    params={"temperature": temperature, "max_tokens": max_tokens},
                 ),
                 model_name,
             )
