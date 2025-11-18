@@ -183,6 +183,194 @@ Last Modified: {modified}"""
         return {"status": "error", "content": [{"text": f"Error: {str(e)}"}]}
 
 
+def manage_tools_func(
+    action: str,
+    package: str = None,
+    tool_names: str = None,
+    tool_path: str = None,
+) -> Dict[str, Any]:
+    """
+    Manage the agent's tool set at runtime using ToolRegistry.
+
+    Args:
+        action: Action to perform - "list", "add", "remove", "reload"
+        package: Package name to load tools from (e.g., "strands_tools", "strands_fun_tools")
+        tool_names: Comma-separated tool names (e.g., "shell,editor,calculator")
+        tool_path: Path to a .py file to load as a tool
+
+    Returns:
+        Dict with status and content
+    """
+    try:
+        if not hasattr(devduck, "agent") or not devduck.agent:
+            return {"status": "error", "content": [{"text": "Agent not initialized"}]}
+
+        registry = devduck.agent.tool_registry
+
+        if action == "list":
+            # List tools from registry
+            tool_list = list(registry.registry.keys())
+            dynamic_tools = list(registry.dynamic_tools.keys())
+
+            text = f"Currently loaded {len(tool_list)} tools:\n"
+            text += "\n".join(f"  • {t}" for t in sorted(tool_list))
+            if dynamic_tools:
+                text += f"\n\nDynamic tools ({len(dynamic_tools)}):\n"
+                text += "\n".join(f"  • {t}" for t in sorted(dynamic_tools))
+
+            return {"status": "success", "content": [{"text": text}]}
+
+        elif action == "add":
+            if not package and not tool_path:
+                return {
+                    "status": "error",
+                    "content": [
+                        {
+                            "text": "Either 'package' or 'tool_path' required for add action"
+                        }
+                    ],
+                }
+
+            added_tools = []
+
+            # Add from package using process_tools
+            if package:
+                if not tool_names:
+                    return {
+                        "status": "error",
+                        "content": [
+                            {"text": "'tool_names' required when adding from package"}
+                        ],
+                    }
+
+                tools_to_add = [t.strip() for t in tool_names.split(",")]
+
+                # Build tool specs: package.tool_name format
+                tool_specs = [f"{package}.{tool_name}" for tool_name in tools_to_add]
+
+                try:
+                    added_tool_names = registry.process_tools(tool_specs)
+                    added_tools.extend(added_tool_names)
+                    logger.info(f"Added tools from {package}: {added_tool_names}")
+                except Exception as e:
+                    logger.error(f"Failed to add tools from {package}: {e}")
+                    return {
+                        "status": "error",
+                        "content": [{"text": f"Failed to add tools: {str(e)}"}],
+                    }
+
+            # Add from file path using process_tools
+            if tool_path:
+                try:
+                    added_tool_names = registry.process_tools([tool_path])
+                    added_tools.extend(added_tool_names)
+                    logger.info(f"Added tools from file: {added_tool_names}")
+                except Exception as e:
+                    logger.error(f"Failed to add tool from {tool_path}: {e}")
+                    return {
+                        "status": "error",
+                        "content": [{"text": f"Failed to add tool: {str(e)}"}],
+                    }
+
+            if added_tools:
+                return {
+                    "status": "success",
+                    "content": [
+                        {
+                            "text": f"✅ Added {len(added_tools)} tools: {', '.join(added_tools)}\n"
+                            + f"Total tools: {len(registry.registry)}"
+                        }
+                    ],
+                }
+            else:
+                return {"status": "error", "content": [{"text": "No tools were added"}]}
+
+        elif action == "remove":
+            if not tool_names:
+                return {
+                    "status": "error",
+                    "content": [{"text": "'tool_names' required for remove action"}],
+                }
+
+            tools_to_remove = [t.strip() for t in tool_names.split(",")]
+            removed_tools = []
+
+            # Remove from registry
+            for tool_name in tools_to_remove:
+                if tool_name in registry.registry:
+                    del registry.registry[tool_name]
+                    removed_tools.append(tool_name)
+                    logger.info(f"Removed tool: {tool_name}")
+
+                if tool_name in registry.dynamic_tools:
+                    del registry.dynamic_tools[tool_name]
+                    logger.info(f"Removed dynamic tool: {tool_name}")
+
+            if removed_tools:
+                return {
+                    "status": "success",
+                    "content": [
+                        {
+                            "text": f"✅ Removed {len(removed_tools)} tools: {', '.join(removed_tools)}\n"
+                            + f"Total tools: {len(registry.registry)}"
+                        }
+                    ],
+                }
+            else:
+                return {
+                    "status": "success",
+                    "content": [{"text": "No tools were removed (not found)"}],
+                }
+
+        elif action == "reload":
+            if tool_names:
+                # Reload specific tools
+                tools_to_reload = [t.strip() for t in tool_names.split(",")]
+                reloaded_tools = []
+                failed_tools = []
+
+                for tool_name in tools_to_reload:
+                    try:
+                        registry.reload_tool(tool_name)
+                        reloaded_tools.append(tool_name)
+                        logger.info(f"Reloaded tool: {tool_name}")
+                    except Exception as e:
+                        failed_tools.append((tool_name, str(e)))
+                        logger.error(f"Failed to reload {tool_name}: {e}")
+
+                text = ""
+                if reloaded_tools:
+                    text += f"✅ Reloaded {len(reloaded_tools)} tools: {', '.join(reloaded_tools)}\n"
+                if failed_tools:
+                    text += f"❌ Failed to reload {len(failed_tools)} tools:\n"
+                    for tool_name, error in failed_tools:
+                        text += f"  • {tool_name}: {error}\n"
+
+                return {"status": "success", "content": [{"text": text}]}
+            else:
+                # Reload all tools - restart agent
+                logger.info("Reloading all tools via restart")
+                devduck.restart()
+                return {
+                    "status": "success",
+                    "content": [{"text": "✅ All tools reloaded - agent restarted"}],
+                }
+
+        else:
+            return {
+                "status": "error",
+                "content": [
+                    {
+                        "text": f"Unknown action: {action}. Valid: list, add, remove, reload"
+                    }
+                ],
+            }
+
+    except Exception as e:
+        logger.error(f"Error in manage_tools: {e}")
+        return {"status": "error", "content": [{"text": f"Error: {str(e)}"}]}
+
+
 def get_shell_history_file():
     """Get the devduck-specific history file path."""
     devduck_history = Path.home() / ".devduck_history"
@@ -380,6 +568,7 @@ class DevDuck:
         self,
         auto_start_servers=True,
         servers=None,
+        load_mcp_servers=True,
     ):
         """Initialize the minimalist adaptive agent
 
@@ -392,6 +581,7 @@ class DevDuck:
                     "mcp": {"port": 8000},
                     "ipc": {"socket_path": "/tmp/devduck.sock"}
                 }
+            load_mcp_servers: Load MCP servers from MCP_SERVERS env var
         """
         logger.info("Initializing DevDuck agent...")
         try:
@@ -441,14 +631,13 @@ class DevDuck:
 
             from strands import Agent, tool
 
-            # 🧰 Load tools with flexible configuration
-            tools_config = os.getenv("DEVDUCK_TOOLS")
-            if tools_config:
-                logger.info(f"Loading tools from DEVDUCK_TOOLS: {tools_config}")
-                core_tools = self._load_tools_from_config(tools_config)
-            else:
-                logger.info("Loading default tool set")
-                core_tools = self._load_default_tools()
+            # Load tools with flexible configuration
+            # Default tool config - user can override with DEVDUCK_TOOLS env var
+            default_tools = "devduck.tools:system_prompt,store_in_kb,ipc,tcp,websocket,mcp_server,state_manager,tray,ambient,agentcore_config,agentcore_invoke,agentcore_logs,agentcore_agents,install_tools,create_subagent,use_github:strands_tools:shell,editor,file_read,file_write,image_reader,load_tool,retrieve,calculator,use_agent,environment,mcp_client,speak,slack:strands_fun_tools:listen,cursor,clipboard,screen_reader,bluetooth,yolo_vision"
+
+            tools_config = os.getenv("DEVDUCK_TOOLS", default_tools)
+            logger.info(f"Loading tools from config: {tools_config}")
+            core_tools = self._load_tools_from_config(tools_config)
 
             # Wrap view_logs_tool with @tool decorator
             @tool
@@ -460,11 +649,29 @@ class DevDuck:
                 """View and manage DevDuck logs."""
                 return view_logs_tool(action, lines, pattern)
 
+            # Wrap manage_tools_func with @tool decorator
+            @tool
+            def manage_tools(
+                action: str,
+                package: str = None,
+                tool_names: str = None,
+                tool_path: str = None,
+            ) -> Dict[str, Any]:
+                """Manage the agent's tool set at runtime - add, remove, list, reload tools on the fly."""
+                return manage_tools_func(action, package, tool_names, tool_path)
+
             # Add built-in tools to the toolset
-            core_tools.extend([view_logs])
+            core_tools.extend([view_logs, manage_tools])
 
             # Assign tools
             self.tools = core_tools
+
+            # 🔌 Load MCP servers if enabled
+            if load_mcp_servers:
+                mcp_clients = self._load_mcp_servers()
+                if mcp_clients:
+                    self.tools.extend(mcp_clients)
+                    logger.info(f"Loaded {len(mcp_clients)} MCP server(s)")
 
             logger.info(f"Initialized {len(self.tools)} tools")
 
@@ -472,11 +679,21 @@ class DevDuck:
             self.agent_model, self.model = self._select_model()
 
             # Create agent with self-healing
+            # load_tools_from_directory controlled by DEVDUCK_LOAD_TOOLS_FROM_DIR (default: false)
+            load_from_dir = (
+                os.getenv("DEVDUCK_LOAD_TOOLS_FROM_DIR", "false").lower() == "true"
+            )
+
             self.agent = Agent(
                 model=self.agent_model,
                 tools=self.tools,
                 system_prompt=self._build_system_prompt(),
-                load_tools_from_directory=True,
+                load_tools_from_directory=load_from_dir,
+                trace_attributes={
+                    "session.id": self.session_id,
+                    "user.id": self.env_info["hostname"],
+                    "tags": ["Strands-Agents", "DevDuck"],
+                },
             )
 
             # 🚀 AUTO-START SERVERS
@@ -500,31 +717,22 @@ class DevDuck:
 
         Format: package:tool1,tool2:package2:tool3
         Example: strands_tools:shell,editor:strands_fun_tools:clipboard
+
+        Note: Only loads what's specified in config - no automatic additions
         """
         tools = []
-
-        # Always load DevDuck core tools
-        tools.extend(self._load_devduck_tools())
-
-        # Parse and load configured tools
         current_package = None
 
         for segment in config.split(":"):
             segment = segment.strip()
 
-            # Check if this segment is a package or tool list
-            if "," not in segment and not any(
-                segment.startswith(pkg)
-                for pkg in [
-                    "strands_",
-                    "devduck",
-                ]  # TODO: we should accept any python library here.
-            ):
-                # Single tool from current package
-                if current_package:
-                    tool = self._load_single_tool(current_package, segment)
-                    if tool:
-                        tools.append(tool)
+            # Check if segment is a package name (contains '.' or '_' and no ',')
+            is_package = "," not in segment and ("." in segment or "_" in segment)
+
+            if is_package:
+                # This is a package name - set as current package
+                current_package = segment
+                logger.debug(f"Switched to package: {current_package}")
             elif "," in segment:
                 # Tool list from current package
                 if current_package:
@@ -533,11 +741,15 @@ class DevDuck:
                         tool = self._load_single_tool(current_package, tool_name)
                         if tool:
                             tools.append(tool)
+            elif current_package:
+                # Single tool from current package
+                tool = self._load_single_tool(current_package, segment)
+                if tool:
+                    tools.append(tool)
             else:
-                # Package name
-                current_package = segment
+                logger.warning(f"Skipping segment '{segment}' - no package set")
 
-        logger.info(f"Loaded tools from DEVDUCK_TOOLS configuration")
+        logger.info(f"Loaded {len(tools)} tools from configuration")
         return tools
 
     def _load_single_tool(self, package, tool_name):
@@ -551,134 +763,103 @@ class DevDuck:
             logger.warning(f"Failed to load {tool_name} from {package}: {e}")
             return None
 
-    def _load_default_tools(self):
-        """Load default comprehensive tool set"""
-        tools = []
+    def _load_mcp_servers(self):
+        """
+        Load MCP servers from MCP_SERVERS environment variable using direct loading.
 
-        # Always load DevDuck core tools
-        tools.extend(self._load_devduck_tools())
+        Uses the experimental managed integration - MCPClient instances are passed
+        directly to Agent constructor without explicit context management.
 
-        # Load strands-agents-tools (essential)
+        Format: JSON with "mcpServers" object
+        Example: MCP_SERVERS='{"mcpServers": {"strands": {"command": "uvx", "args": ["strands-agents-mcp-server"]}}}'
+
+        Returns:
+            List of MCPClient instances ready for direct use in Agent
+        """
+        import json
+
+        mcp_servers_json = os.getenv("MCP_SERVERS")
+        if not mcp_servers_json:
+            logger.debug("No MCP_SERVERS environment variable found")
+            return []
+
         try:
-            from strands_tools import (
-                shell,
-                editor,
-                file_read,
-                file_write,
-                calculator,
-                image_reader,
-                use_agent,
-                load_tool,
-                environment,
-                mcp_client,
-                retrieve,
-            )
+            config = json.loads(mcp_servers_json)
+            mcp_servers_config = config.get("mcpServers", {})
 
-            tools.extend(
-                [
-                    shell,
-                    editor,
-                    file_read,
-                    file_write,
-                    calculator,
-                    image_reader,
-                    use_agent,
-                    load_tool,
-                    environment,
-                    mcp_client,
-                    retrieve,
-                ]
-            )
-            logger.info("✅ strands-agents-tools loaded")
-        except ImportError:
-            logger.info("strands-agents-tools unavailable")
+            if not mcp_servers_config:
+                logger.warning("MCP_SERVERS JSON has no 'mcpServers' key")
+                return []
 
-        # Load strands-fun-tools (optional, skip in --mcp mode)
-        if "--mcp" not in sys.argv:
-            try:
-                from strands_fun_tools import (
-                    listen,
-                    cursor,
-                    clipboard,
-                    screen_reader,
-                    yolo_vision,
-                )
+            mcp_clients = []
 
-                tools.extend([listen, cursor, clipboard, screen_reader, yolo_vision])
-                logger.info("✅ strands-fun-tools loaded")
-            except ImportError:
-                logger.info("strands-fun-tools unavailable")
+            from strands.tools.mcp import MCPClient
+            from mcp import stdio_client, StdioServerParameters
+            from mcp.client.streamable_http import streamablehttp_client
+            from mcp.client.sse import sse_client
 
-        return tools
+            for server_name, server_config in mcp_servers_config.items():
+                try:
+                    logger.info(f"Loading MCP server: {server_name}")
 
-    def _load_devduck_tools(self):
-        """Load DevDuck's core tools (always available)"""
-        tools = []
-        try:
-            from .tools import (
-                tcp,
-                websocket,
-                ipc,
-                mcp_server,
-                install_tools,
-                use_github,
-                create_subagent,
-                store_in_kb,
-                system_prompt,
-                state_manager,
-                tray,
-                ambient,
-            )
+                    # Determine transport type and create appropriate callable
+                    if "command" in server_config:
+                        # stdio transport
+                        command = server_config["command"]
+                        args = server_config.get("args", [])
+                        env = server_config.get("env", None)
 
-            tools.extend(
-                [
-                    tcp,
-                    websocket,
-                    ipc,
-                    mcp_server,
-                    install_tools,
-                    use_github,
-                    create_subagent,
-                    store_in_kb,
-                    system_prompt,
-                    state_manager,
-                    tray,
-                    ambient,
-                ]
-            )
-            logger.info("✅ DevDuck core tools loaded")
-        except ImportError as e:
-            logger.warning(f"DevDuck tools unavailable: {e}")
+                        transport_callable = (
+                            lambda cmd=command, a=args, e=env: stdio_client(
+                                StdioServerParameters(command=cmd, args=a, env=e)
+                            )
+                        )
 
-        # Load AgentCore tools if AWS credentials available (conditional)
-        if os.getenv("DEVDUCK_DISABLE_AGENTCORE_TOOLS", "false").lower() != "true":
-            try:
-                import boto3
+                    elif "url" in server_config:
+                        # Determine if SSE or streamable HTTP based on URL path
+                        url = server_config["url"]
+                        headers = server_config.get("headers", None)
 
-                boto3.client("sts").get_caller_identity()
+                        if "/sse" in url:
+                            # SSE transport
+                            transport_callable = lambda u=url: sse_client(u)
+                        else:
+                            # Streamable HTTP transport (default for HTTP)
+                            transport_callable = (
+                                lambda u=url, h=headers: streamablehttp_client(
+                                    url=u, headers=h
+                                )
+                            )
+                    else:
+                        logger.warning(
+                            f"MCP server {server_name} has no 'command' or 'url' - skipping"
+                        )
+                        continue
 
-                from .tools.agentcore_config import agentcore_config
-                from .tools.agentcore_invoke import agentcore_invoke
-                from .tools.agentcore_logs import agentcore_logs
-                from .tools.agentcore_agents import agentcore_agents
+                    # Create MCPClient with direct loading (experimental managed integration)
+                    # No need for context managers - Agent handles lifecycle
+                    prefix = server_config.get("prefix", server_name)
+                    mcp_client = MCPClient(
+                        transport_callable=transport_callable, prefix=prefix
+                    )
 
-                tools.extend(
-                    [
-                        agentcore_config,
-                        agentcore_invoke,
-                        agentcore_logs,
-                        agentcore_agents,
-                    ]
-                )
-                logger.info("✅ AgentCore tools loaded")
-            except Exception as e:
-                logger.debug(f"AgentCore tools unavailable: {e}")
-        else:
-            logger.info(
-                "⏭️  AgentCore tools disabled (DEVDUCK_DISABLE_AGENTCORE_TOOLS=true)"
-            )
+                    mcp_clients.append(mcp_client)
+                    logger.info(
+                        f"✓ MCP server '{server_name}' loaded (prefix: {prefix})"
+                    )
 
-        return tools
+                except Exception as e:
+                    logger.error(f"Failed to load MCP server '{server_name}': {e}")
+                    continue
+
+            return mcp_clients
+
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON in MCP_SERVERS: {e}")
+            return []
+        except Exception as e:
+            logger.error(f"Error loading MCP servers: {e}")
+            return []
 
     def _select_model(self):
         """
@@ -768,6 +949,7 @@ class DevDuck:
         current_time = datetime.now().strftime("%I:%M %p")
 
         session_id = f"devduck-{datetime.now().strftime('%Y-%m-%d')}"
+        self.session_id = session_id
 
         # Get own file path for self-modification awareness
         own_file_path = Path(__file__).resolve()
@@ -834,11 +1016,18 @@ Set DEVDUCK_TOOLS for custom tools:
 - Example: strands_tools:shell,editor:strands_fun_tools:clipboard
 - Tools are filtered - only specified tools are loaded
 
-## MCP Server:
+## MCP Integration:
 - **Expose as MCP Server** - Use mcp_server() to expose devduck via MCP protocol
   - Example: mcp_server(action="start", port=8000)
   - Connect from Claude Desktop, other agents, or custom clients
   - Full bidirectional communication
+
+- **Load MCP Servers** - Set MCP_SERVERS env var to auto-load external MCP servers
+  - Format: JSON with "mcpServers" object
+  - Stdio servers: command, args, env keys
+  - HTTP servers: url, headers keys
+  - Example: MCP_SERVERS='{{"mcpServers": {{"strands": {{"command": "uvx", "args": ["strands-agents-mcp-server"]}}}}}}'
+  - Tools from MCP servers automatically available in agent context
 
 ## Knowledge Base Integration:
 - **Automatic RAG** - Set DEVDUCK_KNOWLEDGE_BASE_ID to enable automatic retrieval/storage
@@ -1000,7 +1189,9 @@ When you learn something valuable during conversations:
                             logger.warning(f"No available ports found for TCP server")
                             continue
 
-                    result = self.agent.tool.tcp(action="start_server", port=port)
+                    result = self.agent.tool.tcp(
+                        action="start_server", port=port, record_direct_tool_call=False
+                    )
 
                     if result.get("status") == "success":
                         logger.info(f"✓ TCP server started on port {port}")
@@ -1022,7 +1213,9 @@ When you learn something valuable during conversations:
                             )
                             continue
 
-                    result = self.agent.tool.websocket(action="start_server", port=port)
+                    result = self.agent.tool.websocket(
+                        action="start_server", port=port, record_direct_tool_call=False
+                    )
 
                     if result.get("status") == "success":
                         logger.info(f"✓ WebSocket server started on port {port}")
@@ -1048,6 +1241,7 @@ When you learn something valuable during conversations:
                         port=port,
                         expose_agent=True,
                         agent=self.agent,
+                        record_direct_tool_call=False,
                     )
 
                     if result.get("status") == "success":
@@ -1075,7 +1269,9 @@ When you learn something valuable during conversations:
                         socket_path = available_socket
 
                     result = self.agent.tool.ipc(
-                        action="start_server", socket_path=socket_path
+                        action="start_server",
+                        socket_path=socket_path,
+                        record_direct_tool_call=False,
                     )
 
                     if result.get("status") == "success":
@@ -1094,6 +1290,7 @@ When you learn something valuable during conversations:
 
         try:
             logger.info(f"Agent call started: {query[:100]}...")
+
             # Mark agent as executing to prevent hot-reload interruption
             self._agent_executing = True
 
@@ -1133,7 +1330,7 @@ When you learn something valuable during conversations:
             # Check for pending hot-reload
             if self._reload_pending:
                 logger.info("Triggering pending hot-reload after agent completion")
-                print("🦆 Agent finished - triggering pending hot-reload...")
+                print("\n🦆 Agent finished - triggering pending hot-reload...")
                 self._hot_reload()
 
             return result
@@ -1148,7 +1345,7 @@ When you learn something valuable during conversations:
 
     def restart(self):
         """Restart the agent"""
-        print("🦆 Restarting...")
+        print("\n🦆 Restarting...")
         self.__init__()
 
     def _start_file_watcher(self):
@@ -1193,7 +1390,7 @@ When you learn something valuable during conversations:
                         and current_mtime > self._last_modified
                         and current_time - last_reload_time > debounce_seconds
                     ):
-                        print(f"🦆 Detected changes in {self._watch_file.name}!")
+                        print(f"\n🦆 Detected changes in {self._watch_file.name}!")
                         last_reload_time = current_time
 
                         # Check if agent is currently executing
@@ -1202,7 +1399,7 @@ When you learn something valuable during conversations:
                                 "Code change detected but agent is executing - reload pending"
                             )
                             print(
-                                "🦆 Agent is currently executing - reload will trigger after completion"
+                                "\n🦆 Agent is currently executing - reload will trigger after completion"
                             )
                             self._reload_pending = True
                             # Don't update _last_modified yet - keep detecting the change
@@ -1235,7 +1432,7 @@ When you learn something valuable during conversations:
     def _hot_reload(self):
         """Hot-reload by restarting the entire Python process with fresh code"""
         logger.info("Hot-reload initiated")
-        print("🦆 Hot-reloading via process restart...")
+        print("\n🦆 Hot-reloading via process restart...")
 
         try:
             # Set reload flag to prevent recursive reloads during shutdown
@@ -1252,7 +1449,7 @@ When you learn something valuable during conversations:
             if hasattr(self, "_watcher_running"):
                 self._watcher_running = False
 
-            print("🦆 Restarting process with fresh code...")
+            print("\n🦆 Restarting process with fresh code...")
 
             # Restart the entire Python process
             # This ensures all code is freshly loaded
@@ -1260,8 +1457,8 @@ When you learn something valuable during conversations:
 
         except Exception as e:
             logger.error(f"Hot-reload failed: {e}")
-            print(f"🦆 Hot-reload failed: {e}")
-            print("🦆 Falling back to manual restart")
+            print(f"\n🦆 Hot-reload failed: {e}")
+            print("\n🦆 Falling back to manual restart")
             self._is_reloading = False
 
     def status(self):
@@ -1552,6 +1749,7 @@ Claude Desktop Config:
                     transport="stdio",
                     expose_agent=True,
                     agent=devduck.agent,
+                    record_direct_tool_call=False,
                 )
             except Exception as e:
                 logger.error(f"Failed to start MCP stdio server: {e}")

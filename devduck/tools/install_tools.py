@@ -29,7 +29,7 @@ def install_tools(
     and loading their tools into the agent's registry at runtime.
 
     Args:
-        action: Action to perform - "install", "load", "install_and_load", "list_loaded"
+        action: Action to perform - "install", "load", "install_and_load", "list_loaded", "list_available"
         package: Python package to install (e.g., "strands-agents-tools", "strands-fun-tools")
         module: Module to import tools from (e.g., "strands_tools", "strands_fun_tools")
         tool_names: Optional list of specific tools to load. If None, loads all available tools
@@ -39,6 +39,13 @@ def install_tools(
         Result dictionary with status and content
 
     Examples:
+        # List available tools in a package (without loading)
+        install_tools(
+            action="list_available",
+            package="strands-fun-tools",
+            module="strands_fun_tools"
+        )
+
         # Install and load all tools from strands-agents-tools
         install_tools(
             action="install_and_load",
@@ -79,13 +86,15 @@ def install_tools(
             return _load_tools_from_module(module, tool_names, agent)
         elif action == "list_loaded":
             return _list_loaded_tools(agent)
+        elif action == "list_available":
+            return _list_available_tools(package, module)
         else:
             return {
                 "status": "error",
                 "content": [
                     {
                         "text": f"❌ Unknown action: {action}\n\n"
-                        f"Valid actions: install, load, install_and_load, list_loaded"
+                        f"Valid actions: install, load, install_and_load, list_loaded, list_available"
                     }
                 ],
             }
@@ -305,4 +314,96 @@ def _list_loaded_tools(agent: Any) -> Dict[str, Any]:
         return {
             "status": "error",
             "content": [{"text": f"❌ Failed to list tools: {str(e)}"}],
+        }
+
+
+def _list_available_tools(package: Optional[str], module: str) -> Dict[str, Any]:
+    """List available tools in a package without loading them."""
+    if not module:
+        return {
+            "status": "error",
+            "content": [
+                {"text": "❌ module parameter is required for list_available action"}
+            ],
+        }
+
+    try:
+        # Try to import the module
+        try:
+            imported_module = importlib.import_module(module)
+            logger.info(f"Module {module} already installed")
+        except ImportError:
+            # Module not installed - try to install package first
+            if not package:
+                return {
+                    "status": "error",
+                    "content": [
+                        {
+                            "text": f"❌ Module {module} not found and no package specified to install.\n\n"
+                            f"Please provide the 'package' parameter to install first."
+                        }
+                    ],
+                }
+
+            logger.info(f"Module {module} not found, installing package {package}")
+            install_result = _install_package(package)
+            if install_result["status"] == "error":
+                return install_result
+
+            # Try importing again after installation
+            try:
+                imported_module = importlib.import_module(module)
+            except ImportError as e:
+                return {
+                    "status": "error",
+                    "content": [
+                        {
+                            "text": f"❌ Failed to import {module} even after installing {package}: {str(e)}"
+                        }
+                    ],
+                }
+
+        # Discover tools in the module
+        available_tools = {}
+        for attr_name in dir(imported_module):
+            attr = getattr(imported_module, attr_name)
+            # Check if it's a tool (has tool_name and tool_spec attributes)
+            if hasattr(attr, "tool_name") and hasattr(attr, "tool_spec"):
+                tool_spec = attr.tool_spec
+                description = tool_spec.get("description", "No description available")
+                available_tools[attr.tool_name] = description
+
+        if not available_tools:
+            return {
+                "status": "success",
+                "content": [{"text": f"⚠️  No tools found in module: {module}"}],
+            }
+
+        # Build result message
+        result_lines = [
+            f"📦 **Available Tools in {module} ({len(available_tools)})**\n"
+        ]
+
+        for tool_name, description in sorted(available_tools.items()):
+            # Truncate long descriptions
+            if len(description) > 100:
+                description = description[:97] + "..."
+
+            result_lines.append(f"**{tool_name}**")
+            result_lines.append(f"  {description}\n")
+
+        result_lines.append(f"\n💡 To load these tools, use:")
+        result_lines.append(f"   install_tools(action='load', module='{module}')")
+        result_lines.append(f"   # Or load specific tools:")
+        result_lines.append(
+            f"   install_tools(action='load', module='{module}', tool_names=['tool1', 'tool2'])"
+        )
+
+        return {"status": "success", "content": [{"text": "\n".join(result_lines)}]}
+
+    except Exception as e:
+        logger.exception(f"Error listing available tools from {module}")
+        return {
+            "status": "error",
+            "content": [{"text": f"❌ Failed to list available tools: {str(e)}"}],
         }

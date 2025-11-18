@@ -131,7 +131,7 @@ devduck("refactor my code to use async/await")
 
 | Provider | Setup | When to Use |
 |----------|-------|-------------|
-| **Bedrock** (auto-detected) | [Get API key](https://console.aws.amazon.com/bedrock) → `export AWS_BEARER_TOKEN_BEDROCK=...` | Production (auto-selected if credentials found) |
+| **Bedrock** (auto-detected) | [Get API key](https://console.aws.amazon.com/bedrock) → `export AWS_BEARER_TOKEN_BEDROCK=...` | Auto-selected if credentials found |
 | **MLX** (macOS auto-detected) | Auto-detected on Apple Silicon | Local, optimized for M-series Macs |
 | **Ollama** (fallback) | `ollama pull qwen3:1.7b` | Local, free, private (used if Bedrock/MLX unavailable) |
 | **Anthropic** | `export ANTHROPIC_API_KEY=...` | Claude API direct access |
@@ -259,21 +259,74 @@ No restart. No configuration. Just works.
 |----------|---------|---------|
 | `MODEL_PROVIDER` | Auto-detect | `bedrock`, `anthropic`, `github`, `mlx`, `ollama` |
 | `STRANDS_MODEL_ID` | Auto | Model name (e.g., `qwen3:1.7b`, `claude-sonnet-4`) |
-| `DEVDUCK_TOOLS` | All | `pkg:tool1,tool2:pkg2:tool3` |
+| `DEVDUCK_TOOLS` | 37 default tools | `package:tool1,tool2:package2:tool3` format |
+| `DEVDUCK_LOAD_TOOLS_FROM_DIR` | `false` | `true`/`false` - Auto-load tools from `./tools/` directory |
 | `DEVDUCK_KNOWLEDGE_BASE_ID` | - | Bedrock KB ID for auto-RAG |
 | `DEVDUCK_TCP_PORT` | `9999` | TCP server port |
 | `DEVDUCK_ENABLE_TCP` | `true` | Enable/disable TCP |
 
-**Minimal config (shell + editor only):**
+### Tool Configuration Format
+
+**Format:** `package:tool1,tool2:package2:tool3`
+
+**Directory Auto-Loading:**
+
+By default, DevDuck **does not** automatically load tools from the `./tools/` directory. This gives you explicit control over which tools are loaded. To enable automatic loading of tools from `./tools/`, set:
+
 ```bash
-export DEVDUCK_TOOLS="strands_tools:shell,editor"
+export DEVDUCK_LOAD_TOOLS_FROM_DIR=true
 devduck
+```
+
+When enabled, any `.py` file in `./tools/` with a `@tool` decorator will be loaded automatically. When disabled (default), you control tool loading via `DEVDUCK_TOOLS` or runtime `manage_tools()` calls.
+
+**Examples:**
+```bash
+# Minimal (shell + editor only)
+export DEVDUCK_TOOLS="strands_tools:shell,editor"
+
+# Dev tools only
+export DEVDUCK_TOOLS="strands_tools:shell,editor,file_read,file_write,calculator"
+
+# Full DevDuck + Strands (no fun tools)
+export DEVDUCK_TOOLS="devduck.tools:tcp,websocket,mcp_server,use_github:strands_tools:shell,editor,file_read"
+
+# Custom package
+export DEVDUCK_TOOLS="my_tools:custom_tool,another_tool:strands_tools:shell"
+
+devduck
+```
+
+**Runtime tool management:**
+```python
+# List loaded tools
+manage_tools(action="list")
+
+# Add tools at runtime
+manage_tools(action="add", package="strands_fun_tools", tool_names="cursor,clipboard")
+
+# Remove tools
+manage_tools(action="remove", tool_names="cursor,clipboard")
+
+# Reload specific tools
+manage_tools(action="reload", tool_names="shell,editor")
+
+# Reload all (restart agent)
+manage_tools(action="reload")
+```
+
+**Discover tools before loading:**
+```python
+# List available tools in a package
+install_tools(action="list_available", package="strands-fun-tools", module="strands_fun_tools")
 ```
 
 ---
 
 
 ## MCP Integration
+
+### Expose DevDuck as MCP Server
 
 **Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json`):
 ```json
@@ -288,6 +341,83 @@ devduck
 ```
 
 Restart Claude → DevDuck tools appear automatically.
+
+### Load External MCP Servers
+
+DevDuck can act as an MCP client and load tools from external MCP servers automatically.
+
+**Setup:**
+```bash
+export MCP_SERVERS='{
+  "mcpServers": {
+    "strands": {
+      "command": "uvx",
+      "args": ["strands-agents-mcp-server"]
+    }
+  }
+}'
+devduck
+```
+
+**Supported Transport Types:**
+
+| Transport | Configuration | Example |
+|-----------|--------------|---------|
+| **stdio** | `command`, `args`, `env` | Executables via stdin/stdout |
+| **HTTP** | `url`, `headers` | Remote servers via HTTP |
+| **SSE** | `url` (with `/sse` path) | Server-Sent Events streaming |
+
+**Examples:**
+
+```bash
+# Stdio server
+export MCP_SERVERS='{
+  "mcpServers": {
+    "myserver": {
+      "command": "python",
+      "args": ["server.py"],
+      "env": {"API_KEY": "secret"}
+    }
+  }
+}'
+
+# HTTP server
+export MCP_SERVERS='{
+  "mcpServers": {
+    "remote": {
+      "url": "https://api.example.com/mcp",
+      "headers": {"Authorization": "Bearer token"}
+    }
+  }
+}'
+
+# SSE server
+export MCP_SERVERS='{
+  "mcpServers": {
+    "events": {
+      "url": "https://api.example.com/sse"
+    }
+  }
+}'
+
+# Multiple servers
+export MCP_SERVERS='{
+  "mcpServers": {
+    "strands": {
+      "command": "uvx",
+      "args": ["strands-agents-mcp-server"]
+    },
+    "remote": {
+      "url": "https://api.example.com/mcp"
+    }
+  }
+}'
+
+devduck
+# Tools from all MCP servers automatically available
+```
+
+**Tool Prefixing:** Each MCP server's tools are prefixed with the server name (e.g., `strands_tool_name`)
 
 ---
 

@@ -407,6 +407,7 @@ def agentcore_invoke(
         response_text = (
             "\n".join(str(e) for e in events) if events else "No response content"
         )
+        print("\n")
 
         return {
             "status": "success",
