@@ -398,12 +398,13 @@ create_subagent(action="list", repository="owner/repo", workflow_id="agent.yml")
 ---
 
 <details>
-<summary><strong>📋 All Built-in Tools (38 total)</strong></summary>
+<summary><strong>📋 All Built-in Tools (39 total)</strong></summary>
 
-### DevDuck Core (17 tools)
+### DevDuck Core (18 tools)
 - `system_prompt` - Update agent's system prompt (GitHub sync support)
 - `store_in_kb` - Store content in Bedrock Knowledge Base
 - `state_manager` - Save/restore agent state (time-travel)
+- `messages` - Export, import, drop turns, clear conversation history
 - `tcp` - TCP server with real-time streaming
 - `websocket` - WebSocket server with concurrent messaging
 - `ipc` - Unix socket IPC server for local processes
@@ -525,7 +526,7 @@ devduck
 | `LITELLM_API_KEY` | - | LiteLLM API key (auto-detected) |
 | `LLAMAAPI_API_KEY` | - | LlamaAPI key (auto-detected) |
 | **Tools** | | |
-| `DEVDUCK_TOOLS` | 38 tools | Format: `package:tool1,tool2:package2:tool3` |
+| `DEVDUCK_TOOLS` | 39 tools | Format: `package:tool1,tool2:package2:tool3` |
 | `DEVDUCK_LOAD_TOOLS_FROM_DIR` | `false` | Auto-load from `./tools/` directory |
 | **Memory** | | |
 | `DEVDUCK_KNOWLEDGE_BASE_ID` | - | Bedrock KB ID for auto-RAG |

@@ -8,3 +8,4 @@ build
 _version.py
 .bedrock_agentcore.yaml
 .bedrock_agentcore
+sessions/

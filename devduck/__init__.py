@@ -633,7 +633,7 @@ class DevDuck:
 
             # Load tools with flexible configuration
             # Default tool config - user can override with DEVDUCK_TOOLS env var
-            default_tools = "devduck.tools:system_prompt,store_in_kb,ipc,tcp,websocket,mcp_server,state_manager,tray,ambient,agentcore_config,agentcore_invoke,agentcore_logs,agentcore_agents,install_tools,create_subagent,use_github:strands_tools:shell,editor,file_read,file_write,image_reader,load_tool,retrieve,calculator,use_agent,environment,mcp_client,speak,slack:strands_fun_tools:listen,cursor,clipboard,screen_reader,bluetooth,yolo_vision"
+            default_tools = "devduck.tools:system_prompt,store_in_kb,ipc,tcp,websocket,mcp_server,state_manager,tray,ambient,agentcore_config,agentcore_invoke,agentcore_logs,agentcore_agents,install_tools,create_subagent,use_github,messages:strands_tools:shell,editor,file_read,file_write,image_reader,load_tool,retrieve,calculator,use_agent,environment,mcp_client,speak,slack:strands_fun_tools:listen,cursor,clipboard,screen_reader,bluetooth,yolo_vision"
 
             tools_config = os.getenv("DEVDUCK_TOOLS", default_tools)
             logger.info(f"Loading tools from config: {tools_config}")
@@ -1390,6 +1390,49 @@ When you learn something valuable during conversations:
 
             # Run the agent
             result = self.agent(query)
+
+            # 🔄 Check if messages were modified by the messages tool
+            if self.agent.state.get("_messages_modified"):
+                logger.info("Messages were modified by messages tool")
+                print("\n🦆 Conversation history was modified")
+
+                # Get the snapshot of new messages
+                new_messages = self.agent.state.get("_messages_snapshot")
+                if new_messages is not None:
+                    logger.info(f"Message count: {len(self.agent.messages)}")
+                    print(f"🦆 Current message count: {len(self.agent.messages)}")
+
+                # Clear the modification flag
+                self.agent.state.set("_messages_modified", False)
+
+                # Optional: Sync to session manager if available
+                if (
+                    hasattr(self.agent, "_session_manager")
+                    and self.agent._session_manager
+                ):
+                    try:
+                        self.agent._session_manager.sync_agent(self.agent)
+                        logger.info("Synced modified messages to session manager")
+                    except Exception as e:
+                        logger.warning(f"Failed to sync to session manager: {e}")
+
+            # 🗑️ Execute pending clear after turn completes
+            if self.agent.state.get("_clear_pending"):
+                count = self.agent.state.get("_clear_message_count", 0)
+                turn_count = self.agent.state.get("_clear_turn_count", 0)
+                
+                logger.info(f"Executing deferred clear: {turn_count} turns, {count} messages")
+                print(f"\n🦆 Executing deferred clear: {turn_count} turns, {count} messages")
+                
+                self.agent.messages.clear()
+                
+                # Clear the pending flags
+                self.agent.state.set("_clear_pending", False)
+                self.agent.state.set("_clear_message_count", None)
+                self.agent.state.set("_clear_turn_count", None)
+                
+                logger.info("Clear completed successfully")
+                print(f"🦆 Clear completed - conversation history is now empty")
 
             # 💾 Knowledge Base Storage (AFTER agent runs)
             if knowledge_base_id and hasattr(self.agent, "tool"):

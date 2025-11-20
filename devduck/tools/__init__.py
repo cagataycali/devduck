@@ -12,6 +12,7 @@ from .create_subagent import create_subagent
 from .store_in_kb import store_in_kb
 from .system_prompt import system_prompt
 from .state_manager import state_manager
+from .messages import messages
 
 # AgentCore tools (conditionally available)
 try:
@@ -30,6 +31,7 @@ try:
         "create_subagent",
         "store_in_kb",
         "system_prompt",
+        "messages",
         "state_manager",
         "tray",
         "ambient",
@@ -49,6 +51,7 @@ except ImportError:
         "create_subagent",
         "store_in_kb",
         "system_prompt",
+        "messages",
         "state_manager",
         "tray",
         "ambient",
