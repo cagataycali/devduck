@@ -192,7 +192,7 @@ install_tools(action="list_loaded")
 
 ### Static Tool Configuration
 
-**Format:** `package:tool1,tool2:package2:tool3`
+**Format:** `package1:tool1,tool2;package2:tool3,tool4`
 
 ```bash
 # Minimal (shell + editor only)
@@ -202,7 +202,7 @@ export DEVDUCK_TOOLS="strands_tools:shell,editor"
 export DEVDUCK_TOOLS="strands_tools:shell,editor,file_read,file_write,calculator"
 
 # Full stack + GitHub
-export DEVDUCK_TOOLS="devduck.tools:tcp,websocket,mcp_server,use_github:strands_tools:shell,editor,file_read"
+export DEVDUCK_TOOLS="devduck.tools:tcp,websocket,mcp_server,use_github;strands_tools:shell,editor,file_read"
 
 devduck
 ```
@@ -525,7 +525,7 @@ devduck
 | `LITELLM_API_KEY` | - | LiteLLM API key (auto-detected) |
 | `LLAMAAPI_API_KEY` | - | LlamaAPI key (auto-detected) |
 | **Tools** | | |
-| `DEVDUCK_TOOLS` | 38 tools | Format: `package:tool1,tool2:package2:tool3` |
+| `DEVDUCK_TOOLS` | 38 tools | Format: `package1:tool1,tool2;package2:tool3` |
 | `DEVDUCK_LOAD_TOOLS_FROM_DIR` | `false` | Auto-load from `./tools/` directory |
 | **Memory** | | |
 | `DEVDUCK_KNOWLEDGE_BASE_ID` | - | Bedrock KB ID for auto-RAG |

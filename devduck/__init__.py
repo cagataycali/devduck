@@ -189,18 +189,7 @@ def manage_tools_func(
     tool_names: str = None,
     tool_path: str = None,
 ) -> Dict[str, Any]:
-    """
-    Manage the agent's tool set at runtime using ToolRegistry.
-
-    Args:
-        action: Action to perform - "list", "add", "remove", "reload"
-        package: Package name to load tools from (e.g., "strands_tools", "strands_fun_tools")
-        tool_names: Comma-separated tool names (e.g., "shell,editor,calculator")
-        tool_path: Path to a .py file to load as a tool
-
-    Returns:
-        Dict with status and content
-    """
+    """Manage the agent's tool set at runtime - add, remove, list, reload tools on the fly."""
     try:
         if not hasattr(devduck, "agent") or not devduck.agent:
             return {"status": "error", "content": [{"text": "Agent not initialized"}]}
@@ -633,7 +622,7 @@ class DevDuck:
 
             # Load tools with flexible configuration
             # Default tool config - user can override with DEVDUCK_TOOLS env var
-            default_tools = "devduck.tools:system_prompt,store_in_kb,ipc,tcp,websocket,mcp_server,state_manager,tray,ambient,agentcore_config,agentcore_invoke,agentcore_logs,agentcore_agents,install_tools,create_subagent,use_github:strands_tools:shell,editor,file_read,file_write,image_reader,load_tool,retrieve,calculator,use_agent,environment,mcp_client,speak,slack:strands_fun_tools:listen,cursor,clipboard,screen_reader,bluetooth,yolo_vision"
+            default_tools = "devduck.tools:system_prompt,store_in_kb,ipc,tcp,websocket,mcp_server,state_manager,tray,ambient,agentcore_config,agentcore_invoke,agentcore_logs,agentcore_agents,install_tools,create_subagent,use_github;strands_tools:shell,editor,file_read,file_write,image_reader,load_tool,retrieve,calculator,use_agent,environment,mcp_client,speak,slack;strands_fun_tools:listen,cursor,clipboard,screen_reader,bluetooth,yolo_vision"
 
             tools_config = os.getenv("DEVDUCK_TOOLS", default_tools)
             logger.info(f"Loading tools from config: {tools_config}")
@@ -657,7 +646,18 @@ class DevDuck:
                 tool_names: str = None,
                 tool_path: str = None,
             ) -> Dict[str, Any]:
-                """Manage the agent's tool set at runtime - add, remove, list, reload tools on the fly."""
+                """
+                Manage the agent's tool set at runtime using ToolRegistry.
+
+                Args:
+                    action: Action to perform - "list", "add", "remove", "reload"
+                    package: Package name to load tools from (e.g., "strands_tools", "strands_fun_tools") or "devduck.tools:speech_to_speech,system_prompt,..."
+                    tool_names: Comma-separated tool names (e.g., "shell,editor,calculator")
+                    tool_path: Path to a .py file to load as a tool
+
+                Returns:
+                    Dict with status and content
+                """
                 return manage_tools_func(action, package, tool_names, tool_path)
 
             # Add built-in tools to the toolset
@@ -715,39 +715,39 @@ class DevDuck:
         """
         Load tools based on DEVDUCK_TOOLS configuration.
 
-        Format: package:tool1,tool2:package2:tool3
-        Example: strands_tools:shell,editor:strands_fun_tools:clipboard
+        Format: package1:tool1,tool2;package2:tool3,tool4
+        Examples:
+          - strands_tools:shell,editor;strands_action:use_github
+          - strands_action:use_github;strands_tools:shell,use_aws
 
         Note: Only loads what's specified in config - no automatic additions
         """
         tools = []
-        current_package = None
 
-        for segment in config.split(":"):
-            segment = segment.strip()
+        # Split by semicolon to get package groups
+        groups = config.split(";")
 
-            # Check if segment is a package name (contains '.' or '_' and no ',')
-            is_package = "," not in segment and ("." in segment or "_" in segment)
+        for group in groups:
+            group = group.strip()
+            if not group:
+                continue
 
-            if is_package:
-                # This is a package name - set as current package
-                current_package = segment
-                logger.debug(f"Switched to package: {current_package}")
-            elif "," in segment:
-                # Tool list from current package
-                if current_package:
-                    for tool_name in segment.split(","):
-                        tool_name = tool_name.strip()
-                        tool = self._load_single_tool(current_package, tool_name)
-                        if tool:
-                            tools.append(tool)
-            elif current_package:
-                # Single tool from current package
-                tool = self._load_single_tool(current_package, segment)
+            # Split by colon to get package:tools
+            parts = group.split(":", 1)
+            if len(parts) != 2:
+                logger.warning(f"Invalid format: {group}")
+                continue
+
+            package = parts[0].strip()
+            tools_str = parts[1].strip()
+
+            # Parse tools (comma-separated)
+            tool_names = [t.strip() for t in tools_str.split(",") if t.strip()]
+
+            for tool_name in tool_names:
+                tool = self._load_single_tool(package, tool_name)
                 if tool:
                     tools.append(tool)
-            else:
-                logger.warning(f"Skipping segment '{segment}' - no package set")
 
         logger.info(f"Loaded {len(tools)} tools from configuration")
         return tools
@@ -1094,9 +1094,11 @@ You have full access to your own source code for self-awareness and self-modific
 
 ## Tool Configuration:
 Set DEVDUCK_TOOLS for custom tools:
-- Format: package:tool1,tool2:package2:tool3
-- Example: strands_tools:shell,editor:strands_fun_tools:clipboard
+- Format: package1:tool1,tool2;package2:tool3,tool4
+- Example: strands_tools:shell,editor;strands_fun_tools:clipboard
 - Tools are filtered - only specified tools are loaded
+- Load the speech_to_speech tool when it's needed
+- Offload the tools when you don't need
 
 ## MCP Integration:
 - **Expose as MCP Server** - Use mcp_server() to expose devduck via MCP protocol

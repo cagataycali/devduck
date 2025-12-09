@@ -35,6 +35,7 @@ dependencies = [
     "strands-agents[ollama]",
     "strands-agents[anthropic]",
     "strands-agents[openai]",
+    "strands-agents[bidi-all]; sys_platform == 'darwin'",
     "strands-agents[otel]",
     "strands-agents-tools",
     "strands-fun-tools[all]; sys_platform == 'darwin'",
@@ -51,6 +52,7 @@ dependencies = [
 
 [project.scripts]
 devduck = "devduck:cli"
+dev = "devduck:cli"
 
 [project.urls]
 Homepage = "https://github.com/cagataycali/devduck"
