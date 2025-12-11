@@ -622,7 +622,7 @@ class DevDuck:
 
             # Load tools with flexible configuration
             # Default tool config - user can override with DEVDUCK_TOOLS env var
-            default_tools = "devduck.tools:system_prompt,store_in_kb,ipc,tcp,websocket,mcp_server,state_manager,tray,ambient,agentcore_config,agentcore_invoke,agentcore_logs,agentcore_agents,install_tools,create_subagent,use_github;strands_tools:shell,editor,file_read,file_write,image_reader,load_tool,retrieve,calculator,use_agent,environment,mcp_client,speak,slack;strands_fun_tools:listen,cursor,clipboard,screen_reader,bluetooth,yolo_vision"
+            default_tools = "devduck.tools:system_prompt,store_in_kb,ipc,tcp,websocket,mcp_server,state_manager,tray,ambient,browser_bridge,agentcore_config,agentcore_invoke,agentcore_logs,agentcore_agents,install_tools,create_subagent,use_github;strands_tools:shell,editor,file_read,file_write,image_reader,load_tool,retrieve,calculator,use_agent,environment,mcp_client,speak,slack;strands_fun_tools:listen,cursor,clipboard,screen_reader,bluetooth,yolo_vision"
 
             tools_config = os.getenv("DEVDUCK_TOOLS", default_tools)
             logger.info(f"Loading tools from config: {tools_config}")
@@ -1134,6 +1134,8 @@ When you learn something valuable during conversations:
 4. New learnings persist across sessions via SYSTEM_PROMPT env var
 
 **Repository Integration**: Set repository='cagataycali/devduck' to sync prompts across deployments
+
+While using editor tool, use the tool step by step and make sure your changes are complete. Do a cross check before finishing.
 
 ## Shell Commands:
 - Prefix with ! to execute shell commands directly

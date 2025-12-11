@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🦆 DevDuck</title>
+    <link rel="stylesheet" href="github-dark.min.css">
+    <script src="highlight.min.js"></script>
+    <script src="marked.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', sans-serif;
+            background: #000;
+            color: #fff;
+            width: 500px;
+            height: 600px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .header {
+            background: #000;
+            padding: 1.25rem 1rem;
+            text-align: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .header h1 {
+            font-size: 1.125rem;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.5);
+            transition: color 0.3s ease;
+            letter-spacing: 0.025em;
+        }
+
+        .header h1.connected {
+            color: rgba(255, 255, 255, 0.95);
+        }
+
+        .messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .turn {
+            opacity: 0;
+            animation: fadeIn 0.3s forwards;
+        }
+
+        @keyframes fadeIn {
+            to { opacity: 1; }
+        }
+
+        .message {
+            padding: 1.5rem 1rem;
+            word-wrap: break-word;
+            font-size: 0.875rem;
+            line-height: 1.6;
+        }
+
+        .message.user {
+            background: #000;
+            color: rgba(255, 255, 255, 0.9);
+            text-align: right;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .message.assistant {
+            background: #000;
+            color: #fff;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .message pre {
+            background: #0d0d0d;
+            padding: 0.75rem;
+            border-radius: 0.375rem;
+            overflow-x: auto;
+            margin: 0.75rem 0;
+            font-size: 0.75rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .message code {
+            font-family: 'Courier New', monospace;
+            font-size: 0.8em;
+        }
+
+        .message p {
+            margin: 0.5rem 0;
+            line-height: 1.6;
+        }
+
+        .message a {
+            color: #60a5fa;
+            text-decoration: none;
+        }
+
+        .message a:hover {
+            text-decoration: underline;
+        }
+
+        .tool-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            padding: 0.375rem 0.75rem;
+            margin: 0.5rem 0;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            color: #9ca3af;
+        }
+
+        .tool-status.success {
+            color: #4ade80;
+        }
+
+        .tool-status.error {
+            color: #ef4444;
+        }
+
+        .loading-cursor {
+            display: inline-block;
+            width: 2px;
+            height: 0.875rem;
+            background: #fff;
+            margin-left: 2px;
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
+
+        .input-area {
+            background: #000;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 1rem;
+        }
+
+        .input-container {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+        }
+
+        #messageInput {
+            flex: 1;
+            background: #000;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #fff;
+            font-size: 0.875rem;
+            outline: none;
+            resize: none;
+            min-height: 2.5rem;
+            max-height: 6rem;
+            padding: 0.625rem;
+            border-radius: 0.5rem;
+            font-family: inherit;
+        }
+
+        #messageInput::placeholder {
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        #sendBtn {
+            padding: 0.625rem 1rem;
+            background: #000;
+            color: rgba(255, 255, 255, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 0.5rem;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.8rem;
+            transition: all 0.2s;
+        }
+
+        #sendBtn:not(:disabled):hover {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: rgba(255, 255, 255, 0.4);
+            color: #fff;
+        }
+
+        #sendBtn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #000;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1 id="title">devduck</h1>
+    </div>
+    
+    <div class="messages" id="messages"></div>
+    
+    <div class="input-area">
+        <form class="input-container" id="messageForm">
+            <textarea 
+                id="messageInput" 
+                placeholder="ask devduck..." 
+                disabled
+                rows="1"
+                autocomplete="off"
+                autofocus
+            ></textarea>
+            <button id="sendBtn" type="submit" disabled>Send</button>
+        </form>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+</html>
