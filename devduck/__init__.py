@@ -3,19 +3,31 @@
 🦆 devduck - extreme minimalist self-adapting agent
 one file. self-healing. runtime dependencies. adaptive.
 """
+import os
 import sys
 import subprocess
-import os
+import threading
 import platform
 import socket
 import logging
 import tempfile
 import time
 import warnings
+import json
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any
 from logging.handlers import RotatingFileHandler
+from strands import Agent, tool
+
+# Import system prompt helper for loading prompts from files
+try:
+    from devduck.tools.system_prompt import _get_system_prompt
+except ImportError:
+    # Fallback if tools module not available yet
+    def _get_system_prompt(repository=None, variable_name="SYSTEM_PROMPT"):
+        return os.getenv(variable_name, "")
+
 
 warnings.filterwarnings("ignore", message=".*pkg_resources is deprecated.*")
 warnings.filterwarnings("ignore", message=".*cache_prompt is deprecated.*")
@@ -594,7 +606,7 @@ class DevDuck:
                 servers = {
                     "tcp": {
                         "port": int(os.getenv("DEVDUCK_TCP_PORT", "9999")),
-                        "enabled": os.getenv("DEVDUCK_ENABLE_TCP", "true").lower()
+                        "enabled": os.getenv("DEVDUCK_ENABLE_TCP", "false").lower()
                         == "true",
                     },
                     "ws": {
@@ -604,26 +616,93 @@ class DevDuck:
                     },
                     "mcp": {
                         "port": int(os.getenv("DEVDUCK_MCP_PORT", "8000")),
-                        "enabled": os.getenv("DEVDUCK_ENABLE_MCP", "true").lower()
+                        "enabled": os.getenv("DEVDUCK_ENABLE_MCP", "false").lower()
                         == "true",
                     },
                     "ipc": {
                         "socket_path": os.getenv(
                             "DEVDUCK_IPC_SOCKET", "/tmp/devduck_main.sock"
                         ),
-                        "enabled": os.getenv("DEVDUCK_ENABLE_IPC", "true").lower()
+                        "enabled": os.getenv("DEVDUCK_ENABLE_IPC", "false").lower()
                         == "true",
                     },
                 }
 
+            # Show server configuration status
+            enabled_servers = []
+            disabled_servers = []
+            for server_name, config in servers.items():
+                if config.get("enabled", False):
+                    if "port" in config:
+                        enabled_servers.append(
+                            f"{server_name.upper()}:{config['port']}"
+                        )
+                    else:
+                        enabled_servers.append(server_name.upper())
+                else:
+                    disabled_servers.append(server_name.upper())
+
+            logger.debug(
+                f"🦆 Server config: {', '.join(enabled_servers) if enabled_servers else 'none enabled'}"
+            )
+            if disabled_servers:
+                logger.debug(f"🦆 Disabled: {', '.join(disabled_servers)}")
+
             self.servers = servers
 
-            from strands import Agent, tool
-
             # Load tools with flexible configuration
-            # Default tool config - user can override with DEVDUCK_TOOLS env var
-            # To enable strands-google, add tool strands_google:use_google,google_auth;
-            default_tools = "devduck.tools:system_prompt,store_in_kb,ipc,tcp,websocket,mcp_server,state_manager,tray,ambient,agentcore_config,agentcore_invoke,agentcore_logs,agentcore_agents,install_tools,create_subagent,use_github;strands_tools:shell,editor,file_read,file_write,image_reader,load_tool,retrieve,calculator,use_agent,environment,mcp_client,speak,slack;strands_fun_tools:listen,cursor,clipboard,screen_reader,bluetooth,yolo_vision;strands_google:use_google,google_auth"
+            # Default tool config
+            # Agent can load additional tools on-demand via fetch_github_tool
+
+            # 🔧 Available DevDuck Tools (load on-demand):
+            # - system_prompt: https://github.com/cagataycali/devduck/blob/main/devduck/tools/system_prompt.py
+            # - store_in_kb: https://github.com/cagataycali/devduck/blob/main/devduck/tools/store_in_kb.py
+            # - ipc: https://github.com/cagataycali/devduck/blob/main/devduck/tools/ipc.py
+            # - tcp: https://github.com/cagataycali/devduck/blob/main/devduck/tools/tcp.py
+            # - websocket: https://github.com/cagataycali/devduck/blob/main/devduck/tools/websocket.py
+            # - mcp_server: https://github.com/cagataycali/devduck/blob/main/devduck/tools/mcp_server.py
+            # - scraper: https://github.com/cagataycali/devduck/blob/main/devduck/tools/scraper.py
+            # - tray: https://github.com/cagataycali/devduck/blob/main/devduck/tools/tray.py
+            # - ambient: https://github.com/cagataycali/devduck/blob/main/devduck/tools/ambient.py
+            # - agentcore_config: https://github.com/cagataycali/devduck/blob/main/devduck/tools/agentcore_config.py
+            # - agentcore_invoke: https://github.com/cagataycali/devduck/blob/main/devduck/tools/agentcore_invoke.py
+            # - agentcore_logs: https://github.com/cagataycali/devduck/blob/main/devduck/tools/agentcore_logs.py
+            # - agentcore_agents: https://github.com/cagataycali/devduck/blob/main/devduck/tools/agentcore_agents.py
+            # - create_subagent: https://github.com/cagataycali/devduck/blob/main/devduck/tools/create_subagent.py
+            # - use_github: https://github.com/cagataycali/devduck/blob/main/devduck/tools/use_github.py
+            # - speech_to_speech: https://github.com/cagataycali/devduck/blob/main/devduck/tools/speech_to_speech.py
+            # - state_manager: https://github.com/cagataycali/devduck/blob/main/devduck/tools/state_manager.py
+
+            # 📦 Strands Tools
+            # - editor, file_read, file_write, image_reader, load_tool, retrieve
+            # - calculator, use_agent, environment, mcp_client, speak, slack
+
+            # 🎮 Strands Fun Tools
+            # - listen, cursor, clipboard, screen_reader, bluetooth, yolo_vision
+
+            # 🔍 Strands Google
+            # - use_google, google_auth
+
+            # 🔧 Auto-append server tools based on enabled servers
+            server_tools_needed = []
+            if servers.get("tcp", {}).get("enabled", False):
+                server_tools_needed.append("tcp")
+            if servers.get("ws", {}).get("enabled", False):
+                server_tools_needed.append("websocket")
+            if servers.get("mcp", {}).get("enabled", False):
+                server_tools_needed.append("mcp_server")
+            if servers.get("ipc", {}).get("enabled", False):
+                server_tools_needed.append("ipc")
+
+            # Append to default tools if any server tools are needed
+            if server_tools_needed:
+                server_tools_str = ",".join(server_tools_needed)
+                default_tools = f"devduck.tools:system_prompt,fetch_github_tool,{server_tools_str};strands_tools:shell"
+                logger.info(f"Auto-added server tools: {server_tools_str}")
+            else:
+                default_tools = (
+                    "devduck.tools:system_prompt,fetch_github_tool;strands_tools:shell"
+                )
 
             tools_config = os.getenv("DEVDUCK_TOOLS", default_tools)
             logger.info(f"Loading tools from config: {tools_config}")
@@ -777,8 +856,6 @@ class DevDuck:
         Returns:
             List of MCPClient instances ready for direct use in Agent
         """
-        import json
-
         mcp_servers_json = os.getenv("MCP_SERVERS")
         if not mcp_servers_json:
             logger.debug("No MCP_SERVERS environment variable found")
@@ -1146,7 +1223,7 @@ When you learn something valuable during conversations:
 - Communication: **MINIMAL WORDS**
 - Efficiency: **Speed is paramount**
 
-{os.getenv('SYSTEM_PROMPT', '')}"""
+{_get_system_prompt()}"""
 
     def _self_heal(self, error):
         """Attempt self-healing when errors occur"""
@@ -1193,7 +1270,6 @@ When you learn something valuable during conversations:
 
     def _is_socket_available(self, socket_path):
         """Check if a Unix socket is available"""
-        import os
 
         # If socket file doesn't exist, it's available
         if not os.path.exists(socket_path):
@@ -1431,11 +1507,11 @@ When you learn something valuable during conversations:
     def restart(self):
         """Restart the agent"""
         print("\n🦆 Restarting...")
+        logger.debug("\n🦆 Restarting...")
         self.__init__()
 
     def _start_file_watcher(self):
         """Start background file watcher for auto hot-reload"""
-        import threading
 
         logger.info("Starting file watcher for hot-reload")
         # Get the path to this file
@@ -1535,6 +1611,7 @@ When you learn something valuable during conversations:
                 self._watcher_running = False
 
             print("\n🦆 Restarting process with fresh code...")
+            logger.debug("\n🦆 Restarting process with fresh code...")
 
             # Restart the entire Python process
             # This ensures all code is freshly loaded
@@ -1678,7 +1755,7 @@ def interactive():
     print(f"📝 Logs: {LOG_DIR}")
     print("Type 'exit', 'quit', or 'q' to quit.")
     print("Prefix with ! to run shell commands (e.g., ! ls -la)")
-    print("-" * 50)
+    print("\n\n")
     logger.info("Interactive mode started")
 
     # Set up prompt_toolkit with history
@@ -1706,7 +1783,6 @@ def interactive():
                 auto_suggest=AutoSuggestFromHistory(),
                 completer=completer,
                 complete_while_typing=True,
-                mouse_support=False,  # breaks scrolling when enabled
             )
 
             # Reset interrupt count on successful prompt
@@ -1734,6 +1810,10 @@ def interactive():
                         )
                         devduck._agent_executing = False
 
+                        # Reset terminal to fix rendering issues after command output
+                        print("\r", end="", flush=True)
+                        sys.stdout.flush()
+
                         # Append shell command to history
                         append_to_shell_history(q, result["content"][0]["text"])
 
@@ -1748,6 +1828,9 @@ def interactive():
                 except Exception as e:
                     devduck._agent_executing = False  # Reset on error
                     print(f"🦆 Shell command error: {e}")
+                    # Reset terminal on error too
+                    print("\r", end="", flush=True)
+                    sys.stdout.flush()
                 continue
 
             # Execute the agent with user input

@@ -2,14 +2,15 @@
 
 This module provides a tool to view and modify system prompts used by the agent.
 It helps with dynamic adaptation of the agent's behavior and capabilities,
-and can persist changes by updating GitHub repository variables.
+and can persist changes by updating GitHub repository variables and local .prompt files.
 
 Key Features:
 1. View current system prompt from any environment variable
-2. Update system prompt (in-memory and GitHub repository variable)
+2. Update system prompt (in-memory, .prompt file, and GitHub repository variable)
 3. Add context information to system prompt
 4. Reset system prompt to default
 5. Support for custom variable names (SYSTEM_PROMPT, TOOL_BUILDER_SYSTEM_PROMPT, etc.)
+6. Local file persistence via .prompt files with predictable fallback locations
 
 Usage Examples:
 ```python
@@ -37,6 +38,8 @@ result = agent.tool.system_prompt(
 """
 
 import os
+import tempfile
+from pathlib import Path
 from typing import Any
 
 import requests
@@ -46,6 +49,133 @@ from strands import tool
 def _get_github_token() -> str:
     """Get GitHub token from environment variable."""
     return os.environ.get("PAT_TOKEN", os.environ.get("GITHUB_TOKEN", ""))
+
+
+def _get_prompt_file_path(variable_name: str = "SYSTEM_PROMPT") -> Path:
+    """Get the path to the .prompt file for a given variable name with fallback strategy.
+
+    Tries locations in this order:
+    1. CWD (current working directory)
+    2. /tmp/devduck/prompts
+    3. tempdir/devduck/prompts
+
+    Args:
+        variable_name: Name of the variable (used to generate filename)
+
+    Returns:
+        Path to the .prompt file (first writable location)
+    """
+    # Convert variable name to lowercase filename
+    # SYSTEM_PROMPT -> system_prompt.prompt
+    # MY_CUSTOM_PROMPT -> my_custom_prompt.prompt
+    filename = f"{variable_name.lower()}.prompt"
+
+    # Try 1: CWD
+    try:
+        cwd_path = Path.cwd() / filename
+        # Test if we can write to CWD
+        cwd_path.touch(exist_ok=True)
+        return cwd_path
+    except (OSError, PermissionError):
+        pass
+
+    # Try 2: /tmp/devduck/prompts
+    try:
+        tmp_dir = Path("/tmp/devduck/prompts")
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        tmp_path = tmp_dir / filename
+        # Test if we can write to /tmp/devduck
+        tmp_path.touch(exist_ok=True)
+        return tmp_path
+    except (OSError, PermissionError):
+        pass
+
+    # Try 3: tempdir/devduck/prompts (system temp directory)
+    temp_dir = Path(tempfile.gettempdir()) / "devduck" / "prompts"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    return temp_dir / filename
+
+
+def _read_prompt_file(variable_name: str = "SYSTEM_PROMPT") -> str:
+    """Read prompt from .prompt file across all possible locations.
+
+    Checks all locations in priority order and returns the first found.
+
+    Args:
+        variable_name: Name of the variable
+
+    Returns:
+        Content of the .prompt file or empty string if not found
+    """
+    filename = f"{variable_name.lower()}.prompt"
+
+    # Check all possible locations in priority order
+    possible_paths = [
+        Path.cwd() / filename,  # CWD
+        Path("/tmp/devduck/prompts") / filename,  # /tmp/devduck
+        Path(tempfile.gettempdir()) / "devduck" / "prompts" / filename,  # tempdir
+    ]
+
+    for prompt_file in possible_paths:
+        try:
+            if prompt_file.exists():
+                return prompt_file.read_text(encoding="utf-8")
+        except Exception:
+            continue
+
+    return ""
+
+
+def _write_prompt_file(
+    prompt: str, variable_name: str = "SYSTEM_PROMPT"
+) -> tuple[bool, str]:
+    """Write prompt to .prompt file with fallback strategy.
+
+    Args:
+        prompt: The prompt content to write
+        variable_name: Name of the variable
+
+    Returns:
+        Tuple of (success, path) where success is True if write succeeded
+    """
+    prompt_file = _get_prompt_file_path(variable_name)
+    try:
+        prompt_file.write_text(prompt, encoding="utf-8")
+        return True, str(prompt_file)
+    except Exception:
+        return False, str(prompt_file)
+
+
+def _delete_prompt_file(variable_name: str = "SYSTEM_PROMPT") -> tuple[bool, str]:
+    """Delete .prompt file from all possible locations.
+
+    Args:
+        variable_name: Name of the variable
+
+    Returns:
+        Tuple of (success, path) - success if any file was deleted
+    """
+    filename = f"{variable_name.lower()}.prompt"
+    deleted = False
+    deleted_path = ""
+
+    # Try to delete from all possible locations
+    possible_paths = [
+        Path.cwd() / filename,  # CWD
+        Path("/tmp/devduck/prompts") / filename,  # /tmp/devduck
+        Path(tempfile.gettempdir()) / "devduck" / "prompts" / filename,  # tempdir
+    ]
+
+    for prompt_file in possible_paths:
+        try:
+            if prompt_file.exists():
+                prompt_file.unlink()
+                deleted = True
+                deleted_path = str(prompt_file)
+        except Exception:
+            continue
+
+    return deleted, deleted_path
 
 
 def _get_github_repository_variable(
@@ -98,8 +228,10 @@ def _get_system_prompt(
 ) -> str:
     """Get the current system prompt.
 
-    First checks the local environment variable.
-    If empty and repository is provided, tries to fetch from GitHub repository variables.
+    Priority order:
+    1. Local environment variable
+    2. Local .prompt file (CWD → /tmp/devduck → tempdir)
+    3. GitHub repository variable (if repository specified)
 
     Args:
         repository: Optional GitHub repository in format "owner/repo"
@@ -113,18 +245,25 @@ def _get_system_prompt(
     if local_prompt:
         return local_prompt
 
-    # If local is empty and repository is provided, try GitHub
-    if repository and not local_prompt:
+    # Second, check .prompt file across all locations
+    file_prompt = _read_prompt_file(variable_name)
+    if file_prompt:
+        # Load into environment for caching
+        os.environ[variable_name] = file_prompt
+        return file_prompt
+
+    # Third, if repository is provided, try GitHub
+    if repository:
         token = _get_github_token()
         if token:
             result = _get_github_repository_variable(
                 repository=repository, name=variable_name, token=token
             )
 
-            if result["success"]:
-                # Store in local environment for future use
-                if result["value"]:
-                    os.environ[variable_name] = result["value"]
+            if result["success"] and result["value"]:
+                # Store in local environment and file for future use
+                os.environ[variable_name] = result["value"]
+                _write_prompt_file(result["value"], variable_name)
                 return str(result["value"])
 
     # Default to empty string if nothing found
@@ -133,9 +272,23 @@ def _get_system_prompt(
 
 def _update_system_prompt(
     new_prompt: str, variable_name: str = "SYSTEM_PROMPT"
-) -> None:
-    """Update the system prompt in the environment variable."""
+) -> dict[str, Any]:
+    """Update the system prompt in environment variable and .prompt file.
+
+    Args:
+        new_prompt: The new prompt content
+        variable_name: Name of the variable
+
+    Returns:
+        Dictionary with success status and messages
+    """
+    # Update environment variable
     os.environ[variable_name] = new_prompt
+
+    # Update .prompt file with fallback strategy
+    file_success, file_path = _write_prompt_file(new_prompt, variable_name)
+
+    return {"env_updated": True, "file_updated": file_success, "file_path": file_path}
 
 
 def _get_github_event_context() -> str:
@@ -209,7 +362,7 @@ def system_prompt(
 
     This tool allows viewing and modifying the system prompt used by the agent.
     It can be used to adapt the agent's behavior dynamically during runtime
-    and can update GitHub repository variables to persist changes.
+    and can update GitHub repository variables and local .prompt files to persist changes.
 
     Args:
         action: The action to perform on the system prompt. One of:
@@ -233,12 +386,12 @@ def system_prompt(
         # View current system prompt
         result = system_prompt(action="view")
 
-        # Update system prompt in memory
+        # Update system prompt (saves to CWD → /tmp/devduck → tempdir)
         result = system_prompt(
             action="update", prompt="You are a specialized agent for task X..."
         )
 
-        # Update GitHub repository variable
+        # Update GitHub repository variable (+ env var + .prompt file)
         result = system_prompt(
             action="update",
             prompt="You are a specialized agent for task X...",
@@ -257,16 +410,38 @@ def system_prompt(
     try:
         if action == "view":
             current_prompt = _get_system_prompt(repository, variable_name)
-            source = "local environment"
 
-            if not os.environ.get(variable_name) and repository:
-                source = f"GitHub repository {repository}"
+            # Determine source
+            source_parts = []
+            if os.environ.get(variable_name):
+                source_parts.append("environment variable")
+
+            # Check all possible file locations
+            filename = f"{variable_name.lower()}.prompt"
+            file_locations = [
+                (Path.cwd() / filename, "CWD"),
+                (Path("/tmp/devduck/prompts") / filename, "/tmp/devduck"),
+                (
+                    Path(tempfile.gettempdir()) / "devduck" / "prompts" / filename,
+                    "tempdir",
+                ),
+            ]
+
+            for file_path, location in file_locations:
+                if file_path.exists():
+                    source_parts.append(f"file ({location}: {file_path})")
+                    break
+
+            if repository:
+                source_parts.append(f"GitHub ({repository})")
+
+            source = " → ".join(source_parts) if source_parts else "not found"
 
             return {
                 "status": "success",
                 "content": [
                     {
-                        "text": f"Current system prompt from {variable_name} (from {source}):\n\n{current_prompt}"
+                        "text": f"Current system prompt from {variable_name}:\nSource: {source}\n\n{current_prompt}"
                     }
                 ],
             }
@@ -282,58 +457,42 @@ def system_prompt(
                     ],
                 }
 
-            # Update in-memory environment variable
-            _update_system_prompt(prompt, variable_name)
+            # Update in-memory environment variable and .prompt file
+            update_result = _update_system_prompt(prompt, variable_name)
+
+            messages = []
+            messages.append(f"✓ Environment variable updated ({variable_name})")
+
+            if update_result["file_updated"]:
+                messages.append(f"✓ File saved ({update_result['file_path']})")
+            else:
+                messages.append(f"⚠ File save failed ({update_result['file_path']})")
 
             # If repository is specified, also update GitHub repository variable
             if repository:
                 token = _get_github_token()
                 if not token:
-                    return {
-                        "status": "error",
-                        "content": [
-                            {
-                                "text": "Error: GitHub token not available. Cannot update repository variable."
-                            }
-                        ],
-                    }
-
-                result = _update_github_repository_variable(
-                    repository=repository, name=variable_name, value=prompt, token=token
-                )
-
-                if result["success"]:
-                    return {
-                        "status": "success",
-                        "content": [
-                            {
-                                "text": f"System prompt updated successfully in memory ({variable_name})"
-                            },
-                            {
-                                "text": f"GitHub repository variable updated: {result['message']}"
-                            },
-                        ],
-                    }
+                    messages.append(
+                        "⚠ GitHub token not available - skipped repository update"
+                    )
                 else:
-                    return {
-                        "status": "error",
-                        "content": [
-                            {
-                                "text": f"System prompt updated successfully in memory ({variable_name})"
-                            },
-                            {
-                                "text": f"GitHub repository variable update failed: {result['message']}"
-                            },
-                        ],
-                    }
+                    result = _update_github_repository_variable(
+                        repository=repository,
+                        name=variable_name,
+                        value=prompt,
+                        token=token,
+                    )
+
+                    if result["success"]:
+                        messages.append(
+                            f"✓ GitHub repository variable updated ({repository})"
+                        )
+                    else:
+                        messages.append(f"⚠ GitHub update failed: {result['message']}")
 
             return {
                 "status": "success",
-                "content": [
-                    {
-                        "text": f"System prompt updated successfully in memory ({variable_name})"
-                    }
-                ],
+                "content": [{"text": "\n".join(messages)}],
             }
 
         elif action == "add_context":
@@ -349,119 +508,83 @@ def system_prompt(
 
             current_prompt = _get_system_prompt(repository, variable_name)
             new_prompt = f"{current_prompt}\n\n{context}" if current_prompt else context
-            _update_system_prompt(new_prompt, variable_name)
+
+            # Update in-memory environment variable and .prompt file
+            update_result = _update_system_prompt(new_prompt, variable_name)
+
+            messages = []
+            messages.append(f"✓ Context added to {variable_name}")
+            messages.append(f"✓ Environment variable updated")
+
+            if update_result["file_updated"]:
+                messages.append(f"✓ File saved ({update_result['file_path']})")
+            else:
+                messages.append(f"⚠ File save failed ({update_result['file_path']})")
 
             # If repository is specified, also update GitHub repository variable
             if repository:
                 token = _get_github_token()
                 if not token:
-                    return {
-                        "status": "error",
-                        "content": [
-                            {
-                                "text": f"Context added to system prompt successfully in memory ({variable_name})"
-                            },
-                            {
-                                "text": "Error: GitHub token not available. Cannot update repository variable."
-                            },
-                        ],
-                    }
-
-                result = _update_github_repository_variable(
-                    repository=repository,
-                    name=variable_name,
-                    value=new_prompt,
-                    token=token,
-                )
-
-                if result["success"]:
-                    return {
-                        "status": "success",
-                        "content": [
-                            {
-                                "text": f"Context added to system prompt successfully in memory ({variable_name})"
-                            },
-                            {
-                                "text": f"GitHub repository variable updated: {result['message']}"
-                            },
-                        ],
-                    }
+                    messages.append(
+                        "⚠ GitHub token not available - skipped repository update"
+                    )
                 else:
-                    return {
-                        "status": "error",
-                        "content": [
-                            {
-                                "text": f"Context added to system prompt successfully in memory ({variable_name})"
-                            },
-                            {
-                                "text": f"GitHub repository variable update failed: {result['message']}"
-                            },
-                        ],
-                    }
+                    result = _update_github_repository_variable(
+                        repository=repository,
+                        name=variable_name,
+                        value=new_prompt,
+                        token=token,
+                    )
+
+                    if result["success"]:
+                        messages.append(
+                            f"✓ GitHub repository variable updated ({repository})"
+                        )
+                    else:
+                        messages.append(f"⚠ GitHub update failed: {result['message']}")
 
             return {
                 "status": "success",
-                "content": [
-                    {
-                        "text": f"Context added to system prompt successfully ({variable_name})"
-                    }
-                ],
+                "content": [{"text": "\n".join(messages)}],
             }
 
         elif action == "reset":
-            # Reset to empty or environment-defined default
+            # Reset environment variable
             os.environ.pop(variable_name, None)
+
+            # Delete .prompt file from all locations
+            file_deleted, deleted_path = _delete_prompt_file(variable_name)
+
+            messages = []
+            messages.append(f"✓ Environment variable reset ({variable_name})")
+
+            if file_deleted:
+                messages.append(f"✓ File deleted ({deleted_path})")
+            else:
+                messages.append("⚠ File deletion failed or file doesn't exist")
 
             # If repository is specified, reset GitHub repository variable
             if repository:
                 token = _get_github_token()
                 if not token:
-                    return {
-                        "status": "error",
-                        "content": [
-                            {
-                                "text": f"System prompt reset to default in memory ({variable_name})"
-                            },
-                            {
-                                "text": "Error: GitHub token not available. Cannot update repository variable."
-                            },
-                        ],
-                    }
-
-                result = _update_github_repository_variable(
-                    repository=repository, name=variable_name, value="", token=token
-                )
-
-                if result["success"]:
-                    return {
-                        "status": "success",
-                        "content": [
-                            {
-                                "text": f"System prompt reset to default in memory ({variable_name})"
-                            },
-                            {
-                                "text": f"GitHub repository variable reset: {result['message']}"
-                            },
-                        ],
-                    }
+                    messages.append(
+                        "⚠ GitHub token not available - skipped repository reset"
+                    )
                 else:
-                    return {
-                        "status": "error",
-                        "content": [
-                            {
-                                "text": f"System prompt reset to default in memory ({variable_name})"
-                            },
-                            {
-                                "text": f"GitHub repository variable reset failed: {result['message']}"
-                            },
-                        ],
-                    }
+                    result = _update_github_repository_variable(
+                        repository=repository, name=variable_name, value="", token=token
+                    )
+
+                    if result["success"]:
+                        messages.append(
+                            f"✓ GitHub repository variable reset ({repository})"
+                        )
+                    else:
+                        messages.append(f"⚠ GitHub reset failed: {result['message']}")
 
             return {
                 "status": "success",
-                "content": [
-                    {"text": f"System prompt reset to default ({variable_name})"}
-                ],
+                "content": [{"text": "\n".join(messages)}],
             }
 
         elif action == "get_github_context":

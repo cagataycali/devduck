@@ -485,7 +485,9 @@ def _start_speech_session(
                 api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
 
                 default_settings = {
-                    "model_id": os.getenv("BIDI_MODEL_ID", "gemini-2.5-flash-native-audio-preview-09-2025"),
+                    "model_id": os.getenv(
+                        "BIDI_MODEL_ID", "gemini-2.5-flash-native-audio-preview-09-2025"
+                    ),
                     "client_config": {
                         "api_key": api_key,
                     },
@@ -574,7 +576,11 @@ def _start_speech_session(
         final_system_prompt = ""
 
         # Get parent agent's system prompt if available and inheritance enabled
-        if inherit_system_prompt and parent_agent and hasattr(parent_agent, "system_prompt"):
+        if (
+            inherit_system_prompt
+            and parent_agent
+            and hasattr(parent_agent, "system_prompt")
+        ):
             parent_prompt = parent_agent.system_prompt or ""
             if parent_prompt:
                 final_system_prompt = parent_prompt
