@@ -102,15 +102,21 @@ class SpeechSession:
         self,
         session_id: str,
         agent: BidiAgent,
+        input_device_index: Optional[int] = None,
+        output_device_index: Optional[int] = None,
     ):
         """Initialize speech session.
 
         Args:
             session_id: Unique session identifier
             agent: BidiAgent instance
+            input_device_index: PyAudio input device index
+            output_device_index: PyAudio output device index
         """
         self.session_id = session_id
         self.agent = agent
+        self.input_device_index = input_device_index
+        self.output_device_index = output_device_index
         self.active = False
         self.thread = None
         self.loop = None
@@ -187,8 +193,11 @@ class SpeechSession:
     async def _async_session(self) -> None:
         """Async session management using BidiAudioIO."""
         try:
-            # Create audio I/O
-            audio_io = BidiAudioIO()
+            # Create audio I/O with device indices
+            audio_io = BidiAudioIO(
+                input_device_index=self.input_device_index,
+                output_device_index=self.output_device_index,
+            )
 
             # Run agent with audio I/O
             await self.agent.run(inputs=[audio_io.input()], outputs=[audio_io.output()])
@@ -207,6 +216,9 @@ def speech_to_speech(
     tools: Optional[List[str]] = None,
     agent: Optional[Any] = None,
     load_history_from: Optional[str] = None,
+    inherit_system_prompt: bool = False,
+    input_device_index: Optional[int] = None,
+    output_device_index: Optional[int] = None,
 ) -> str:
     """Start, stop, or manage speech-to-speech conversations.
 
@@ -221,18 +233,22 @@ def speech_to_speech(
             - "status": Get session status
             - "list_history": List saved conversation histories
             - "read_history": Read a specific conversation history
+            - "list_audio_devices": List all available audio input/output devices
         provider: Model provider to use:
             - "novasonic": AWS Bedrock Nova Sonic
             - "openai": OpenAI Realtime API
             - "gemini_live": Google Gemini Live
         system_prompt: Custom system prompt for the agent. This will be appended
-            to the parent agent's system prompt (if available). If not provided,
-            uses default prompt that encourages tool usage.
+            to the parent agent's system prompt (if inherit_system_prompt=True).
+            If not provided, uses default prompt that encourages tool usage.
         session_id: Session identifier:
             - For "start": Custom ID (auto-generated if not provided)
             - For "stop": Specific session to stop (stops all if not provided)
             - For "read_history": Session ID to read history from
             - For "status": Not used
+        inherit_system_prompt: Whether to inherit parent agent's system prompt.
+            Set to False to use only the custom system_prompt (useful for OpenAI
+            which has 16K token limit). Default: False
         model_settings: Provider-specific configuration dictionary. Structure:
             {
                 "model_id": "model-name",
@@ -260,6 +276,10 @@ def speech_to_speech(
         agent: Parent agent (automatically passed by Strands framework)
         load_history_from: Optional session ID to load conversation history from
             when starting a new session (provides context continuity)
+        input_device_index: Optional PyAudio input device index. If not specified,
+            uses system default. Use action="list_audio_devices" to see available devices.
+        output_device_index: Optional PyAudio output device index. If not specified,
+            uses system default. Use action="list_audio_devices" to see available devices.
 
     Returns:
         str: Status message with session details or error information
@@ -287,6 +307,9 @@ def speech_to_speech(
             tools,
             agent,
             load_history_from,
+            inherit_system_prompt,
+            input_device_index,
+            output_device_index,
         )
     elif action == "stop":
         return _stop_speech_session(session_id)
@@ -296,6 +319,8 @@ def speech_to_speech(
         return _list_conversation_histories()
     elif action == "read_history":
         return _read_conversation_history(session_id)
+    elif action == "list_audio_devices":
+        return _list_audio_devices()
     else:
         return f"Unknown action: {action}"
 
@@ -364,6 +389,9 @@ def _start_speech_session(
     tool_names: Optional[List[str]],
     parent_agent: Optional[Any],
     load_history_from: Optional[str],
+    inherit_system_prompt: bool,
+    input_device_index: Optional[int],
+    output_device_index: Optional[int],
 ) -> str:
     """Start a speech-to-speech session with full configuration support."""
     try:
@@ -384,7 +412,7 @@ def _start_speech_session(
             if provider == "novasonic":
                 # Nova Sonic only available in: us-east-1, eu-north-1, ap-northeast-1
                 default_settings = {
-                    "model_id": "amazon.nova-2-sonic-v1:0",
+                    "model_id": os.getenv("BIDI_MODEL_ID", "amazon.nova-2-sonic-v1:0"),
                     "provider_config": {
                         "audio": {
                             "voice": "tiffany",
@@ -421,7 +449,7 @@ def _start_speech_session(
             elif provider == "openai":
                 # Read API key from environment if not provided in model_settings
                 default_settings = {
-                    "model_id": "gpt-realtime",
+                    "model_id": os.getenv("BIDI_MODEL_ID", "gpt-realtime"),
                     "client_config": {
                         "api_key": os.getenv("OPENAI_API_KEY"),
                     },
@@ -457,7 +485,7 @@ def _start_speech_session(
                 api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
 
                 default_settings = {
-                    "model_id": "gemini-2.5-flash-native-audio-preview-09-2025",
+                    "model_id": os.getenv("BIDI_MODEL_ID", "gemini-2.5-flash-native-audio-preview-09-2025"),
                     "client_config": {
                         "api_key": api_key,
                     },
@@ -545,8 +573,8 @@ def _start_speech_session(
         # Build system prompt: parent prompt + custom prompt
         final_system_prompt = ""
 
-        # Get parent agent's system prompt if available
-        if parent_agent and hasattr(parent_agent, "system_prompt"):
+        # Get parent agent's system prompt if available and inheritance enabled
+        if inherit_system_prompt and parent_agent and hasattr(parent_agent, "system_prompt"):
             parent_prompt = parent_agent.system_prompt or ""
             if parent_prompt:
                 final_system_prompt = parent_prompt
@@ -581,6 +609,8 @@ Keep your voice responses brief and natural."""
         session = SpeechSession(
             session_id=session_id,
             agent=bidi_agent,
+            input_device_index=input_device_index,
+            output_device_index=output_device_index,
         )
 
         session.start()
@@ -748,3 +778,67 @@ def _read_conversation_history(session_id: Optional[str]) -> str:
 
     except Exception as e:
         return f"❌ Error reading history: {e}"
+
+
+def _list_audio_devices() -> str:
+    """List all available audio input and output devices."""
+    try:
+        import pyaudio
+
+        p = pyaudio.PyAudio()
+
+        lines = ["**Available Audio Devices:**\n"]
+
+        # List all devices
+        device_count = p.get_device_count()
+        default_input = p.get_default_input_device_info()["index"]
+        default_output = p.get_default_output_device_info()["index"]
+
+        lines.append(f"Total devices: {device_count}\n")
+
+        for i in range(device_count):
+            try:
+                info = p.get_device_info_by_index(i)
+                name = info["name"]
+                max_input_channels = info["maxInputChannels"]
+                max_output_channels = info["maxOutputChannels"]
+
+                device_type = []
+                is_default = []
+
+                if max_input_channels > 0:
+                    device_type.append("INPUT")
+                    if i == default_input:
+                        is_default.append("default input")
+
+                if max_output_channels > 0:
+                    device_type.append("OUTPUT")
+                    if i == default_output:
+                        is_default.append("default output")
+
+                type_str = "/".join(device_type) if device_type else "NONE"
+                default_str = f" [{', '.join(is_default)}]" if is_default else ""
+
+                lines.append(
+                    f"- **Index {i}:** {name}\n"
+                    f"  Type: {type_str}{default_str}\n"
+                    f"  Input Channels: {max_input_channels}, Output Channels: {max_output_channels}"
+                )
+
+            except Exception as e:
+                lines.append(f"- **Index {i}:** Error reading device info - {e}")
+
+        p.terminate()
+
+        lines.append(
+            "\n**Usage:**\n"
+            "To use a specific device, pass the index:\n"
+            '  speech_to_speech(action="start", input_device_index=2, output_device_index=5)'
+        )
+
+        return "\n".join(lines)
+
+    except ImportError:
+        return "❌ PyAudio not installed. Install with: pip install pyaudio"
+    except Exception as e:
+        return f"❌ Error listing audio devices: {e}"

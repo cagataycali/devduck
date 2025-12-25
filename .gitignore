@@ -8,3 +8,6 @@ build
 _version.py
 .bedrock_agentcore.yaml
 .bedrock_agentcore
+google_*.json
+gmail_*.json
+.DS_Store

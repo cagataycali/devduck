@@ -622,7 +622,8 @@ class DevDuck:
 
             # Load tools with flexible configuration
             # Default tool config - user can override with DEVDUCK_TOOLS env var
-            default_tools = "devduck.tools:system_prompt,store_in_kb,ipc,tcp,websocket,mcp_server,state_manager,tray,ambient,agentcore_config,agentcore_invoke,agentcore_logs,agentcore_agents,install_tools,create_subagent,use_github;strands_tools:shell,editor,file_read,file_write,image_reader,load_tool,retrieve,calculator,use_agent,environment,mcp_client,speak,slack;strands_fun_tools:listen,cursor,clipboard,screen_reader,bluetooth,yolo_vision"
+            # To enable strands-google, add tool strands_google:use_google,google_auth;
+            default_tools = "devduck.tools:system_prompt,store_in_kb,ipc,tcp,websocket,mcp_server,state_manager,tray,ambient,agentcore_config,agentcore_invoke,agentcore_logs,agentcore_agents,install_tools,create_subagent,use_github;strands_tools:shell,editor,file_read,file_write,image_reader,load_tool,retrieve,calculator,use_agent,environment,mcp_client,speak,slack;strands_fun_tools:listen,cursor,clipboard,screen_reader,bluetooth,yolo_vision;strands_google:use_google,google_auth"
 
             tools_config = os.getenv("DEVDUCK_TOOLS", default_tools)
             logger.info(f"Loading tools from config: {tools_config}")
