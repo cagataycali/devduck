@@ -1,0 +1,671 @@
+{
+  "version": "1.0",
+  "generated": "2024-12-25",
+  "packages": [
+    {
+      "id": "core",
+      "title": "DevDuck Core",
+      "icon": "\ud83e\udd86",
+      "tools": [
+        {
+          "id": "core_system_prompt",
+          "name": "system_prompt",
+          "value": "devduck.tools:system_prompt",
+          "checked": true,
+          "description": "Manage the agent's system prompt"
+        },
+        {
+          "id": "core_fetch_github_tool",
+          "name": "fetch_github_tool",
+          "value": "devduck.tools:fetch_github_tool",
+          "checked": true,
+          "description": "Fetch and load tools from GitHub"
+        }
+      ]
+    },
+    {
+      "id": "devduck-tools",
+      "title": "DevDuck Tools",
+      "icon": "\ud83d\udd27",
+      "tools": [
+        {
+          "id": "devduck_tools_agentcore_agents",
+          "name": "agentcore_agents",
+          "value": "devduck.tools:agentcore_agents",
+          "checked": false,
+          "description": "Manage and discover Bedrock AgentCore agent runtimes"
+        },
+        {
+          "id": "devduck_tools_agentcore_config",
+          "name": "agentcore_config",
+          "value": "devduck.tools:agentcore_config",
+          "checked": false,
+          "description": "Configure and launch DevDuck agents on Bedrock AgentCore"
+        },
+        {
+          "id": "devduck_tools_agentcore_invoke",
+          "name": "agentcore_invoke",
+          "value": "devduck.tools:agentcore_invoke",
+          "checked": false,
+          "description": "Invoke a deployed DevDuck instance on AgentCore"
+        },
+        {
+          "id": "devduck_tools_agentcore_logs",
+          "name": "agentcore_logs",
+          "value": "devduck.tools:agentcore_logs",
+          "checked": false,
+          "description": "View CloudWatch logs from deployed DevDuck instances"
+        },
+        {
+          "id": "devduck_tools_ambient",
+          "name": "ambient",
+          "value": "devduck.tools:ambient",
+          "checked": false,
+          "description": "Ambient AI input overlay control"
+        },
+        {
+          "id": "devduck_tools_create_subagent",
+          "name": "create_subagent",
+          "value": "devduck.tools:create_subagent",
+          "checked": false,
+          "description": "Create and manage sub-agents via GitHub Actions"
+        },
+        {
+          "id": "devduck_tools_install_tools",
+          "name": "install_tools",
+          "value": "devduck.tools:install_tools",
+          "checked": false,
+          "description": "Install and load tools from Python packages dynamically"
+        },
+        {
+          "id": "devduck_tools_ipc",
+          "name": "ipc",
+          "value": "devduck.tools:ipc",
+          "checked": false,
+          "description": "Inter-process communication server"
+        },
+        {
+          "id": "devduck_tools_mcp_server",
+          "name": "mcp_server",
+          "value": "devduck.tools:mcp_server",
+          "checked": false,
+          "description": "Model Context Protocol server"
+        },
+        {
+          "id": "devduck_tools_scraper",
+          "name": "scraper",
+          "value": "devduck.tools:scraper",
+          "checked": false,
+          "description": "Advanced HTML/XML parsing and web scraping"
+        },
+        {
+          "id": "devduck_tools_speech_to_speech",
+          "name": "speech_to_speech",
+          "value": "devduck.tools:speech_to_speech",
+          "checked": false,
+          "description": "Real-time speech-to-speech conversations"
+        },
+        {
+          "id": "devduck_tools_state_manager",
+          "name": "state_manager",
+          "value": "devduck.tools:state_manager",
+          "checked": false,
+          "description": "Agent state management with time-travel"
+        },
+        {
+          "id": "devduck_tools_store_in_kb",
+          "name": "store_in_kb",
+          "value": "devduck.tools:store_in_kb",
+          "checked": false,
+          "description": "Store content in Bedrock Knowledge Base"
+        },
+        {
+          "id": "devduck_tools_tcp",
+          "name": "tcp",
+          "value": "devduck.tools:tcp",
+          "checked": false,
+          "description": "TCP server for network communication"
+        },
+        {
+          "id": "devduck_tools_tray",
+          "name": "tray",
+          "value": "devduck.tools:tray",
+          "checked": false,
+          "description": "System tray integration"
+        },
+        {
+          "id": "devduck_tools_use_github",
+          "name": "use_github",
+          "value": "devduck.tools:use_github",
+          "checked": false,
+          "description": "Execute GitHub GraphQL API operations"
+        },
+        {
+          "id": "devduck_tools_websocket",
+          "name": "websocket",
+          "value": "devduck.tools:websocket",
+          "checked": false,
+          "description": "WebSocket server for real-time communication"
+        }
+      ]
+    },
+    {
+      "id": "strands-tools",
+      "title": "Strands Tools",
+      "icon": "\ud83c\udfa8",
+      "tools": [
+        {
+          "id": "strands_tools_agent_graph",
+          "name": "agent_graph",
+          "value": "strands_tools:agent_graph",
+          "checked": false,
+          "description": "Create and manage graphs of AI agents"
+        },
+        {
+          "id": "strands_tools_batch",
+          "name": "batch",
+          "value": "strands_tools:batch",
+          "checked": false,
+          "description": "Batch tool for invoking multiple tools in parallel"
+        },
+        {
+          "id": "strands_tools_bright_data",
+          "name": "bright_data",
+          "value": "strands_tools:bright_data",
+          "checked": false,
+          "description": "Web scraping powered by Bright Data"
+        },
+        {
+          "id": "strands_tools_calculator",
+          "name": "calculator",
+          "value": "strands_tools:calculator",
+          "checked": false,
+          "description": "Comprehensive mathematical operations with SymPy"
+        },
+        {
+          "id": "strands_tools_cron",
+          "name": "cron",
+          "value": "strands_tools:cron",
+          "checked": false,
+          "description": "Manage crontab entries for scheduling tasks"
+        },
+        {
+          "id": "strands_tools_current_time",
+          "name": "current_time",
+          "value": "strands_tools:current_time",
+          "checked": false,
+          "description": "Get current time in ISO 8601 format"
+        },
+        {
+          "id": "strands_tools_editor",
+          "name": "editor",
+          "value": "strands_tools:editor",
+          "checked": false,
+          "description": "Edit multiple files iteratively"
+        },
+        {
+          "id": "strands_tools_environment",
+          "name": "environment",
+          "value": "strands_tools:environment",
+          "checked": false,
+          "description": "Environment variable management"
+        },
+        {
+          "id": "strands_tools_exa_get_contents",
+          "name": "exa_get_contents",
+          "value": "strands_tools:exa_get_contents",
+          "checked": false,
+          "description": "Get full page contents using Exa"
+        },
+        {
+          "id": "strands_tools_exa_search",
+          "name": "exa_search",
+          "value": "strands_tools:exa_search",
+          "checked": false,
+          "description": "Search the web with Exa's neural search"
+        },
+        {
+          "id": "strands_tools_file_read",
+          "name": "file_read",
+          "value": "strands_tools:file_read",
+          "checked": false,
+          "description": "Advanced file reading with multiple modes"
+        },
+        {
+          "id": "strands_tools_file_write",
+          "name": "file_write",
+          "value": "strands_tools:file_write",
+          "checked": false,
+          "description": "Write content to files with confirmation"
+        },
+        {
+          "id": "strands_tools_generate_image",
+          "name": "generate_image",
+          "value": "strands_tools:generate_image",
+          "checked": false,
+          "description": "Generate images with Stable Diffusion via Bedrock"
+        },
+        {
+          "id": "strands_tools_generate_image_stability",
+          "name": "generate_image_stability",
+          "value": "strands_tools:generate_image_stability",
+          "checked": false,
+          "description": "Generate images with Stability Platform API"
+        },
+        {
+          "id": "strands_tools_graph",
+          "name": "graph",
+          "value": "strands_tools:graph",
+          "checked": false,
+          "description": "Multi-agent graphs orchestration"
+        },
+        {
+          "id": "strands_tools_handoff_to_user",
+          "name": "handoff_to_user",
+          "value": "strands_tools:handoff_to_user",
+          "checked": false,
+          "description": "Hand off control to human user"
+        },
+        {
+          "id": "strands_tools_http_request",
+          "name": "http_request",
+          "value": "strands_tools:http_request",
+          "checked": false,
+          "description": "Execute HTTP requests with authentication"
+        },
+        {
+          "id": "strands_tools_image_reader",
+          "name": "image_reader",
+          "value": "strands_tools:image_reader",
+          "checked": false,
+          "description": "Read images for Converse API"
+        },
+        {
+          "id": "strands_tools_journal",
+          "name": "journal",
+          "value": "strands_tools:journal",
+          "checked": false,
+          "description": "Create and manage daily journal entries"
+        },
+        {
+          "id": "strands_tools_load_tool",
+          "name": "load_tool",
+          "value": "strands_tools:load_tool",
+          "checked": false,
+          "description": "Dynamically load Python tool files"
+        },
+        {
+          "id": "strands_tools_mcp_client",
+          "name": "mcp_client",
+          "value": "strands_tools:mcp_client",
+          "checked": false,
+          "description": "Connect to external MCP servers"
+        },
+        {
+          "id": "strands_tools_memory",
+          "name": "memory",
+          "value": "strands_tools:memory",
+          "checked": false,
+          "description": "Manage Bedrock Knowledge Base content"
+        },
+        {
+          "id": "strands_tools_nova_reels",
+          "name": "nova_reels",
+          "value": "strands_tools:nova_reels",
+          "checked": false,
+          "description": "Create videos with Amazon Nova Reel"
+        },
+        {
+          "id": "strands_tools_python_repl",
+          "name": "python_repl",
+          "value": "strands_tools:python_repl",
+          "checked": false,
+          "description": "Execute Python code with persistent state"
+        },
+        {
+          "id": "strands_tools_retrieve",
+          "name": "retrieve",
+          "value": "strands_tools:retrieve",
+          "checked": false,
+          "description": "Retrieve from Bedrock Knowledge Base"
+        },
+        {
+          "id": "strands_tools_shell",
+          "name": "shell",
+          "value": "strands_tools:shell",
+          "checked": true,
+          "description": "Interactive shell with PTY support"
+        },
+        {
+          "id": "strands_tools_slack",
+          "name": "slack",
+          "value": "strands_tools:slack",
+          "checked": false,
+          "description": "Slack integration for messaging"
+        },
+        {
+          "id": "strands_tools_slack_send_message",
+          "name": "slack_send_message",
+          "value": "strands_tools:slack_send_message",
+          "checked": false,
+          "description": "Send message to Slack channel"
+        },
+        {
+          "id": "strands_tools_sleep",
+          "name": "sleep",
+          "value": "strands_tools:sleep",
+          "checked": false,
+          "description": "Pause execution for seconds"
+        },
+        {
+          "id": "strands_tools_speak",
+          "name": "speak",
+          "value": "strands_tools:speak",
+          "checked": false,
+          "description": "Text-to-speech output"
+        },
+        {
+          "id": "strands_tools_stop",
+          "name": "stop",
+          "value": "strands_tools:stop",
+          "checked": false,
+          "description": "Stop current event loop cycle"
+        },
+        {
+          "id": "strands_tools_swarm",
+          "name": "swarm",
+          "value": "strands_tools:swarm",
+          "checked": false,
+          "description": "Coordinate team of AI agents"
+        },
+        {
+          "id": "strands_tools_tavily_crawl",
+          "name": "tavily_crawl",
+          "value": "strands_tools:tavily_crawl",
+          "checked": false,
+          "description": "Crawl website pages with Tavily"
+        },
+        {
+          "id": "strands_tools_tavily_extract",
+          "name": "tavily_extract",
+          "value": "strands_tools:tavily_extract",
+          "checked": false,
+          "description": "Extract content from web pages"
+        },
+        {
+          "id": "strands_tools_tavily_map",
+          "name": "tavily_map",
+          "value": "strands_tools:tavily_map",
+          "checked": false,
+          "description": "Map website structure with Tavily"
+        },
+        {
+          "id": "strands_tools_tavily_search",
+          "name": "tavily_search",
+          "value": "strands_tools:tavily_search",
+          "checked": false,
+          "description": "Search web with Tavily"
+        },
+        {
+          "id": "strands_tools_think",
+          "name": "think",
+          "value": "strands_tools:think",
+          "checked": false,
+          "description": "Recursive thinking with model switching"
+        },
+        {
+          "id": "strands_tools_use_agent",
+          "name": "use_agent",
+          "value": "strands_tools:use_agent",
+          "checked": false,
+          "description": "Start new AI event loop with different model"
+        },
+        {
+          "id": "strands_tools_use_aws",
+          "name": "use_aws",
+          "value": "strands_tools:use_aws",
+          "checked": false,
+          "description": "Execute AWS service operations with boto3"
+        },
+        {
+          "id": "strands_tools_use_llm",
+          "name": "use_llm",
+          "value": "strands_tools:use_llm",
+          "checked": false,
+          "description": "Create new LLM instance"
+        },
+        {
+          "id": "strands_tools_workflow",
+          "name": "workflow",
+          "value": "strands_tools:workflow",
+          "checked": false,
+          "description": "Advanced workflow orchestration"
+        }
+      ]
+    },
+    {
+      "id": "strands_fun_tools",
+      "title": "Strands Fun Tools",
+      "icon": "\ud83c\udfae",
+      "tools": [
+        {
+          "id": "strands_fun_tools_bluetooth",
+          "name": "bluetooth",
+          "value": "strands_fun_tools:bluetooth",
+          "checked": false,
+          "description": "Bluetooth monitoring and control tool with GATT operations."
+        },
+        {
+          "id": "strands_fun_tools_chess",
+          "name": "chess",
+          "value": "strands_fun_tools:chess",
+          "checked": false,
+          "description": "Play chess and analyze positions using Stockfish"
+        },
+        {
+          "id": "strands_fun_tools_clipboard",
+          "name": "clipboard",
+          "value": "strands_fun_tools:clipboard",
+          "checked": false,
+          "description": "Clipboard monitoring and control tool."
+        },
+        {
+          "id": "strands_fun_tools_cursor",
+          "name": "cursor",
+          "value": "strands_fun_tools:cursor",
+          "checked": false,
+          "description": "Control mouse cursor and keyboard."
+        },
+        {
+          "id": "strands_fun_tools_dialog",
+          "name": "dialog",
+          "value": "strands_fun_tools:dialog",
+          "checked": false,
+          "description": "Create interactive dialog interfaces with advanced features."
+        },
+        {
+          "id": "strands_fun_tools_dynamic_package",
+          "name": "dynamic_package",
+          "value": "strands_fun_tools:dynamic_package",
+          "checked": false,
+          "description": "Dynamically load and execute functions from any installed Python package"
+        },
+        {
+          "id": "strands_fun_tools_face_recognition",
+          "name": "face_recognition",
+          "value": "strands_fun_tools:face_recognition",
+          "checked": false,
+          "description": "Face recognition with AWS Rekognition"
+        },
+        {
+          "id": "strands_fun_tools_human_typer",
+          "name": "human_typer",
+          "value": "strands_fun_tools:human_typer",
+          "checked": false,
+          "description": "Simulate human-like typing with emotions and natural patterns"
+        },
+        {
+          "id": "strands_fun_tools_listen",
+          "name": "listen",
+          "value": "strands_fun_tools:listen",
+          "checked": false,
+          "description": "Background speech listener that segments and transcribes audio with Whisper."
+        },
+        {
+          "id": "strands_fun_tools_npm",
+          "name": "npm",
+          "value": "strands_fun_tools:npm",
+          "checked": false,
+          "description": "Dynamically execute NPM package functions"
+        },
+        {
+          "id": "strands_fun_tools_screen_reader",
+          "name": "screen_reader",
+          "value": "strands_fun_tools:screen_reader",
+          "checked": false,
+          "description": "Background screen monitoring with OCR and UI element detection."
+        },
+        {
+          "id": "strands_fun_tools_spinner_generator",
+          "name": "spinner_generator",
+          "value": "strands_fun_tools:spinner_generator",
+          "checked": false,
+          "description": "Generate and display custom spinner with various styles"
+        },
+        {
+          "id": "strands_fun_tools_take_photo",
+          "name": "take_photo",
+          "value": "strands_fun_tools:take_photo",
+          "checked": false,
+          "description": "Capture photos using computer's camera(s) with multi-camera support"
+        },
+        {
+          "id": "strands_fun_tools_template",
+          "name": "template",
+          "value": "strands_fun_tools:template",
+          "checked": false,
+          "description": "Template engine for generating text from Jinja2 templates"
+        },
+        {
+          "id": "strands_fun_tools_utility",
+          "name": "utility",
+          "value": "strands_fun_tools:utility",
+          "checked": false,
+          "description": "Multi-purpose utility for common operations"
+        },
+        {
+          "id": "strands_fun_tools_yolo_vision",
+          "name": "yolo_vision",
+          "value": "strands_fun_tools:yolo_vision",
+          "checked": false,
+          "description": "Background YOLO object detection with continuous monitoring"
+        }
+      ]
+    },
+    {
+      "id": "strands_mlx",
+      "title": "Strands Mlx",
+      "icon": "\ud83e\udde0",
+      "tools": [
+        {
+          "id": "strands_mlx_dataset_splitter",
+          "name": "dataset_splitter",
+          "value": "strands_mlx:dataset_splitter",
+          "checked": false,
+          "description": "Split JSONL dataset into train/valid/test sets for MLX training."
+        },
+        {
+          "id": "strands_mlx_mlx_invoke",
+          "name": "mlx_invoke",
+          "value": "strands_mlx:mlx_invoke",
+          "checked": false,
+          "description": "Invoke MLX model with custom configuration and parent agent's tools."
+        },
+        {
+          "id": "strands_mlx_mlx_trainer",
+          "name": "mlx_trainer",
+          "value": "strands_mlx:mlx_trainer",
+          "checked": false,
+          "description": "MLX LoRA trainer - 100% wrapper for mlx-lm training with background execution."
+        },
+        {
+          "id": "strands_mlx_mlx_vision_invoke",
+          "name": "mlx_vision_invoke",
+          "value": "strands_mlx:mlx_vision_invoke",
+          "checked": false,
+          "description": "Invoke MLX vision model with images, audio, and video for dynamic multimodal analysis."
+        },
+        {
+          "id": "strands_mlx_mlx_vision_trainer",
+          "name": "mlx_vision_trainer",
+          "value": "strands_mlx:mlx_vision_trainer",
+          "checked": false,
+          "description": "MLX Vision LoRA training tool for fine-tuning vision/audio/video models."
+        },
+        {
+          "id": "strands_mlx_validate_training_data",
+          "name": "validate_training_data",
+          "value": "strands_mlx:validate_training_data",
+          "checked": false,
+          "description": "Validate training data using the target model's tokenizer."
+        }
+      ]
+    },
+    {
+      "id": "strands_google",
+      "title": "Strands Google",
+      "icon": "\ud83d\udce7",
+      "tools": [
+        {
+          "id": "strands_google_gmail_reply",
+          "name": "gmail_reply",
+          "value": "strands_google:gmail_reply",
+          "checked": false,
+          "description": "Reply to an existing Gmail message."
+        },
+        {
+          "id": "strands_google_gmail_send",
+          "name": "gmail_send",
+          "value": "strands_google:gmail_send",
+          "checked": false,
+          "description": "Send an email via Gmail with automatic message formatting."
+        },
+        {
+          "id": "strands_google_google_auth",
+          "name": "google_auth",
+          "value": "strands_google:google_auth",
+          "checked": false,
+          "description": "Authenticate with Google OAuth 2.0 and generate access token."
+        },
+        {
+          "id": "strands_google_use_google",
+          "name": "use_google",
+          "value": "strands_google:use_google",
+          "checked": false,
+          "description": "Execute Google API operations with comprehensive validation and error handling."
+        }
+      ]
+    },
+    {
+      "id": "strands_mcp_server",
+      "title": "Strands Mcp Server",
+      "icon": "\ud83d\udd0c",
+      "tools": [
+        {
+          "id": "strands_mcp_server_mcp_client",
+          "name": "mcp_client",
+          "value": "strands_mcp_server:mcp_client",
+          "checked": false,
+          "description": "Test and interact with MCP servers."
+        },
+        {
+          "id": "strands_mcp_server_mcp_server",
+          "name": "mcp_server",
+          "value": "strands_mcp_server:mcp_server",
+          "checked": false,
+          "description": "Turn the agent into an MCP server, exposing agent tools as MCP tools."
+        }
+      ]
+    }
+  ]
+}

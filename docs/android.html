@@ -1,0 +1,1425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>🦆 DevDuck Android Installer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', sans-serif;
+            background: #000;
+            color: #ededed;
+            min-height: 100vh;
+            padding: 0;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        
+        .container {
+            max-width: 100%;
+            margin: 0;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #000 0%, #0a0a0a 100%);
+            padding: 16px;
+            border-bottom: 1px solid rgba(0, 255, 136, 0.1);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+        }
+        
+        .header h1 {
+            font-size: 1.5rem;
+            margin-bottom: 4px;
+            color: #00ff88;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+        }
+        
+        .header .subtitle {
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 0.75rem;
+            font-weight: 400;
+        }
+        
+        .section {
+            padding: 16px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        
+        .section-title {
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: rgba(255, 255, 255, 0.4);
+            margin-bottom: 12px;
+        }
+        
+        .card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 12px;
+            transition: all 0.2s;
+        }
+        
+        .card:active {
+            background: rgba(255, 255, 255, 0.05);
+            transform: scale(0.99);
+        }
+        
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            user-select: none;
+        }
+        
+        .card-header-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: 1;
+        }
+        
+        .card-icon {
+            font-size: 1.2rem;
+        }
+        
+        .card-title {
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: #fff;
+        }
+        
+        .card-subtitle {
+            font-size: 0.7rem;
+            color: rgba(255, 255, 255, 0.4);
+            margin-top: 2px;
+        }
+        
+        .card-chevron {
+            color: rgba(255, 255, 255, 0.3);
+            transition: transform 0.2s;
+            font-size: 0.8rem;
+        }
+        
+        .card.expanded .card-chevron {
+            transform: rotate(180deg);
+        }
+        
+        .card-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+        
+        .card.expanded .card-content {
+            max-height: 5000px;
+            padding-top: 12px;
+        }
+        
+        .form-group {
+            margin-bottom: 16px;
+        }
+        
+        label {
+            display: block;
+            font-weight: 500;
+            margin-bottom: 6px;
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 0.8rem;
+        }
+        
+        input, select, textarea {
+            width: 100%;
+            padding: 10px 12px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            font-size: 0.85rem;
+            color: #fff;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+        
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #00ff88;
+            background: rgba(0, 0, 0, 0.4);
+        }
+        
+        textarea {
+            min-height: 100px;
+            font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+            font-size: 0.75rem;
+            resize: vertical;
+        }
+        
+        select {
+            cursor: pointer;
+        }
+        
+        .hint {
+            font-size: 0.7rem;
+            color: rgba(255, 255, 255, 0.4);
+            margin-top: 4px;
+        }
+        
+        .provider-info {
+            background: rgba(0, 255, 136, 0.05);
+            padding: 12px;
+            border-radius: 6px;
+            margin: 12px 0;
+            border-left: 3px solid #00ff88;
+        }
+        
+        .provider-info-title {
+            font-weight: 600;
+            color: #00ff88;
+            font-size: 0.85rem;
+            margin-bottom: 6px;
+        }
+        
+        .provider-info-desc {
+            font-size: 0.75rem;
+            color: rgba(255, 255, 255, 0.7);
+            margin-bottom: 8px;
+        }
+        
+        .provider-info-item {
+            display: flex;
+            gap: 8px;
+            font-size: 0.7rem;
+            margin-top: 4px;
+            color: rgba(255, 255, 255, 0.6);
+        }
+        
+        .provider-info-label {
+            font-weight: 600;
+            color: rgba(0, 255, 136, 0.8);
+            min-width: 100px;
+        }
+        
+        .env-var-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 4px;
+        }
+        
+        .env-var-tag {
+            background: rgba(0, 0, 0, 0.4);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.65rem;
+            font-family: 'SF Mono', monospace;
+            color: rgba(255, 255, 255, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 0;
+        }
+        
+        input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: #00ff88;
+        }
+        
+        .checkbox-group label {
+            margin: 0;
+            cursor: pointer;
+            flex: 1;
+            font-weight: 400;
+        }
+        
+        .tools-grid {
+            display: grid;
+            gap: 8px;
+        }
+        
+        .tool-package {
+            margin-bottom: 16px;
+        }
+        
+        .tool-package-title {
+            font-weight: 600;
+            color: #00ff88;
+            margin-bottom: 8px;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .tool-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 0;
+        }
+        
+        .tool-item input[type="checkbox"] {
+            margin: 0;
+        }
+        
+        .tool-item label {
+            margin: 0;
+            font-weight: 400;
+            font-size: 0.8rem;
+        }
+        
+        .button {
+            background: #00ff88;
+            color: #000;
+            border: none;
+            padding: 14px 20px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 8px;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .button:active {
+            background: #00dd77;
+            transform: scale(0.98);
+        }
+        
+        .button.secondary {
+            background: transparent;
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .button.secondary:active {
+            background: rgba(255, 255, 255, 0.05);
+        }
+        
+        .code-block {
+            background: #0a0a0a;
+            padding: 12px;
+            border-radius: 8px;
+            font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+            font-size: 0.7rem;
+            overflow-x: auto;
+            position: relative;
+            margin-bottom: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.06);
+        }
+        
+        .code-block pre {
+            margin: 0;
+            color: #fff;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            line-height: 1.5;
+        }
+        
+        .copy-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: rgba(0, 255, 136, 0.1);
+            color: #00ff88;
+            border: 1px solid rgba(0, 255, 136, 0.3);
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.7rem;
+            font-weight: 600;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .copy-btn:active {
+            background: #00ff88;
+            color: #000;
+        }
+        
+        .copy-btn.copied {
+            background: #00ff88;
+            color: #000;
+        }
+        
+        .json-preview {
+            background: rgba(0, 255, 136, 0.05);
+            padding: 8px;
+            border-radius: 6px;
+            font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+            font-size: 0.7rem;
+            margin-top: 8px;
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid rgba(0, 255, 136, 0.2);
+        }
+        
+        .json-preview pre {
+            margin: 0;
+            color: #00ff88;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        
+        .error-text {
+            color: #ff5555;
+            font-size: 0.7rem;
+            margin-top: 6px;
+            padding: 6px 8px;
+            background: rgba(255, 85, 85, 0.1);
+            border-radius: 4px;
+            border-left: 2px solid #ff5555;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            background: rgba(0, 255, 136, 0.1);
+            color: #00ff88;
+            border-radius: 4px;
+            font-size: 0.65rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-left: 8px;
+        }
+        
+        .badge.optional {
+            background: rgba(255, 255, 255, 0.05);
+            color: rgba(255, 255, 255, 0.4);
+        }
+        
+        .advanced-section {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 12px;
+            border-radius: 6px;
+            margin-top: 12px;
+            border: 1px solid rgba(0, 255, 136, 0.1);
+        }
+        
+        .advanced-section-title {
+            font-weight: 600;
+            color: #00ff88;
+            font-size: 0.75rem;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        ::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: rgba(0, 255, 136, 0.2);
+            border-radius: 2px;
+        }
+        
+        @media (min-width: 768px) {
+            .container {
+                max-width: 600px;
+                margin: 0 auto;
+            }
+            
+            .header {
+                border-radius: 12px 12px 0 0;
+                margin-top: 20px;
+            }
+            
+            .section:last-child {
+                border-radius: 0 0 12px 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🦆 DevDuck</h1>
+            <p class="subtitle">Android Installation Generator</p>
+        </div>
+        
+        <!-- Install Command -->
+        <div class="section">
+            <div class="section-title">1. Install DevDuck</div>
+            <div class="code-block">
+                <button class="copy-btn" onclick="copyCode('installCmd')">Copy</button>
+                <pre id="installCmd">bash <(curl -sL https://gist.githubusercontent.com/cagataycali/fd764340510bff671650a349502e4fa2/raw/86d83e6f64de4b10576783137579ebbe6851808b/devduck.sh)</pre>
+            </div>
+        </div>
+        
+        <!-- Configuration -->
+        <div class="section">
+            <div class="section-title">2. Configure</div>
+            
+            <!-- System Prompt -->
+            <div class="card" data-card="system-prompt">
+                <div class="card-header" onclick="toggleCard(event)">
+                    <div class="card-header-left">
+                        <span class="card-icon">💬</span>
+                        <div>
+                            <div class="card-title">System Prompt <span class="badge optional">Optional</span></div>
+                            <div class="card-subtitle">Customize agent behavior</div>
+                        </div>
+                    </div>
+                    <span class="card-chevron">▼</span>
+                </div>
+                <div class="card-content">
+                    <div class="form-group">
+                        <label for="systemPrompt">System Prompt</label>
+                        <textarea id="systemPrompt" placeholder="You are a helpful assistant that..."></textarea>
+                        <div class="hint">Define how the agent should behave and respond</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Model -->
+            <div class="card expanded" data-card="model">
+                <div class="card-header" onclick="toggleCard(event)">
+                    <div class="card-header-left">
+                        <span class="card-icon">🤖</span>
+                        <div>
+                            <div class="card-title">Model <span class="badge">Required</span></div>
+                            <div class="card-subtitle">Choose AI provider</div>
+                        </div>
+                    </div>
+                    <span class="card-chevron">▼</span>
+                </div>
+                <div class="card-content">
+                    <div class="form-group">
+                        <label for="modelProvider">Provider</label>
+                        <select id="modelProvider" onchange="updateModelDefaults()">
+                            <option value="bedrock" selected>AWS Bedrock</option>
+                            <option value="anthropic">Anthropic</option>
+                            <option value="openai">OpenAI</option>
+                            <option value="gemini">Google Gemini</option>
+                            <option value="ollama">Ollama (Local)</option>
+                            <option value="litellm">LiteLLM</option>
+                            <option value="llamaapi">Llama API</option>
+                            <option value="writer">Writer</option>
+                            <option value="cohere">Cohere</option>
+                            <option value="github">GitHub Models</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Provider Info -->
+                    <div id="providerInfo" class="provider-info">
+                        <!-- Dynamically populated -->
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="modelId">Model ID</label>
+                        <input type="text" id="modelId" value="us.anthropic.claude-sonnet-4-20250514-v1:0">
+                        <div class="hint" id="modelHint">Default model for selected provider</div>
+                    </div>
+                    
+                    <div class="form-group" id="apiKeyGroup">
+                        <label for="apiKey">API Key</label>
+                        <input type="password" id="apiKey" placeholder="sk-...">
+                        <div class="hint" id="apiKeyHint">Required for API authentication</div>
+                    </div>
+                    
+                    <!-- Basic Model Settings -->
+                    <div class="form-group">
+                        <label for="maxTokens">Max Tokens</label>
+                        <input type="number" id="maxTokens" value="10000" placeholder="10000">
+                        <div class="hint">Maximum tokens for model response</div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="temperature">Temperature</label>
+                        <input type="number" id="temperature" value="1.0" step="0.1" min="0" max="2" placeholder="1.0">
+                        <div class="hint">Controls randomness (0=deterministic, 2=creative)</div>
+                    </div>
+                    
+                    <!-- Advanced Model Configuration -->
+                    <div class="advanced-section" id="advancedModelConfig" style="display: none;">
+                        <div class="advanced-section-title">
+                            <span>🧠</span>
+                            <span>Advanced Model Features</span>
+                        </div>
+                        
+                        <!-- Anthropic Beta Features -->
+                        <div class="form-group">
+                            <label>Anthropic Beta Features</label>
+                            <div class="checkbox-group" onclick="event.stopPropagation()">
+                                <input type="checkbox" id="betaThinking" checked onclick="event.stopPropagation()">
+                                <label for="betaThinking" onclick="event.stopPropagation()">Extended Thinking (interleaved-thinking-2025-05-14)</label>
+                            </div>
+                            <div class="checkbox-group" onclick="event.stopPropagation()">
+                                <input type="checkbox" id="betaContext" checked onclick="event.stopPropagation()">
+                                <label for="betaContext" onclick="event.stopPropagation()">Extended Context (context-1m-2025-08-07)</label>
+                            </div>
+                            <div class="hint">Enable experimental Anthropic features via anthropic_beta header</div>
+                        </div>
+                        
+                        <!-- Thinking Configuration -->
+                        <div class="form-group">
+                            <label>Thinking Mode</label>
+                            <div class="checkbox-group" onclick="event.stopPropagation()">
+                                <input type="checkbox" id="enableThinking" checked onclick="event.stopPropagation(); toggleThinkingBudget()">
+                                <label for="enableThinking" onclick="event.stopPropagation()">Enable Extended Thinking</label>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group" id="thinkingBudgetGroup">
+                            <label for="thinkingBudget">Thinking Budget (tokens)</label>
+                            <input type="number" id="thinkingBudget" value="2048" placeholder="2048">
+                            <div class="hint">Token budget for thinking process (recommended: 1000-10000)</div>
+                        </div>
+                        
+                        <!-- Raw JSON Override -->
+                        <div class="form-group">
+                            <label for="additionalRequestFields">Custom Request Fields (Advanced)</label>
+                            <textarea id="additionalRequestFields" placeholder='{"custom_field": "value"}'></textarea>
+                            <div class="hint">Override with custom STRANDS_ADDITIONAL_REQUEST_FIELDS JSON</div>
+                            <div id="additionalFieldsError" class="error-text" style="display: none;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Tools (dynamically loaded) -->
+            <div class="card" data-card="tools">
+                <div class="card-header" onclick="toggleCard(event)">
+                    <div class="card-header-left">
+                        <span class="card-icon">🔧</span>
+                        <div>
+                            <div class="card-title">Tools <span class="badge">Required</span></div>
+                            <div class="card-subtitle">Select agent capabilities</div>
+                        </div>
+                    </div>
+                    <span class="card-chevron">▼</span>
+                </div>
+                <div class="card-content" id="toolsContent">
+                    <!-- Tools will be loaded from JSON -->
+                </div>
+            </div>
+            
+            <!-- Slack -->
+            <div class="card" data-card="slack">
+                <div class="card-header" onclick="toggleCard(event)">
+                    <div class="card-header-left">
+                        <span class="card-icon">💬</span>
+                        <div>
+                            <div class="card-title">Slack <span class="badge optional">Optional</span></div>
+                            <div class="card-subtitle">Slack bot integration</div>
+                        </div>
+                    </div>
+                    <span class="card-chevron">▼</span>
+                </div>
+                <div class="card-content">
+                    <div class="form-group">
+                        <label for="slackBotToken">Bot Token</label>
+                        <input type="password" id="slackBotToken" placeholder="xoxb-...">
+                        <div class="hint">Slack Bot User OAuth Token</div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="slackAppToken">App Token</label>
+                        <input type="password" id="slackAppToken" placeholder="xapp-...">
+                        <div class="hint">Slack App-Level Token</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Google -->
+            <div class="card" data-card="google">
+                <div class="card-header" onclick="toggleCard(event)">
+                    <div class="card-header-left">
+                        <span class="card-icon">📧</span>
+                        <div>
+                            <div class="card-title">Google APIs <span class="badge optional">Optional</span></div>
+                            <div class="card-subtitle">Choose one authentication method</div>
+                        </div>
+                    </div>
+                    <span class="card-chevron">▼</span>
+                </div>
+                <div class="card-content">
+                    <div class="hint" style="margin-bottom: 16px; padding: 8px; background: rgba(0, 255, 136, 0.05); border-radius: 4px;">
+                        💡 <strong>Choose ONE method below:</strong> OAuth (user auth), Service Account (server auth), or API Key (public APIs)
+                    </div>
+                    
+                    <!-- OAuth 2.0 Credentials -->
+                    <div style="background: rgba(255, 255, 255, 0.02); padding: 12px; border-radius: 6px; margin-bottom: 16px;">
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                            <span style="font-size: 1.2em;">🔐</span>
+                            <strong>OAuth 2.0 Credentials</strong>
+                            <span class="badge">Recommended</span>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="googleOAuthJson">OAuth Credentials JSON</label>
+                            <textarea id="googleOAuthJson" placeholder='{"installed": {"client_id": "...", ...}}'></textarea>
+                            <div class="hint">
+                                📋 <strong>Setup:</strong><br>
+                                1. Go to <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color: #00ff88;">Google Cloud Console → APIs & Services → Credentials</a><br>
+                                2. Click "Create Credentials" → "OAuth client ID"<br>
+                                3. Application type: "Desktop app"<br>
+                                4. Download JSON and paste here<br>
+                                5. Used for: Gmail, Drive, Calendar, YouTube (user data access)
+                            </div>
+                            <div id="oauthError" class="error-text" style="display: none;"></div>
+                            <div id="oauthPreview" class="json-preview" style="display: none;"></div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="googleOAuthToken">OAuth Token JSON (Optional - Generated after first auth)</label>
+                            <textarea id="googleOAuthToken" placeholder='{"token": "...", "refresh_token": "...", ...}'></textarea>
+                            <div class="hint">
+                                If you already ran authentication and have a token file (e.g., gmail_token.json), paste it here. Otherwise leave empty - it will be generated on first use.
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Service Account Credentials -->
+                    <div style="background: rgba(255, 255, 255, 0.02); padding: 12px; border-radius: 6px; margin-bottom: 16px;">
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                            <span style="font-size: 1.2em;">🤖</span>
+                            <strong>Service Account Credentials</strong>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="googleServiceAccountJson">Service Account JSON</label>
+                            <textarea id="googleServiceAccountJson" placeholder='{"type": "service_account", "project_id": "...", ...}'></textarea>
+                            <div class="hint">
+                                📋 <strong>Setup:</strong><br>
+                                1. Go to <a href="https://console.cloud.google.com/iam-admin/serviceaccounts" target="_blank" style="color: #00ff88;">Google Cloud Console → IAM & Admin → Service Accounts</a><br>
+                                2. Create a service account<br>
+                                3. Create key (JSON format) and download<br>
+                                4. Paste the JSON here<br>
+                                5. Used for: Server-to-server authentication, GCP APIs
+                            </div>
+                            <div id="serviceError" class="error-text" style="display: none;"></div>
+                            <div id="servicePreview" class="json-preview" style="display: none;"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- API Key -->
+                    <div style="background: rgba(255, 255, 255, 0.02); padding: 12px; border-radius: 6px;">
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                            <span style="font-size: 1.2em;">🔑</span>
+                            <strong>API Key</strong>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="googleApiKey">API Key</label>
+                            <input type="password" id="googleApiKey" placeholder="AIzaSy...">
+                            <div class="hint">
+                                📋 <strong>Setup:</strong><br>
+                                1. Go to <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color: #00ff88;">Google Cloud Console → APIs & Services → Credentials</a><br>
+                                2. Click "Create Credentials" → "API key"<br>
+                                3. Copy the key and paste here<br>
+                                4. Used for: Public APIs (Maps, Places, YouTube Data, Custom Search)<br>
+                                5. ⚠️ Limited - can't access user data
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Dependencies -->
+            <div class="card" data-card="deps">
+                <div class="card-header" onclick="toggleCard(event)">
+                    <div class="card-header-left">
+                        <span class="card-icon">📦</span>
+                        <div>
+                            <div class="card-title">Dependencies <span class="badge optional">Optional</span></div>
+                            <div class="card-subtitle">Extra packages & commands</div>
+                        </div>
+                    </div>
+                    <span class="card-chevron">▼</span>
+                </div>
+                <div class="card-content">
+                    <div class="form-group">
+                        <label for="pipPackages">Python Packages</label>
+                        <input type="text" id="pipPackages" placeholder="requests pandas numpy">
+                        <div class="hint">Space-separated pip packages</div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="aptPackages">Linux Packages</label>
+                        <input type="text" id="aptPackages" placeholder="git curl wget">
+                        <div class="hint">Space-separated apt packages</div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="customCommands">Custom Commands</label>
+                        <textarea id="customCommands" placeholder="echo 'Setting up...'
+mkdir -p ~/.config
+# Add your setup commands"></textarea>
+                        <div class="hint">Bash commands to run after install</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- MCP Servers -->
+            <div class="card" data-card="mcp">
+                <div class="card-header" onclick="toggleCard(event)">
+                    <div class="card-header-left">
+                        <span class="card-icon">🔌</span>
+                        <div>
+                            <div class="card-title">MCP Servers <span class="badge optional">Optional</span></div>
+                            <div class="card-subtitle">Model Context Protocol</div>
+                        </div>
+                    </div>
+                    <span class="card-chevron">▼</span>
+                </div>
+                <div class="card-content">
+                    <div class="form-group">
+                        <label for="mcpServers">MCP Servers JSON</label>
+                        <textarea id="mcpServers" placeholder='{"mcpServers": {"strands": {"command": "uvx", "args": ["strands-agents-mcp-server"]}}}'></textarea>
+                        <div class="hint">MCP servers configuration</div>
+                        <div id="mcpError" class="error-text" style="display: none;"></div>
+                        <div id="mcpPreview" class="json-preview" style="display: none;"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Servers -->
+            <div class="card" data-card="servers">
+                <div class="card-header" onclick="toggleCard(event)">
+                    <div class="card-header-left">
+                        <span class="card-icon">🌐</span>
+                        <div>
+                            <div class="card-title">Servers <span class="badge optional">Optional</span></div>
+                            <div class="card-subtitle">WebSocket & MCP HTTP</div>
+                        </div>
+                    </div>
+                    <span class="card-chevron">▼</span>
+                </div>
+                <div class="card-content">
+                    <div class="checkbox-group" onclick="event.stopPropagation()">
+                        <input type="checkbox" id="enableWs" checked onclick="event.stopPropagation()">
+                        <label for="enableWs" onclick="event.stopPropagation()">WebSocket Server</label>
+                    </div>
+                    <div class="form-group">
+                        <input type="number" id="wsPort" value="8080" placeholder="8080">
+                    </div>
+                    
+                    <div class="checkbox-group" onclick="event.stopPropagation()">
+                        <input type="checkbox" id="enableMcp" onclick="event.stopPropagation()">
+                        <label for="enableMcp" onclick="event.stopPropagation()">MCP HTTP Server</label>
+                    </div>
+                    <div class="form-group">
+                        <input type="number" id="mcpPort" value="8000" placeholder="8000">
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Advanced -->
+            <div class="card" data-card="advanced">
+                <div class="card-header" onclick="toggleCard(event)">
+                    <div class="card-header-left">
+                        <span class="card-icon">⚙️</span>
+                        <div>
+                            <div class="card-title">Advanced <span class="badge optional">Optional</span></div>
+                            <div class="card-subtitle">Knowledge base & settings</div>
+                        </div>
+                    </div>
+                    <span class="card-chevron">▼</span>
+                </div>
+                <div class="card-content">
+                    <div class="form-group">
+                        <label for="kbId">Knowledge Base ID</label>
+                        <input type="text" id="kbId" placeholder="KB-XXXXX">
+                        <div class="hint">For automatic RAG retrieval</div>
+                    </div>
+                    
+                    <div class="checkbox-group" onclick="event.stopPropagation()">
+                        <input type="checkbox" id="bypassConsent" checked onclick="event.stopPropagation()">
+                        <label for="bypassConsent" onclick="event.stopPropagation()">Skip tool confirmations</label>
+                    </div>
+                </div>
+            </div>
+            
+            <button class="button" onclick="generateConfig()">Generate Installation Script</button>
+        </div>
+        
+        <!-- Output -->
+        <div id="output" class="section" style="display: none;">
+            <div class="section-title">3. Copy & Run</div>
+            <div class="code-block">
+                <button class="copy-btn" onclick="copyCode('outputScript')">Copy</button>
+                <pre id="outputScript"></pre>
+            </div>
+            <button class="button secondary" onclick="location.reload()">Start Over</button>
+        </div>
+    </div>
+    
+    <script>
+        // Provider information from model.py
+        const PROVIDER_INFO = {
+            bedrock: {
+                name: "Amazon Bedrock",
+                description: "Amazon's managed foundation model service with Claude on AWS infrastructure",
+                defaultModel: "us.anthropic.claude-sonnet-4-20250514-v1:0",
+                envVars: ["STRANDS_MODEL_ID", "STRANDS_MAX_TOKENS", "AWS_PROFILE", "AWS_REGION"],
+                apiKeyVar: "AWS_BEARER_TOKEN_BEDROCK",
+                supportsTemperature: false,
+                supportsAdvanced: true,
+                features: ["Prompt Caching", "Tool Caching", "Extended Thinking", "Cross-region Inference"]
+            },
+            anthropic: {
+                name: "Anthropic",
+                description: "Direct access to Anthropic's Claude models with latest features",
+                defaultModel: "claude-sonnet-4-20250514",
+                envVars: ["ANTHROPIC_API_KEY", "STRANDS_MODEL_ID", "STRANDS_MAX_TOKENS", "STRANDS_TEMPERATURE"],
+                apiKeyVar: "ANTHROPIC_API_KEY",
+                supportsTemperature: true,
+                supportsAdvanced: true,
+                features: ["Latest Models", "Extended Context", "Vision", "Tool Use"]
+            },
+            openai: {
+                name: "OpenAI",
+                description: "OpenAI's GPT models including o1, o3, and GPT-4",
+                defaultModel: "o4-mini",
+                envVars: ["OPENAI_API_KEY", "STRANDS_MODEL_ID", "STRANDS_MAX_TOKENS"],
+                apiKeyVar: "OPENAI_API_KEY",
+                supportsTemperature: true,
+                supportsAdvanced: false,
+                features: ["Reasoning Models", "GPT-4o", "Vision", "Function Calling"]
+            },
+            gemini: {
+                name: "Google Gemini",
+                description: "Google's multimodal AI models with advanced capabilities",
+                defaultModel: "gemini-2.5-flash",
+                envVars: ["GOOGLE_API_KEY", "GEMINI_API_KEY", "STRANDS_MODEL_ID", "STRANDS_MAX_TOKENS"],
+                apiKeyVar: "GOOGLE_API_KEY",
+                supportsTemperature: true,
+                supportsAdvanced: false,
+                features: ["Multimodal", "2M Context", "Grounding", "Code Execution"]
+            },
+            ollama: {
+                name: "Ollama",
+                description: "Local model inference server - run AI models on your device",
+                defaultModel: "qwen3:4b",
+                envVars: ["OLLAMA_HOST", "STRANDS_MODEL_ID"],
+                apiKeyVar: null,
+                supportsTemperature: true,
+                supportsAdvanced: false,
+                features: ["Local/Private", "No API Keys", "Offline", "Custom Models"]
+            },
+            litellm: {
+                name: "LiteLLM",
+                description: "Unified interface for 100+ LLM providers with single API",
+                defaultModel: "anthropic/claude-sonnet-4-20250514",
+                envVars: ["LITELLM_API_KEY", "LITELLM_BASE_URL", "STRANDS_MODEL_ID", "STRANDS_MAX_TOKENS"],
+                apiKeyVar: "LITELLM_API_KEY",
+                supportsTemperature: true,
+                supportsAdvanced: false,
+                features: ["100+ Providers", "Fallbacks", "Load Balancing", "Caching"]
+            },
+            llamaapi: {
+                name: "Llama API",
+                description: "Meta's Llama models via managed API service",
+                defaultModel: "Llama-4-Maverick-17B-128E-Instruct-FP8",
+                envVars: ["LLAMAAPI_API_KEY", "STRANDS_MODEL_ID", "STRANDS_MAX_TOKENS"],
+                apiKeyVar: "LLAMAAPI_API_KEY",
+                supportsTemperature: true,
+                supportsAdvanced: false,
+                features: ["Llama 3.1", "405B Model", "Extended Context", "Open Source"]
+            },
+            writer: {
+                name: "Writer",
+                description: "Enterprise AI platform with Palmyra models",
+                defaultModel: "palmyra-x5",
+                envVars: ["WRITER_API_KEY", "STRANDS_MODEL_ID", "STRANDS_MAX_TOKENS"],
+                apiKeyVar: "WRITER_API_KEY",
+                supportsTemperature: true,
+                supportsAdvanced: false,
+                features: ["Enterprise Focus", "Custom Training", "Knowledge Graphs", "Compliance"]
+            },
+            cohere: {
+                name: "Cohere",
+                description: "Enterprise-grade language models via OpenAI-compatible API",
+                defaultModel: "command-a-03-2025",
+                envVars: ["COHERE_API_KEY", "STRANDS_MODEL_ID", "STRANDS_MAX_TOKENS"],
+                apiKeyVar: "COHERE_API_KEY",
+                supportsTemperature: true,
+                supportsAdvanced: false,
+                features: ["RAG Optimized", "Multilingual", "Embeddings", "Reranking"]
+            },
+            github: {
+                name: "GitHub Models",
+                description: "AI models hosted on GitHub's inference infrastructure",
+                defaultModel: "openai/o4-mini",
+                envVars: ["GITHUB_TOKEN", "PAT_TOKEN", "STRANDS_MODEL_ID", "STRANDS_MAX_TOKENS"],
+                apiKeyVar: "GITHUB_TOKEN",
+                supportsTemperature: true,
+                supportsAdvanced: false,
+                features: ["Multiple Models", "GitHub Integration", "Free Tier", "Developer Friendly"]
+            }
+        };
+        
+        // Configuration source
+        const CONFIG_SOURCE = 'devduck_tools_config.json';
+        
+        // Load tools configuration on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadToolsConfig();
+            updateModelDefaults(); // Initial load
+            
+            // Add validation for additional request fields
+            const additionalFields = document.getElementById('additionalRequestFields');
+            if (additionalFields) {
+                additionalFields.addEventListener('input', function() {
+                    validateJson(this, 'additionalFieldsPreview', 'additionalFieldsError');
+                });
+            }
+        });
+        
+        async function loadToolsConfig() {
+            try {
+                const response = await fetch(CONFIG_SOURCE);
+                const config = await response.json();
+                renderTools(config.packages);
+            } catch (error) {
+                console.error('Failed to load tools config:', error);
+                renderTools([]);
+            }
+        }
+        
+        function renderTools(packages) {
+            const container = document.getElementById('toolsContent');
+            
+            if (!packages || packages.length === 0) {
+                container.innerHTML = '<div class="hint">Failed to load tools configuration</div>';
+                return;
+            }
+            
+            let html = '';
+            
+            packages.forEach(pkg => {
+                html += `<div class="tool-package">
+                    <div class="tool-package-title">${pkg.icon || ''} ${pkg.title}</div>
+                    <div class="tools-grid">`;
+                
+                pkg.tools.forEach(tool => {
+                    html += `<div class="tool-item" onclick="event.stopPropagation()">
+                        <input type="checkbox" 
+                               id="t_${tool.id}" 
+                               value="${tool.value}" 
+                               ${tool.checked ? 'checked' : ''}
+                               onclick="event.stopPropagation()">
+                        <label for="t_${tool.id}" 
+                               onclick="event.stopPropagation()"
+                               title="${tool.description || ''}">
+                            ${tool.name}
+                        </label>
+                    </div>`;
+                });
+                
+                html += `</div></div>`;
+            });
+            
+            html += `<div class="form-group">
+                <label for="customTools">Custom Tools (Optional)</label>
+                <input type="text" id="customTools" placeholder="my_package:tool1,tool2">
+                <div class="hint">Format: package:tool1,tool2;another_pkg:tool3</div>
+            </div>`;
+            
+            container.innerHTML = html;
+        }
+        
+        function toggleCard(event) {
+            const card = event.currentTarget.closest('.card');
+            if (event.target.closest('.card-header')) {
+                card.classList.toggle('expanded');
+            }
+        }
+        
+        function toggleThinkingBudget() {
+            const enabled = document.getElementById('enableThinking').checked;
+            document.getElementById('thinkingBudgetGroup').style.display = enabled ? 'block' : 'none';
+        }
+        
+        function updateModelDefaults() {
+            const provider = document.getElementById('modelProvider').value;
+            const info = PROVIDER_INFO[provider];
+            
+            if (!info) return;
+            
+            // Update model ID
+            document.getElementById('modelId').value = info.defaultModel;
+            document.getElementById('modelHint').textContent = `Default: ${info.defaultModel}`;
+            
+            // Update API key section
+            const apiKeyGroup = document.getElementById('apiKeyGroup');
+            const apiKeyHint = document.getElementById('apiKeyHint');
+            
+            if (info.apiKeyVar) {
+                apiKeyGroup.style.display = 'block';
+                document.getElementById('apiKey').placeholder = info.apiKeyVar;
+                apiKeyHint.textContent = `Environment variable: ${info.apiKeyVar}`;
+            } else {
+                apiKeyGroup.style.display = 'none';
+            }
+            
+            // Show/hide advanced model config based on provider support
+            const advancedConfig = document.getElementById('advancedModelConfig');
+            advancedConfig.style.display = info.supportsAdvanced ? 'block' : 'none';
+            
+            // Build provider info display
+            const providerInfoDiv = document.getElementById('providerInfo');
+            let infoHTML = `
+                <div class="provider-info-title">${info.name}</div>
+                <div class="provider-info-desc">${info.description}</div>
+                
+                <div class="provider-info-item">
+                    <span class="provider-info-label">Default Model:</span>
+                    <code style="font-size: 0.7rem;">${info.defaultModel}</code>
+                </div>
+                
+                <div class="provider-info-item">
+                    <span class="provider-info-label">Features:</span>
+                    <span>${info.features.join(' • ')}</span>
+                </div>
+                
+                <div class="provider-info-item">
+                    <span class="provider-info-label">Env Variables:</span>
+                </div>
+                <div class="env-var-list">
+                    ${info.envVars.map(v => `<span class="env-var-tag">${v}</span>`).join('')}
+                </div>
+            `;
+            
+            providerInfoDiv.innerHTML = infoHTML;
+        }
+        
+        function validateJson(input, previewId, errorId) {
+            const text = input.value.trim();
+            const preview = document.getElementById(previewId);
+            const error = document.getElementById(errorId);
+            
+            if (!text) {
+                if (preview) preview.style.display = 'none';
+                error.style.display = 'none';
+                return null;
+            }
+            
+            try {
+                const json = JSON.parse(text);
+                if (preview) {
+                    preview.innerHTML = '<pre>' + JSON.stringify(json, null, 2) + '</pre>';
+                    preview.style.display = 'block';
+                }
+                error.style.display = 'none';
+                return json;
+            } catch (e) {
+                error.textContent = 'Invalid JSON: ' + e.message;
+                error.style.display = 'block';
+                if (preview) preview.style.display = 'none';
+                return false;
+            }
+        }
+        
+        document.addEventListener('DOMContentLoaded', function() {
+            const oauthCreds = document.getElementById('googleOAuthJson');
+            if (oauthCreds) {
+                oauthCreds.addEventListener('input', function() {
+                    validateJson(this, 'oauthPreview', 'oauthError');
+                });
+            }
+            
+            const oauthToken = document.getElementById('googleOAuthToken');
+            if (oauthToken) {
+                oauthToken.addEventListener('input', function() {
+                    validateJson(this, 'oauthPreview', 'oauthError');
+                });
+            }
+            
+            const serviceCreds = document.getElementById('googleServiceAccountJson');
+            if (serviceCreds) {
+                serviceCreds.addEventListener('input', function() {
+                    validateJson(this, 'servicePreview', 'serviceError');
+                });
+            }
+            
+            const mcpServers = document.getElementById('mcpServers');
+            if (mcpServers) {
+                mcpServers.addEventListener('input', function() {
+                    validateJson(this, 'mcpPreview', 'mcpError');
+                });
+            }
+        });
+        
+        function getSelectedTools() {
+            const checkboxes = document.querySelectorAll('.tool-item input[type="checkbox"]:checked');
+            const toolsByPkg = {};
+            
+            checkboxes.forEach(cb => {
+                const [pkg, tool] = cb.value.split(':');
+                if (!toolsByPkg[pkg]) toolsByPkg[pkg] = [];
+                toolsByPkg[pkg].push(tool);
+            });
+            
+            let result = Object.entries(toolsByPkg)
+                .map(([pkg, tools]) => `${pkg}:${tools.join(',')}`)
+                .join(';');
+            
+            const customTools = document.getElementById('customTools');
+            if (customTools) {
+                const custom = customTools.value.trim();
+                if (custom) {
+                    result += (result ? ';' : '') + custom;
+                }
+            }
+            
+            return result;
+        }
+        
+        function buildAdditionalRequestFields() {
+            // Check if custom JSON override is provided
+            const customFields = document.getElementById('additionalRequestFields').value.trim();
+            if (customFields) {
+                const validated = validateJson(document.getElementById('additionalRequestFields'), null, 'additionalFieldsError');
+                if (validated === false) {
+                    return null; // Invalid JSON
+                }
+                return validated;
+            }
+            
+            // Build from checkboxes
+            const fields = {};
+            const betaFeatures = [];
+            
+            if (document.getElementById('betaThinking').checked) {
+                betaFeatures.push('interleaved-thinking-2025-05-14');
+            }
+            if (document.getElementById('betaContext').checked) {
+                betaFeatures.push('context-1m-2025-08-07');
+            }
+            
+            if (betaFeatures.length > 0) {
+                fields.anthropic_beta = betaFeatures;
+            }
+            
+            if (document.getElementById('enableThinking').checked) {
+                fields.thinking = {
+                    type: 'enabled',
+                    budget_tokens: parseInt(document.getElementById('thinkingBudget').value) || 2048
+                };
+            }
+            
+            return Object.keys(fields).length > 0 ? fields : null;
+        }
+        
+        function generateConfig() {
+            const additionalFields = buildAdditionalRequestFields();
+            if (additionalFields === null && document.getElementById('additionalRequestFields').value.trim()) {
+                alert('Please fix JSON errors in Additional Request Fields');
+                return;
+            }
+            
+            const data = {
+                systemPrompt: document.getElementById('systemPrompt').value.trim(),
+                provider: document.getElementById('modelProvider').value,
+                modelId: document.getElementById('modelId').value,
+                apiKey: document.getElementById('apiKey').value,
+                maxTokens: document.getElementById('maxTokens').value,
+                temperature: document.getElementById('temperature').value,
+                additionalRequestFields: additionalFields,
+                tools: getSelectedTools(),
+                slackBot: document.getElementById('slackBotToken').value,
+                slackApp: document.getElementById('slackAppToken').value,
+                googleOAuthCreds: validateJson(document.getElementById('googleOAuthJson'), 'oauthPreview', 'oauthError'),
+                googleOAuthToken: validateJson(document.getElementById('googleOAuthToken'), 'oauthPreview', 'oauthError'),
+                googleServiceAccount: validateJson(document.getElementById('googleServiceAccountJson'), 'servicePreview', 'serviceError'),
+                googleApiKey: document.getElementById('googleApiKey').value,
+                pipPkgs: document.getElementById('pipPackages').value.trim(),
+                aptPkgs: document.getElementById('aptPackages').value.trim(),
+                customCmds: document.getElementById('customCommands').value.trim(),
+                mcpServers: validateJson(document.getElementById('mcpServers'), 'mcpPreview', 'mcpError'),
+                enableWs: document.getElementById('enableWs').checked,
+                wsPort: document.getElementById('wsPort').value,
+                enableMcp: document.getElementById('enableMcp').checked,
+                mcpPort: document.getElementById('mcpPort').value,
+                kbId: document.getElementById('kbId').value,
+                bypassConsent: document.getElementById('bypassConsent').checked
+            };
+            
+            if (data.googleOAuthCreds === false || data.googleOAuthToken === false || 
+                data.googleServiceAccount === false || data.mcpServers === false) {
+                alert('Please fix JSON errors before generating');
+                return;
+            }
+            
+            let script = `#!/bin/bash
+set -e
+RC="$HOME/.bashrc"
+
+add_var() {
+    sed -i.bak "/export $1=/d" "$RC" 2>/dev/null || true
+    echo "export $1=\\"$2\\"" >> "$RC"
+}
+`;
+
+            // System Prompt
+            if (data.systemPrompt) {
+                const escaped = data.systemPrompt.replace(/'/g, "'\\''");
+                script += `\nadd_var "SYSTEM_PROMPT" '${escaped}'\n`;
+            }
+
+            // Model
+            if (data.provider) {
+                script += `\nadd_var "MODEL_PROVIDER" "${data.provider}"\n`;
+                script += `add_var "STRANDS_MODEL_ID" "${data.modelId}"\n`;
+                script += `add_var "STRANDS_MAX_TOKENS" "${data.maxTokens}"\n`;
+                
+                const info = PROVIDER_INFO[data.provider];
+                if (info && info.supportsTemperature) {
+                    script += `add_var "STRANDS_TEMPERATURE" "${data.temperature}"\n`;
+                }
+                
+                if (data.apiKey && info && info.apiKeyVar) {
+                    script += `add_var "${info.apiKeyVar}" "${data.apiKey}"\n`;
+                }
+                
+                // Additional request fields
+                if (data.additionalRequestFields) {
+                    const escaped = JSON.stringify(data.additionalRequestFields).replace(/'/g, "'\\''");
+                    script += `add_var "STRANDS_ADDITIONAL_REQUEST_FIELDS" '${escaped}'\n`;
+                }
+            }
+            
+            // Tools
+            if (data.tools) {
+                script += `\nadd_var "DEVDUCK_TOOLS" "${data.tools}"\n`;
+            }
+            
+            // Slack
+            if (data.slackBot) {
+                script += `\nadd_var "SLACK_BOT_TOKEN" "${data.slackBot}"\n`;
+            }
+            if (data.slackApp) {
+                script += `\nadd_var "SLACK_APP_TOKEN" "${data.slackApp}"\n`;
+            }
+            
+            // Google - OAuth 2.0
+            if (data.googleOAuthCreds) {
+                script += `\necho "Setting up Google OAuth 2.0..."\n`;
+                script += `cat > ~/.google_oauth_creds.json << 'GCEOF'\n${JSON.stringify(data.googleOAuthCreds, null, 2)}\nGCEOF\n`;
+                script += `add_var "GOOGLE_OAUTH_CREDENTIALS_FILE" "$HOME/.google_oauth_creds.json"\n`;
+                
+                if (data.googleOAuthToken) {
+                    script += `cat > ~/.google_oauth_token.json << 'GTEOF'\n${JSON.stringify(data.googleOAuthToken, null, 2)}\nGTEOF\n`;
+                    script += `add_var "GOOGLE_OAUTH_CREDENTIALS" "$HOME/.google_oauth_token.json"\n`;
+                }
+            }
+            
+            // Google - Service Account
+            if (data.googleServiceAccount) {
+                script += `\necho "Setting up Google Service Account..."\n`;
+                script += `cat > ~/.google_service_account.json << 'GSEOF'\n${JSON.stringify(data.googleServiceAccount, null, 2)}\nGSEOF\n`;
+                script += `add_var "GOOGLE_APPLICATION_CREDENTIALS" "$HOME/.google_service_account.json"\n`;
+            }
+            
+            // Google - API Key
+            if (data.googleApiKey) {
+                script += `\nadd_var "GOOGLE_API_KEY" "${data.googleApiKey}"\n`;
+            }
+            
+            // Dependencies
+            if (data.aptPkgs) {
+                script += `\necho "Installing apt packages..."\n`;
+                script += `apt update && apt install -y ${data.aptPkgs}\n`;
+            }
+            
+            if (data.pipPkgs) {
+                script += `\necho "Installing pip packages..."\n`;
+                script += `pip3 install ${data.pipPkgs}\n`;
+            }
+            
+            if (data.customCmds) {
+                script += `\necho "Running custom commands..."\n`;
+                script += data.customCmds + '\n';
+            }
+            
+            // MCP
+            if (data.mcpServers) {
+                const escaped = JSON.stringify(data.mcpServers).replace(/'/g, "'\\''");
+                script += `\nadd_var "MCP_SERVERS" '${escaped}'\n`;
+            }
+            
+            // Servers
+            script += `\nadd_var "DEVDUCK_ENABLE_WS" "${data.enableWs}"\n`;
+            if (data.enableWs) script += `add_var "DEVDUCK_WS_PORT" "${data.wsPort}"\n`;
+            
+            script += `add_var "DEVDUCK_ENABLE_MCP" "${data.enableMcp}"\n`;
+            if (data.enableMcp) script += `add_var "DEVDUCK_MCP_PORT" "${data.mcpPort}"\n`;
+            
+            // Advanced
+            if (data.kbId) {
+                script += `\nadd_var "DEVDUCK_KNOWLEDGE_BASE_ID" "${data.kbId}"\n`;
+            }
+            script += `add_var "BYPASS_TOOL_CONSENT" "${data.bypassConsent}"\n`;
+            
+            script += `\necho "✅ Configuration complete!"
+echo "Run: source ~/.bashrc && devduck"`;
+            
+            document.getElementById('outputScript').textContent = script;
+            document.getElementById('output').style.display = 'block';
+            document.getElementById('output').scrollIntoView({ behavior: 'smooth' });
+        }
+        
+        function copyCode(id) {
+            const text = document.getElementById(id).textContent;
+            const btn = event.target;
+            
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(text).then(() => {
+                    btn.textContent = 'Copied!';
+                    btn.classList.add('copied');
+                    setTimeout(() => {
+                        btn.textContent = 'Copy';
+                        btn.classList.remove('copied');
+                    }, 2000);
+                });
+            } else {
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                btn.textContent = 'Copied!';
+                btn.classList.add('copied');
+                setTimeout(() => {
+                    btn.textContent = 'Copy';
+                    btn.classList.remove('copied');
+                }, 2000);
+            }
+        }
+    </script>
+</body>
+</html>

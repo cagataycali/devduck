@@ -687,7 +687,7 @@ class DevDuck:
             server_tools_needed = []
             if servers.get("tcp", {}).get("enabled", False):
                 server_tools_needed.append("tcp")
-            if servers.get("ws", {}).get("enabled", False):
+            if servers.get("ws", {}).get("enabled", True):
                 server_tools_needed.append("websocket")
             if servers.get("mcp", {}).get("enabled", False):
                 server_tools_needed.append("mcp_server")
