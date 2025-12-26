@@ -27,6 +27,9 @@ Learn more: https://duck.nyc
 # Install & run
 pipx install devduck && devduck
 
+# With speech-to-speech capabilities (optional)
+pipx install "devduck[speech]" && devduck
+
 # One-shot query
 devduck "create a REST API with FastAPI"
 
@@ -35,6 +38,9 @@ python -c "import devduck; devduck('analyze this code')"
 ```
 
 **Requirements:** Python 3.10-3.13, AWS credentials (or Ollama/Anthropic/GitHub/MLX)
+
+**Optional extras:**
+- `devduck[speech]` - Real-time speech-to-speech conversations (Nova Sonic, OpenAI Realtime, Gemini Live)
 
 ---
 
@@ -51,6 +57,7 @@ python -c "import devduck; devduck('analyze this code')"
 | 💾 **State Time-Travel** | Save/restore agent state | `state_manager(action="export")` |
 | 📝 **Self-Improvement** | Updates own system prompt | `system_prompt(action="add_context", ...)` |
 | ☁️ **AWS Deploy** | One-command serverless | `agentcore_config(auto_launch=True)` |
+| 🎤 **Speech-to-Speech** | Real-time voice conversations | `pip install devduck[speech]` |
 
 ---
 
@@ -61,7 +68,13 @@ git clone git@github.com:cagataycali/devduck.git
 cd devduck
 python3.13 -m venv .venv
 source .venv/bin/activate
+
+# Basic install
 .venv/bin/pip3.13 install -e .
+
+# With speech capabilities
+.venv/bin/pip3.13 install -e ".[speech]"
+
 devduck
 ```
 
@@ -232,6 +245,67 @@ devduck
 
 ---
 
+## Speech-to-Speech (Optional)
+
+**Install speech capabilities:**
+```bash
+pip install "devduck[speech]"
+```
+
+**Real-time voice conversations** with multiple providers:
+
+```python
+# Start speech session with Nova Sonic (AWS Bedrock)
+speech_to_speech(action="start", provider="novasonic")
+
+# Start with OpenAI Realtime API
+speech_to_speech(action="start", provider="openai")
+
+# Start with Gemini Live
+speech_to_speech(action="start", provider="gemini_live")
+
+# Custom voice and settings
+speech_to_speech(
+    action="start",
+    provider="novasonic",
+    model_settings={
+        "provider_config": {"audio": {"voice": "matthew"}},
+        "client_config": {"region": "us-east-1"}
+    }
+)
+
+# Stop session
+speech_to_speech(action="stop", session_id="speech_20250126_140000")
+
+# Check status
+speech_to_speech(action="status")
+
+# List conversation histories
+speech_to_speech(action="list_history")
+
+# List available audio devices
+speech_to_speech(action="list_audio_devices")
+```
+
+**Supported Providers:**
+- **Nova Sonic (AWS Bedrock):** 11 voices (English, French, Italian, German, Spanish)
+- **OpenAI Realtime API:** GPT-4o Realtime models
+- **Gemini Live:** Native audio streaming
+
+**Environment Variables:**
+- `OPENAI_API_KEY` - For OpenAI Realtime
+- `GOOGLE_API_KEY` or `GEMINI_API_KEY` - For Gemini Live
+- AWS credentials - For Nova Sonic (boto3 default credential chain)
+
+**Features:**
+- Background execution (parent agent stays responsive)
+- Tool inheritance from parent agent
+- Conversation history saved automatically
+- Natural interruption with VAD
+- Custom audio device selection
+
+---
+
 ## MCP Integration
 
 ### As MCP Server (Expose DevDuck)
@@ -398,9 +472,9 @@ create_subagent(action="list", repository="owner/repo", workflow_id="agent.yml")
 ---
 
 <details>
-<summary><strong>📋 All Built-in Tools (38 total)</strong></summary>
+<summary><strong>📋 All Built-in Tools (39 total)</strong></summary>
 
-### DevDuck Core (17 tools)
+### DevDuck Core (18 tools)
 - `system_prompt` - Update agent's system prompt (GitHub sync support)
 - `store_in_kb` - Store content in Bedrock Knowledge Base
 - `state_manager` - Save/restore agent state (time-travel)
@@ -419,6 +493,7 @@ create_subagent(action="list", repository="owner/repo", workflow_id="agent.yml")
 - `agentcore_agents` - List/manage agent runtimes
 - `manage_tools` - Runtime tool add/remove/reload
 - `view_logs` - View/search/clear DevDuck logs
+- `speech_to_speech` - Real-time speech-to-speech conversations (optional - install with `pip install devduck[speech]`)
 
 ### Strands Tools (13 tools)
 - `shell` - Interactive shell with PTY support
@@ -525,7 +600,7 @@ devduck
 | `LITELLM_API_KEY` | - | LiteLLM API key (auto-detected) |
 | `LLAMAAPI_API_KEY` | - | LlamaAPI key (auto-detected) |
 | **Tools** | | |
-| `DEVDUCK_TOOLS` | 38 tools | Format: `package1:tool1,tool2;package2:tool3` |
+| `DEVDUCK_TOOLS` | 39 tools | Format: `package1:tool1,tool2;package2:tool3` |
 | `DEVDUCK_LOAD_TOOLS_FROM_DIR` | `false` | Auto-load from `./tools/` directory |
 | **Memory** | | |
 | `DEVDUCK_KNOWLEDGE_BASE_ID` | - | Bedrock KB ID for auto-RAG |
@@ -541,6 +616,8 @@ devduck
 | `DEVDUCK_ENABLE_WS` | `true` | Enable WebSocket server |
 | `DEVDUCK_ENABLE_MCP` | `true` | Enable MCP server |
 | `DEVDUCK_ENABLE_IPC` | `true` | Enable IPC server |
+| **Speech** | | |
+| `BIDI_MODEL_ID` | Provider default | Override bidi model (e.g., `amazon.nova-2-sonic-v1:0`) |
 | **Context** | | |
 | `DEVDUCK_LOG_LINE_COUNT` | `50` | Recent log lines in context |
 | `DEVDUCK_LAST_MESSAGE_COUNT` | `200` | Recent messages in context |
@@ -581,6 +658,15 @@ export STRANDS_MODEL_ID="qwen3:0.5b"
 # Reduce context
 export DEVDUCK_LOG_LINE_COUNT=20
 export DEVDUCK_LAST_MESSAGE_COUNT=50
+```
+
+**Speech dependencies not found:**
+```bash
+# Install speech extras
+pip install "devduck[speech]"
+
+# Or with pipx
+pipx install "devduck[speech]"
 ```
 
 **Ambient overlay not starting:**

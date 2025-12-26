@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "devduck"
 dynamic = ["version"]
-description = "🦆 Extreme minimalist self-adapting AI agent - one file, self-healing, runtime dependencies"
+description = "🦆 Self-adapting agent - one file."
 readme = "README.md"
 license = {text = "Apache-2.0"}
 authors = [
@@ -35,7 +35,6 @@ dependencies = [
     "strands-agents[ollama]",
     "strands-agents[anthropic]",
     "strands-agents[openai]",
-    "strands-agents[bidi-all]",
     "strands-agents[otel]",
     "strands-agents-tools",
     "beautifulsoup4",
@@ -47,6 +46,11 @@ dependencies = [
     "bedrock-agentcore",
     "rumps; sys_platform == 'darwin'",
     "strands-mlx; sys_platform == 'darwin'",
+]
+
+[project.optional-dependencies]
+speech = [
+    "strands-agents[bidi-all]",
 ]
 
 [project.scripts]
