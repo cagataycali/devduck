@@ -15,7 +15,6 @@ from .install_tools import install_tools
 from .ipc import ipc
 from .mcp_server import mcp_server
 from .scraper import scraper
-from .speech_to_speech import speech_to_speech
 from .state_manager import state_manager
 from .store_in_kb import store_in_kb
 from .system_prompt import system_prompt
@@ -24,24 +23,51 @@ from .tray import tray
 from .use_github import use_github
 from .websocket import websocket
 
-__all__ = [
-    "agentcore_agents",
-    "agentcore_config",
-    "agentcore_invoke",
-    "agentcore_logs",
-    "ambient",
-    "create_subagent",
-    "fetch_github_tool",
-    "install_tools",
-    "ipc",
-    "mcp_server",
-    "scraper",
-    "speech_to_speech",
-    "state_manager",
-    "store_in_kb",
-    "system_prompt",
-    "tcp",
-    "tray",
-    "use_github",
-    "websocket",
-]
+# Optional Tools
+try:
+    from .speech_to_speech import speech_to_speech
+
+    __all__ = [
+        "agentcore_agents",
+        "agentcore_config",
+        "agentcore_invoke",
+        "agentcore_logs",
+        "ambient",
+        "create_subagent",
+        "fetch_github_tool",
+        "install_tools",
+        "ipc",
+        "mcp_server",
+        "scraper",
+        "speech_to_speech",
+        "state_manager",
+        "store_in_kb",
+        "system_prompt",
+        "tcp",
+        "tray",
+        "use_github",
+        "websocket",
+    ]
+except ImportError:
+    __all__ = [
+        "agentcore_agents",
+        "agentcore_config",
+        "agentcore_invoke",
+        "agentcore_logs",
+        "ambient",
+        "create_subagent",
+        "fetch_github_tool",
+        "install_tools",
+        "ipc",
+        "mcp_server",
+        "scraper",
+        "state_manager",
+        "store_in_kb",
+        "system_prompt",
+        "tcp",
+        "tray",
+        "use_github",
+        "websocket",
+    ]
+
+

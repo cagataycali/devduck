@@ -687,8 +687,6 @@ class DevDuck:
             server_tools_needed = []
             if servers.get("tcp", {}).get("enabled", False):
                 server_tools_needed.append("tcp")
-            if servers.get("ws", {}).get("enabled", True):
-                server_tools_needed.append("websocket")
             if servers.get("mcp", {}).get("enabled", False):
                 server_tools_needed.append("mcp_server")
             if servers.get("ipc", {}).get("enabled", False):
@@ -697,11 +695,11 @@ class DevDuck:
             # Append to default tools if any server tools are needed
             if server_tools_needed:
                 server_tools_str = ",".join(server_tools_needed)
-                default_tools = f"devduck.tools:system_prompt,fetch_github_tool,{server_tools_str};strands_tools:shell"
+                default_tools = f"devduck.tools:system_prompt,fetch_github_tool,websocket,{server_tools_str};strands_tools:shell"
                 logger.info(f"Auto-added server tools: {server_tools_str}")
             else:
                 default_tools = (
-                    "devduck.tools:system_prompt,fetch_github_tool;strands_tools:shell"
+                    "devduck.tools:system_prompt,fetch_github_tool,websocket;strands_tools:shell"
                 )
 
             tools_config = os.getenv("DEVDUCK_TOOLS", default_tools)
