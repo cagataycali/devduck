@@ -22,6 +22,7 @@ from .tcp import tcp
 from .tray import tray
 from .use_github import use_github
 from .websocket import websocket
+from .zenoh_peer import zenoh_peer
 
 # Optional Tools
 try:
@@ -47,6 +48,7 @@ try:
         "tray",
         "use_github",
         "websocket",
+        "zenoh_peer",
     ]
 except ImportError:
     __all__ = [
@@ -69,5 +71,3 @@ except ImportError:
         "use_github",
         "websocket",
     ]
-
-

@@ -46,6 +46,7 @@ dependencies = [
     "bedrock-agentcore",
     "rumps; sys_platform == 'darwin'",
     "strands-mlx; sys_platform == 'darwin'",
+    "eclipse-zenoh",
 ]
 
 [project.optional-dependencies]

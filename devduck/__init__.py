@@ -3,6 +3,7 @@
 🦆 devduck - extreme minimalist self-adapting agent
 one file. self-healing. runtime dependencies. adaptive.
 """
+
 import os
 import sys
 import subprocess
@@ -457,6 +458,47 @@ def parse_history_line(line, history_type):
     return None
 
 
+def get_zenoh_peers_context():
+    """Get current zenoh peers for dynamic context injection."""
+    try:
+        from devduck.tools.zenoh_peer import ZENOH_STATE
+        import time
+
+        logger.debug(
+            f"Zenoh context check - running: {ZENOH_STATE.get('running')}, peers: {ZENOH_STATE.get('peers')}"
+        )
+
+        if not ZENOH_STATE.get("running"):
+            logger.debug("Zenoh not running, returning empty context")
+            return ""
+
+        instance_id = ZENOH_STATE.get("instance_id", "unknown")
+        peers = ZENOH_STATE.get("peers", {})
+
+        context = f"\n\n## Zenoh Network Status:\n"
+        context += f"- **My Instance ID**: {instance_id}\n"
+        context += f"- **Connected Peers**: {len(peers)}\n"
+
+        if peers:
+            context += "\n### Active Peers:\n"
+            for peer_id, info in peers.items():
+                age = time.time() - info.get("last_seen", 0)
+                hostname = info.get("hostname", "unknown")
+                model = info.get("model", "unknown")
+                context += f"- `{peer_id}` ({hostname}) - model: {model}, seen {age:.0f}s ago\n"
+            context += "\n**Use**: `zenoh_peer(action='broadcast', message='...')` to send to all, or `zenoh_peer(action='send', peer_id='...', message='...')` for specific peer\n"
+        else:
+            context += "\n*No peers discovered yet. Start another DevDuck instance with zenoh enabled.*\n"
+
+        return context
+    except ImportError as e:
+        logger.debug(f"Zenoh context ImportError: {e}")
+        return ""
+    except Exception as e:
+        logger.debug(f"Could not get zenoh peers context: {e}")
+        return ""
+
+
 def get_recent_logs():
     """Get the last N lines from the log file for context."""
     try:
@@ -626,6 +668,10 @@ class DevDuck:
                         "enabled": os.getenv("DEVDUCK_ENABLE_IPC", "false").lower()
                         == "true",
                     },
+                    "zenoh_peer": {
+                        "enabled": os.getenv("DEVDUCK_ENABLE_ZENOH", "true").lower()
+                        == "true",
+                    },
                 }
 
             # Show server configuration status
@@ -672,6 +718,7 @@ class DevDuck:
             # - use_github: https://github.com/cagataycali/devduck/blob/main/devduck/tools/use_github.py
             # - speech_to_speech: https://github.com/cagataycali/devduck/blob/main/devduck/tools/speech_to_speech.py
             # - state_manager: https://github.com/cagataycali/devduck/blob/main/devduck/tools/state_manager.py
+            # - zenoh_peer: https://github.com/cagataycali/devduck/blob/main/devduck/tools/zenoh_peer.py
 
             # 📦 Strands Tools
             # - editor, file_read, file_write, image_reader, load_tool, retrieve
@@ -691,6 +738,8 @@ class DevDuck:
                 server_tools_needed.append("mcp_server")
             if servers.get("ipc", {}).get("enabled", False):
                 server_tools_needed.append("ipc")
+            if servers.get("zenoh_peer", {}).get("enabled", False):
+                server_tools_needed.append("zenoh_peer")
 
             # Append to default tools if any server tools are needed
             if server_tools_needed:
@@ -698,9 +747,7 @@ class DevDuck:
                 default_tools = f"devduck.tools:system_prompt,fetch_github_tool,websocket,{server_tools_str};strands_tools:shell"
                 logger.info(f"Auto-added server tools: {server_tools_str}")
             else:
-                default_tools = (
-                    "devduck.tools:system_prompt,fetch_github_tool,websocket;strands_tools:shell"
-                )
+                default_tools = "devduck.tools:system_prompt,fetch_github_tool,websocket;strands_tools:shell"
 
             tools_config = os.getenv("DEVDUCK_TOOLS", default_tools)
             logger.info(f"Loading tools from config: {tools_config}")
@@ -1312,8 +1359,8 @@ When you learn something valuable during conversations:
         logger.info("Auto-starting servers...")
         print("🦆 Auto-starting servers...")
 
-        # Start servers in order: IPC, TCP, WS, MCP
-        server_order = ["ipc", "tcp", "ws", "mcp"]
+        # Start servers in order: IPC, TCP, WS, MCP, Zenoh
+        server_order = ["ipc", "tcp", "ws", "mcp", "zenoh_peer"]
 
         for server_type in server_order:
             if server_type not in self.servers:
@@ -1436,6 +1483,26 @@ When you learn something valuable during conversations:
                     if result.get("status") == "success":
                         logger.info(f"✓ IPC server started on {socket_path}")
                         print(f"🦆 ✓ IPC server: {socket_path}")
+
+                elif server_type == "zenoh_peer":
+                    # Zenoh peer-to-peer networking with auto-discovery
+                    result = self.agent.tool.zenoh_peer(
+                        action="start",
+                        agent=self.agent,
+                        record_direct_tool_call=False,
+                    )
+
+                    if result.get("status") == "success":
+                        # Extract instance ID from result
+                        instance_id = "unknown"
+                        for content in result.get("content", []):
+                            text = content.get("text", "")
+                            if "Instance ID:" in text:
+                                instance_id = text.split("Instance ID:")[-1].strip()
+                                break
+                        logger.info(f"✓ Zenoh started as {instance_id}")
+                        print(f"🦆 ✓ Zenoh peer: {instance_id}")
+
                 # TODO: support custom file path here so we can trigger foreign python function like another file
             except Exception as e:
                 logger.error(f"Failed to start {server_type} server: {e}")
@@ -1465,8 +1532,18 @@ When you learn something valuable during conversations:
                 except Exception as e:
                     logger.warning(f"KB retrieval failed: {e}")
 
+            # 🔗 Inject dynamic zenoh peers context
+            zenoh_context = get_zenoh_peers_context()
+            if zenoh_context:
+                # Prepend dynamic context to query for visibility
+                query_with_context = (
+                    f"[Dynamic Context]{zenoh_context}\n\n[User Query]\n{query}"
+                )
+            else:
+                query_with_context = query
+
             # Run the agent
-            result = self.agent(query)
+            result = self.agent(query_with_context)
 
             # 💾 Knowledge Base Storage (AFTER agent runs)
             if knowledge_base_id and hasattr(self.agent, "tool"):

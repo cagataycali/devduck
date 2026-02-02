@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """DevDuck AgentCore Handler"""
+
 import json
 import os
 import threading
