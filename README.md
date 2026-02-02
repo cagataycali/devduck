@@ -16,6 +16,7 @@ Learn more: https://duck.nyc
 | 🌐 **Web UI** | Clean web interface with real-time streaming | [Watch](https://redduck.dev/videos/web-ui.mp4) |
 | 🛠️ **Dynamic Tools** | Save `.py` file in `./tools/` → use instantly | [Watch](https://redduck.dev/videos/dynamic-tool-creation.mp4) |
 | 🌊 **TCP Streaming** | Connect via netcat, apps, or other agents | [Watch](https://redduck.dev/videos/tcp.mp4) |
+| 🔗 **Zenoh P2P** | Auto-discover & coordinate multiple DevDucks | Multi-terminal magic ✨ |
 | 🔌 **IPC & Tray** | macOS menu bar + Unix socket IPC | ![Demo](docs/mac-os-tray.jpg) |
 | 💬 **Ambient Overlay** | Floating AI input with glassmorphism UI | [Watch](https://redduck.dev/videos/floating-input.mp4) |
 
@@ -53,6 +54,7 @@ python -c "import devduck; devduck('analyze this code')"
 | 📦 **Dynamic Loading** | Install packages and load tools on-the-fly | `install_tools(action="install_and_load", package="...")` |
 | 🧠 **Auto-RAG** | Remembers conversations via Knowledge Base | Set `DEVDUCK_KNOWLEDGE_BASE_ID` |
 | 🌊 **Multi-Protocol** | TCP, WebSocket, MCP, IPC servers | Auto-starts on ports 9999, 8080, 8000 |
+| 🔗 **Zenoh P2P** | Auto-discover & coordinate with other DevDucks | `zenoh_peer(action="broadcast", message="...")` |
 | 🔌 **MCP Client** | Connect to external MCP servers | Set `MCP_SERVERS` env var |
 | 💾 **State Time-Travel** | Save/restore agent state | `state_manager(action="export")` |
 | 📝 **Self-Improvement** | Updates own system prompt | `system_prompt(action="add_context", ...)` |
@@ -87,7 +89,7 @@ graph TB
     A[User Input] -->|CLI/TCP/WS/MCP/IPC| B[DevDuck Core]
     B -->|Auto RAG| C[Knowledge Base]
     C -.->|Context Retrieval| B
-    B -->|Tool Calls| D[38+ Built-in Tools]
+    B -->|Tool Calls| D[40+ Built-in Tools]
     D --> E[shell/editor/calculator]
     D --> F[GitHub/AgentCore]
     D --> G[TCP/WebSocket/MCP/IPC]
@@ -96,6 +98,8 @@ graph TB
     I -.->|Load Instantly| D
     B -->|Runtime| K[manage_tools/install_tools]
     K -.->|Expand| D
+    B <-->|Zenoh P2P| L[Other DevDucks]
+    L -.->|Auto-discover| B
     B -->|Response| J[User Output]
     J -.->|Store Memory| C
     
@@ -103,6 +107,7 @@ graph TB
     style C fill:#d4edda
     style I fill:#fff3cd
     style K fill:#ffe6cc
+    style L fill:#f0e6ff
 ```
 
 **Self-adapting loop:** Query → RAG → Tools → Response → Memory → Hot-reload/Runtime-load → Repeat
@@ -351,6 +356,114 @@ devduck
 
 ---
 
+## Zenoh Peer-to-Peer Networking
+
+**Auto-discover and coordinate** multiple DevDuck instances across terminals or networks.
+
+### How It Works
+
+1. Each DevDuck joins a Zenoh peer network
+2. Multicast scouting (224.0.0.224:7446) auto-discovers peers on local network
+3. Peers exchange heartbeats to maintain presence awareness
+4. Commands can be broadcast to ALL peers or sent to specific peers
+5. Responses stream back in real-time
+
+### Quick Start
+
+```bash
+# Terminal 1: Start DevDuck (Zenoh enabled by default)
+devduck
+# 🦆 ✓ Zenoh peer: hostname-abc123
+
+# Terminal 2: Start another DevDuck
+devduck
+# 🦆 ✓ Zenoh peer: hostname-def456
+# Auto-discovers Terminal 1!
+
+# Terminal 1: See discovered peers
+🦆 zenoh_peer(action="list_peers")
+
+# Terminal 1: Broadcast to ALL DevDucks
+🦆 zenoh_peer(action="broadcast", message="git status")
+# Both terminals execute and stream responses!
+
+# Send to specific peer
+🦆 zenoh_peer(action="send", peer_id="hostname-def456", message="what files are here?")
+```
+
+### Cross-Network Connections
+
+Connect DevDuck instances across different networks:
+
+```bash
+# Machine A (office): Listen for remote connections
+export ZENOH_LISTEN="tcp/0.0.0.0:7447"
+devduck
+
+# Machine B (home): Connect to office
+export ZENOH_CONNECT="tcp/office.example.com:7447"
+devduck
+
+# Now they can communicate!
+🦆 zenoh_peer(action="broadcast", message="sync all repos")
+```
+
+### Use Cases
+
+| Scenario | Command | Description |
+|----------|---------|-------------|
+| **Multi-terminal ops** | `broadcast "git pull && npm install"` | Run on all instances |
+| **Distributed tasks** | `broadcast "analyze ./src"` | Parallel analysis |
+| **Peer monitoring** | `list_peers` | See all active DevDucks |
+| **Direct messaging** | `send peer_id="..." message="..."` | Task specific instance |
+| **Cross-network** | Set `ZENOH_CONNECT` | Connect home ↔ office |
+
+### Actions
+
+```python
+# Start Zenoh networking (auto-starts by default)
+zenoh_peer(action="start")
+
+# Stop Zenoh
+zenoh_peer(action="stop")
+
+# Check status and peer count
+zenoh_peer(action="status")
+
+# List all discovered peers
+zenoh_peer(action="list_peers")
+
+# Broadcast to ALL peers (waits for responses)
+zenoh_peer(action="broadcast", message="your command", wait_time=60)
+
+# Send to specific peer
+zenoh_peer(action="send", peer_id="hostname-abc123", message="your command", wait_time=120)
+
+# Start with remote connection
+zenoh_peer(action="start", connect="tcp/remote.example.com:7447")
+
+# Start listening for remote connections
+zenoh_peer(action="start", listen="tcp/0.0.0.0:7447")
+```
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DEVDUCK_ENABLE_ZENOH` | `true` | Auto-start Zenoh on launch |
+| `ZENOH_CONNECT` | - | Remote endpoint(s) to connect to |
+| `ZENOH_LISTEN` | - | Endpoint(s) to listen on for remote connections |
+
+### Features
+
+- **Zero Config:** Just start multiple DevDucks - they find each other
+- **Real-time Streaming:** Responses stream as they're generated
+- **Peer Awareness:** Dynamic context injection shows connected peers
+- **Cross-Network:** Connect instances across different networks
+- **Fault Tolerant:** Peers auto-detect disconnections (15s timeout)
+
+---
+
 ## Advanced Features
 
 ### State Management (Time-Travel)
@@ -472,9 +585,9 @@ create_subagent(action="list", repository="owner/repo", workflow_id="agent.yml")
 ---
 
 <details>
-<summary><strong>📋 All Built-in Tools (39 total)</strong></summary>
+<summary><strong>📋 All Built-in Tools (40 total)</strong></summary>
 
-### DevDuck Core (18 tools)
+### DevDuck Core (19 tools)
 - `system_prompt` - Update agent's system prompt (GitHub sync support)
 - `store_in_kb` - Store content in Bedrock Knowledge Base
 - `state_manager` - Save/restore agent state (time-travel)
@@ -482,6 +595,7 @@ create_subagent(action="list", repository="owner/repo", workflow_id="agent.yml")
 - `websocket` - WebSocket server with concurrent messaging
 - `ipc` - Unix socket IPC server for local processes
 - `mcp_server` - Expose as MCP server (HTTP/stdio)
+- `zenoh_peer` - Peer-to-peer networking with auto-discovery
 - `install_tools` - Install packages and load tools at runtime
 - `create_subagent` - Spawn sub-agents via GitHub Actions
 - `use_github` - GitHub GraphQL API operations
@@ -600,7 +714,7 @@ devduck
 | `LITELLM_API_KEY` | - | LiteLLM API key (auto-detected) |
 | `LLAMAAPI_API_KEY` | - | LlamaAPI key (auto-detected) |
 | **Tools** | | |
-| `DEVDUCK_TOOLS` | 39 tools | Format: `package1:tool1,tool2;package2:tool3` |
+| `DEVDUCK_TOOLS` | 40 tools | Format: `package1:tool1,tool2;package2:tool3` |
 | `DEVDUCK_LOAD_TOOLS_FROM_DIR` | `false` | Auto-load from `./tools/` directory |
 | **Memory** | | |
 | `DEVDUCK_KNOWLEDGE_BASE_ID` | - | Bedrock KB ID for auto-RAG |
@@ -616,6 +730,9 @@ devduck
 | `DEVDUCK_ENABLE_WS` | `true` | Enable WebSocket server |
 | `DEVDUCK_ENABLE_MCP` | `true` | Enable MCP server |
 | `DEVDUCK_ENABLE_IPC` | `true` | Enable IPC server |
+| `DEVDUCK_ENABLE_ZENOH` | `true` | Enable Zenoh peer-to-peer |
+| `ZENOH_CONNECT` | - | Remote Zenoh endpoint(s) to connect to |
+| `ZENOH_LISTEN` | - | Zenoh endpoint(s) to listen on |
 | **Speech** | | |
 | `BIDI_MODEL_ID` | Provider default | Override bidi model (e.g., `amazon.nova-2-sonic-v1:0`) |
 | **Context** | | |
