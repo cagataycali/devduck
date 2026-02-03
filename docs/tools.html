@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔧 Dynamic Tools - DevDuck Runtime Tool Management</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-tertiary: #1a1a25;
+            --border: rgba(255, 255, 255, 0.08);
+            --text-primary: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.7);
+            --text-muted: rgba(255, 255, 255, 0.4);
+            --accent-purple: #8b5cf6;
+            --accent-blue: #3b82f6;
+            --accent-green: #10b981;
+            --accent-yellow: #f59e0b;
+            --accent-red: #ef4444;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.7;
+        }
+
+        .header {
+            background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+            padding: 3rem 2rem;
+            text-align: center;
+            border-bottom: 1px solid var(--border);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 800px;
+            height: 400px;
+            background: radial-gradient(ellipse, rgba(139, 92, 246, 0.15) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .header h1 {
+            font-size: 2.75rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.7) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            position: relative;
+        }
+
+        .header .subtitle {
+            color: var(--text-secondary);
+            font-size: 1.2rem;
+            margin-bottom: 1rem;
+        }
+
+        .header .badges {
+            display: flex;
+            justify-content: center;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.4rem 1rem;
+            border-radius: 2rem;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .badge.purple { background: rgba(139, 92, 246, 0.2); border: 1px solid rgba(139, 92, 246, 0.4); color: var(--accent-purple); }
+        .badge.green { background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.4); color: var(--accent-green); }
+        .badge.blue { background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.4); color: var(--accent-blue); }
+
+        .nav {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-top: 1.5rem;
+            position: relative;
+        }
+
+        .nav a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+            padding: 0.5rem 0;
+            border-bottom: 2px solid transparent;
+        }
+
+        .nav a:hover {
+            color: var(--text-primary);
+            border-color: var(--accent-purple);
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 4rem 2rem;
+        }
+
+        section {
+            margin-bottom: 5rem;
+        }
+
+        h2 {
+            font-size: 1.85rem;
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        h3 {
+            font-size: 1.3rem;
+            margin: 2.5rem 0 1rem;
+            color: var(--text-primary);
+        }
+
+        p {
+            margin-bottom: 1rem;
+            color: var(--text-secondary);
+        }
+
+        .hero {
+            text-align: center;
+            padding: 4rem 2rem;
+            background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+            border: 1px solid var(--border);
+            border-radius: 1.5rem;
+            margin-bottom: 4rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero-icon {
+            font-size: 5rem;
+            margin-bottom: 1.5rem;
+            position: relative;
+        }
+
+        .hero h2 {
+            border: none;
+            font-size: 2.25rem;
+            margin-bottom: 1rem;
+            justify-content: center;
+        }
+
+        .hero p {
+            font-size: 1.15rem;
+            color: var(--text-secondary);
+            max-width: 650px;
+            margin: 0 auto;
+        }
+
+        /* Code Blocks */
+        pre {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+
+        code {
+            font-family: 'Courier New', Consolas, monospace;
+            font-size: 0.9rem;
+        }
+
+        .inline-code {
+            background: rgba(139, 92, 246, 0.15);
+            color: var(--accent-purple);
+            padding: 0.2rem 0.5rem;
+            border-radius: 0.3rem;
+            font-size: 0.9rem;
+        }
+
+        /* Table */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.5rem 0;
+            background: var(--bg-secondary);
+            border-radius: 0.75rem;
+            overflow: hidden;
+        }
+
+        th, td {
+            text-align: left;
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        th {
+            font-weight: 600;
+            color: var(--text-primary);
+            background: var(--bg-tertiary);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        td {
+            color: var(--text-secondary);
+        }
+
+        td code {
+            background: rgba(139, 92, 246, 0.15);
+            color: var(--accent-purple);
+            padding: 0.2rem 0.5rem;
+            border-radius: 0.3rem;
+            font-size: 0.85rem;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        /* Package Grid */
+        .package-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .package-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 1rem;
+            padding: 1.75rem;
+            transition: all 0.3s;
+        }
+
+        .package-card:hover {
+            background: var(--bg-tertiary);
+            transform: translateY(-4px);
+        }
+
+        .package-card .name {
+            font-family: 'Courier New', monospace;
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--accent-purple);
+            margin-bottom: 0.75rem;
+        }
+
+        .package-card .tools {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-bottom: 1rem;
+        }
+
+        .package-card .example {
+            background: rgba(0,0,0,0.3);
+            border-radius: 0.5rem;
+            padding: 0.75rem;
+            font-family: 'Courier New', monospace;
+            font-size: 0.8rem;
+            color: var(--accent-green);
+        }
+
+        /* Feature Grid */
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .feature-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 1rem;
+            padding: 1.75rem;
+            transition: all 0.3s;
+        }
+
+        .feature-card:hover {
+            background: var(--bg-tertiary);
+            transform: translateY(-4px);
+        }
+
+        .feature-card .icon {
+            font-size: 2.25rem;
+            margin-bottom: 1rem;
+        }
+
+        .feature-card h4 {
+            font-size: 1.15rem;
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+        }
+
+        .feature-card p {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            margin: 0;
+        }
+
+        .footer {
+            text-align: center;
+            padding: 3rem 2rem;
+            border-top: 1px solid var(--border);
+            color: var(--text-muted);
+        }
+
+        .footer a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .footer a:hover {
+            color: var(--accent-purple);
+        }
+
+        @media (max-width: 768px) {
+            .header h1 { font-size: 2rem; }
+            .hero-icon { font-size: 3.5rem; }
+            .hero h2 { font-size: 1.75rem; }
+            .feature-grid { grid-template-columns: 1fr; }
+            .package-grid { grid-template-columns: 1fr; }
+            .nav { flex-wrap: wrap; gap: 1rem; }
+        }
+
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-primary); }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔧 Dynamic Tools</h1>
+        <p class="subtitle">Runtime tool management and loading</p>
+        <div class="badges">
+            <span class="badge purple">Package Loading</span>
+            <span class="badge green">GitHub Fetch</span>
+            <span class="badge blue">Hot Directory</span>
+        </div>
+        <nav class="nav">
+            <a href="index.html">🏠 Home</a>
+            <a href="hot-reload.html">🔄 Hot Reload</a>
+            <a href="mcp.html">🔗 MCP</a>
+            <a href="zenoh.html">🔌 Zenoh</a>
+            <a href="https://github.com/cagataycali/devduck">📦 GitHub</a>
+        </nav>
+    </div>
+
+    <div class="container">
+        <div class="hero">
+            <div class="hero-icon">🔧</div>
+            <h2>Extend On The Fly</h2>
+            <p>Load tools from Python packages, fetch from GitHub, or drop files in ./tools/. No restart needed. Full Python ecosystem access.</p>
+        </div>
+
+        <!-- Configuration -->
+        <section>
+            <h2>⚙️ Tool Configuration</h2>
+            <p>Configure which tools load at startup via <code class="inline-code">DEVDUCK_TOOLS</code> environment variable.</p>
+            
+            <h3>Format</h3>
+            <pre><code class="language-bash"># Format: package1:tool1,tool2;package2:tool3,tool4
+export DEVDUCK_TOOLS="strands_tools:shell,editor;devduck.tools:system_prompt,websocket"
+
+devduck</code></pre>
+
+            <h3>Default Configuration</h3>
+            <pre><code class="language-bash"># Default tools loaded:
+devduck.tools:system_prompt,store_in_kb,websocket,zenoh_peer
+strands_tools:retrieve,shell,file_read,file_write,editor,use_agent</code></pre>
+        </section>
+
+        <!-- manage_tools -->
+        <section>
+            <h2>🛠️ manage_tools API</h2>
+            <p>Runtime tool management—list, add, remove, or reload tools without restarting.</p>
+            
+            <table>
+                <thead>
+                    <tr>
+                        <th>Action</th>
+                        <th>Description</th>
+                        <th>Parameters</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>list</code></td>
+                        <td>List all currently loaded tools</td>
+                        <td>—</td>
+                    </tr>
+                    <tr>
+                        <td><code>add</code></td>
+                        <td>Add tools from package or file</td>
+                        <td><code>package</code>, <code>tool_names</code>, <code>tool_path</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>remove</code></td>
+                        <td>Remove tools by name</td>
+                        <td><code>tool_names</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>reload</code></td>
+                        <td>Reload specific tools or all</td>
+                        <td><code>tool_names</code> (optional)</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>Examples</h3>
+            <pre><code class="language-python"># List all tools
+manage_tools(action="list")
+
+# Add tools from a package
+manage_tools(
+    action="add",
+    package="strands_fun_tools",
+    tool_names="clipboard,screen_reader"
+)
+
+# Add tool from file
+manage_tools(
+    action="add",
+    tool_path="./my_custom_tool.py"
+)
+
+# Remove tools
+manage_tools(
+    action="remove",
+    tool_names="shell,editor"
+)
+
+# Reload specific tools
+manage_tools(
+    action="reload",
+    tool_names="shell"
+)
+
+# Reload all (restarts agent)
+manage_tools(action="reload")</code></pre>
+        </section>
+
+        <!-- fetch_github_tool -->
+        <section>
+            <h2>🐙 Fetch from GitHub</h2>
+            <p>Download and load tools directly from GitHub repositories.</p>
+            
+            <pre><code class="language-python"># Fetch tool from GitHub
+fetch_github_tool(
+    github_url="https://github.com/cagataycali/devduck/blob/main/devduck/tools/websocket.py",
+    tool_name="websocket"  # Optional, auto-detected from filename
+)
+
+# Tool is immediately available!
+websocket(action="status")</code></pre>
+
+            <h3>Supported URL Formats</h3>
+            <pre><code class="language-bash"># All these work:
+https://github.com/owner/repo/blob/main/tools/my_tool.py
+https://github.com/owner/repo/tree/main/tools/my_tool.py  
+https://raw.githubusercontent.com/owner/repo/main/tools/my_tool.py</code></pre>
+        </section>
+
+        <!-- Available Packages -->
+        <section>
+            <h2>📦 Available Tool Packages</h2>
+            
+            <div class="package-grid">
+                <div class="package-card">
+                    <div class="name">devduck.tools</div>
+                    <div class="tools">system_prompt, store_in_kb, websocket, zenoh_peer, ipc, tcp, mcp_server, scraper, tray, ambient_mode, speech_to_speech, state_manager</div>
+                    <div class="example">devduck.tools:websocket,zenoh_peer</div>
+                </div>
+                <div class="package-card">
+                    <div class="name">strands_tools</div>
+                    <div class="tools">shell, editor, file_read, file_write, retrieve, use_agent, calculator, environment, mcp_client, speak, slack</div>
+                    <div class="example">strands_tools:shell,editor</div>
+                </div>
+                <div class="package-card">
+                    <div class="name">strands_fun_tools</div>
+                    <div class="tools">listen, cursor, clipboard, screen_reader, bluetooth, yolo_vision</div>
+                    <div class="example">strands_fun_tools:clipboard</div>
+                </div>
+                <div class="package-card">
+                    <div class="name">strands_google</div>
+                    <div class="tools">use_google, google_auth</div>
+                    <div class="example">strands_google:use_google</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tool Directory -->
+        <section>
+            <h2>📁 Tool Directory</h2>
+            <p>Drop .py files in <code class="inline-code">./tools/</code> for instant availability.</p>
+            
+            <pre><code class="language-python"># Create ./tools/my_tool.py
+from strands import tool
+
+@tool
+def my_custom_tool(param: str) -> dict:
+    """
+    My custom tool description.
+    
+    Args:
+        param: Input parameter
+        
+    Returns:
+        Dict with status and content
+    """
+    return {
+        "status": "success",
+        "content": [{"text": f"Processed: {param}"}]
+    }
+
+# Save → Tool is immediately available via hot-reload!</code></pre>
+
+            <h3>Disable Auto-Loading</h3>
+            <pre><code class="language-bash"># Disable loading from ./tools/ directory
+export DEVDUCK_LOAD_TOOLS_FROM_DIR=false</code></pre>
+        </section>
+
+        <!-- Features -->
+        <section>
+            <h2>✨ Features</h2>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="icon">📦</div>
+                    <h4>Package Loading</h4>
+                    <p>Load tools from any installed Python package at runtime.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🐙</div>
+                    <h4>GitHub Fetch</h4>
+                    <p>Download and register tools directly from GitHub URLs.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">📁</div>
+                    <h4>Hot Directory</h4>
+                    <p>Drop .py files in ./tools/ for automatic loading.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🔄</div>
+                    <h4>Runtime Management</h4>
+                    <p>Add, remove, and reload tools without restart.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">⚙️</div>
+                    <h4>Env Configuration</h4>
+                    <p>Configure startup tools via DEVDUCK_TOOLS variable.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🔌</div>
+                    <h4>MCP Integration</h4>
+                    <p>Load tools from MCP servers via MCP_SERVERS variable.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- DevDuck Tools Reference -->
+        <section>
+            <h2>📋 DevDuck Tools Reference</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Tool</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>system_prompt</code></td>
+                        <td>View, update, and sync system prompts</td>
+                    </tr>
+                    <tr>
+                        <td><code>store_in_kb</code></td>
+                        <td>Store content in Bedrock Knowledge Base</td>
+                    </tr>
+                    <tr>
+                        <td><code>websocket</code></td>
+                        <td>WebSocket server for real-time streaming</td>
+                    </tr>
+                    <tr>
+                        <td><code>zenoh_peer</code></td>
+                        <td>P2P networking with auto-discovery</td>
+                    </tr>
+                    <tr>
+                        <td><code>tcp</code></td>
+                        <td>TCP server for agent communication</td>
+                    </tr>
+                    <tr>
+                        <td><code>ipc</code></td>
+                        <td>Unix socket IPC communication</td>
+                    </tr>
+                    <tr>
+                        <td><code>mcp_server</code></td>
+                        <td>Expose DevDuck as MCP server</td>
+                    </tr>
+                    <tr>
+                        <td><code>ambient_mode</code></td>
+                        <td>Control background thinking mode</td>
+                    </tr>
+                    <tr>
+                        <td><code>speech_to_speech</code></td>
+                        <td>Voice interaction capabilities</td>
+                    </tr>
+                    <tr>
+                        <td><code>fetch_github_tool</code></td>
+                        <td>Fetch tools from GitHub URLs</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+    </div>
+
+    <div class="footer">
+        <p>🦆 DevDuck Dynamic Tools &middot; <a href="index.html">Home</a> &middot; <a href="https://github.com/cagataycali/devduck">GitHub</a></p>
+    </div>
+
+    <script>
+        hljs.highlightAll();
+    </script>
+</body>
+</html>

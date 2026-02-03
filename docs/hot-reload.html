@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔄 Hot Reload - DevDuck Live Development</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-tertiary: #1a1a25;
+            --border: rgba(255, 255, 255, 0.08);
+            --text-primary: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.7);
+            --text-muted: rgba(255, 255, 255, 0.4);
+            --accent-purple: #8b5cf6;
+            --accent-blue: #3b82f6;
+            --accent-green: #10b981;
+            --accent-yellow: #f59e0b;
+            --accent-red: #ef4444;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.7;
+        }
+
+        .header {
+            background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+            padding: 3rem 2rem;
+            text-align: center;
+            border-bottom: 1px solid var(--border);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 800px;
+            height: 400px;
+            background: radial-gradient(ellipse, rgba(16, 185, 129, 0.15) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .header h1 {
+            font-size: 2.75rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.7) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            position: relative;
+        }
+
+        .header .subtitle {
+            color: var(--text-secondary);
+            font-size: 1.2rem;
+            margin-bottom: 1rem;
+        }
+
+        .header .badges {
+            display: flex;
+            justify-content: center;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.4rem 1rem;
+            border-radius: 2rem;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .badge.green { background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.4); color: var(--accent-green); }
+        .badge.yellow { background: rgba(245, 158, 11, 0.2); border: 1px solid rgba(245, 158, 11, 0.4); color: var(--accent-yellow); }
+        .badge.blue { background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.4); color: var(--accent-blue); }
+
+        .nav {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-top: 1.5rem;
+            position: relative;
+        }
+
+        .nav a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+            padding: 0.5rem 0;
+            border-bottom: 2px solid transparent;
+        }
+
+        .nav a:hover {
+            color: var(--text-primary);
+            border-color: var(--accent-green);
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 4rem 2rem;
+        }
+
+        section {
+            margin-bottom: 5rem;
+        }
+
+        h2 {
+            font-size: 1.85rem;
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        h3 {
+            font-size: 1.3rem;
+            margin: 2.5rem 0 1rem;
+            color: var(--text-primary);
+        }
+
+        p {
+            margin-bottom: 1rem;
+            color: var(--text-secondary);
+        }
+
+        .hero {
+            text-align: center;
+            padding: 4rem 2rem;
+            background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+            border: 1px solid var(--border);
+            border-radius: 1.5rem;
+            margin-bottom: 4rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero-icon {
+            font-size: 5rem;
+            margin-bottom: 1.5rem;
+            position: relative;
+            animation: spin 4s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .hero h2 {
+            border: none;
+            font-size: 2.25rem;
+            margin-bottom: 1rem;
+            justify-content: center;
+        }
+
+        .hero p {
+            font-size: 1.15rem;
+            color: var(--text-secondary);
+            max-width: 650px;
+            margin: 0 auto;
+        }
+
+        /* Flow Diagram */
+        .flow-diagram {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 1rem;
+            padding: 2rem;
+            margin: 2rem 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            overflow-x: auto;
+        }
+
+        .flow-diagram .highlight { color: var(--accent-green); }
+        .flow-diagram .warning { color: var(--accent-yellow); }
+        .flow-diagram .comment { color: var(--text-muted); }
+
+        /* Terminal */
+        .terminal {
+            background: #0d0d0d;
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            overflow: hidden;
+            margin: 2rem 0;
+            font-family: 'Courier New', monospace;
+        }
+
+        .terminal-header {
+            background: var(--bg-tertiary);
+            padding: 0.75rem 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .terminal-header .dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .terminal-header .dot.red { background: #ff5f56; }
+        .terminal-header .dot.yellow { background: #ffbd2e; }
+        .terminal-header .dot.green { background: #27ca40; }
+
+        .terminal-header .title {
+            margin-left: 0.75rem;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .terminal-body {
+            padding: 1.5rem;
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+
+        .terminal-body .line { margin: 0.25rem 0; }
+        .terminal-body .prompt { color: var(--accent-green); }
+        .terminal-body .output { color: var(--text-secondary); }
+        .terminal-body .success { color: var(--accent-green); }
+        .terminal-body .warning { color: var(--accent-yellow); }
+        .terminal-body .dim { color: var(--text-muted); }
+
+        /* Code Blocks */
+        pre {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+
+        code {
+            font-family: 'Courier New', Consolas, monospace;
+            font-size: 0.9rem;
+        }
+
+        .inline-code {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--accent-green);
+            padding: 0.2rem 0.5rem;
+            border-radius: 0.3rem;
+            font-size: 0.9rem;
+        }
+
+        /* Feature Grid */
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .feature-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 1rem;
+            padding: 1.75rem;
+            transition: all 0.3s;
+        }
+
+        .feature-card:hover {
+            background: var(--bg-tertiary);
+            transform: translateY(-4px);
+        }
+
+        .feature-card .icon {
+            font-size: 2.25rem;
+            margin-bottom: 1rem;
+        }
+
+        .feature-card h4 {
+            font-size: 1.15rem;
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+        }
+
+        .feature-card p {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            margin: 0;
+        }
+
+        /* Protection Box */
+        .protection-box {
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(245, 158, 11, 0.05) 100%);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            border-radius: 1rem;
+            padding: 2rem;
+            margin: 2rem 0;
+        }
+
+        .protection-box h3 {
+            color: var(--accent-yellow);
+            margin-top: 0;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .footer {
+            text-align: center;
+            padding: 3rem 2rem;
+            border-top: 1px solid var(--border);
+            color: var(--text-muted);
+        }
+
+        .footer a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .footer a:hover {
+            color: var(--accent-green);
+        }
+
+        @media (max-width: 768px) {
+            .header h1 { font-size: 2rem; }
+            .hero-icon { font-size: 3.5rem; }
+            .hero h2 { font-size: 1.75rem; }
+            .feature-grid { grid-template-columns: 1fr; }
+            .nav { flex-wrap: wrap; gap: 1rem; }
+        }
+
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-primary); }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔄 Hot Reload</h1>
+        <p class="subtitle">Live development without restarts</p>
+        <div class="badges">
+            <span class="badge green">File Watcher</span>
+            <span class="badge yellow">Agent Protection</span>
+            <span class="badge blue">Tool Hot-Load</span>
+        </div>
+        <nav class="nav">
+            <a href="index.html">🏠 Home</a>
+            <a href="tools.html">🔧 Tools</a>
+            <a href="zenoh.html">🔌 Zenoh</a>
+            <a href="session-recording.html">🎬 Recording</a>
+            <a href="https://github.com/cagataycali/devduck">📦 GitHub</a>
+        </nav>
+    </div>
+
+    <div class="container">
+        <div class="hero">
+            <div class="hero-icon">🔄</div>
+            <h2>Zero-Restart Development</h2>
+            <p>Modify DevDuck's code while it's running. Changes apply instantly without losing context. Protected during agent execution.</p>
+        </div>
+
+        <!-- How It Works -->
+        <section>
+            <h2>🔄 How It Works</h2>
+            <p>DevDuck watches its own source file and automatically reloads when changes are detected.</p>
+            
+            <div class="flow-diagram">
+<pre>┌─────────────────────────────────────────────────────────────────────┐
+│                        <span class="highlight">Hot Reload System</span>                            │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│   File Watcher Thread                                               │
+│   │                                                                 │
+│   ├── <span class="comment">Every 1 second:</span>                                            │
+│   │   └── Check devduck/__init__.py mtime                           │
+│   │                                                                 │
+│   ├── <span class="highlight">Change Detected?</span>                                            │
+│   │   │                                                             │
+│   │   ├── <span class="warning">Agent Executing?</span>                                        │
+│   │   │   └── Set _reload_pending = True                            │
+│   │   │   └── Wait for agent to finish                              │
+│   │   │                                                             │
+│   │   └── Agent Idle?                                               │
+│   │       └── <span class="highlight">Trigger os.execv() → Full Process Restart</span>           │
+│   │                                                                 │
+│   └── <span class="comment">3 second debounce to prevent rapid reloads</span>                  │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘</pre>
+            </div>
+        </section>
+
+        <!-- Demo -->
+        <section>
+            <h2>⚡ Live Demo</h2>
+            
+            <div class="terminal">
+                <div class="terminal-header">
+                    <span class="dot red"></span>
+                    <span class="dot yellow"></span>
+                    <span class="dot green"></span>
+                    <span class="title">devduck — hot reload</span>
+                </div>
+                <div class="terminal-body">
+                    <div class="line"><span class="prompt">🦆</span> <span class="dim"># DevDuck running normally...</span></div>
+                    <div class="line"></div>
+                    <div class="line"><span class="dim"># You edit devduck/__init__.py in another terminal</span></div>
+                    <div class="line"></div>
+                    <div class="line"><span class="success">🦆 Detected changes in __init__.py!</span></div>
+                    <div class="line"><span class="success">🦆 Restarting process with fresh code...</span></div>
+                    <div class="line"></div>
+                    <div class="line"><span class="output">🦆 DevDuck</span></div>
+                    <div class="line"><span class="output">📝 Logs: /tmp/devduck/logs</span></div>
+                    <div class="line"><span class="output">🦆 ✓ Zenoh peer: hostname-abc123</span></div>
+                    <div class="line"></div>
+                    <div class="line"><span class="prompt">🦆</span> <span class="dim"># Ready with your changes!</span></div>
+                </div>
+            </div>
+
+            <h3>During Agent Execution</h3>
+            <div class="terminal">
+                <div class="terminal-header">
+                    <span class="dot red"></span>
+                    <span class="dot yellow"></span>
+                    <span class="dot green"></span>
+                    <span class="title">devduck — protected reload</span>
+                </div>
+                <div class="terminal-body">
+                    <div class="line"><span class="prompt">🦆</span> run a complex task...</div>
+                    <div class="line"><span class="output">🛠️ Tool #1: shell</span></div>
+                    <div class="line"></div>
+                    <div class="line"><span class="dim"># You edit code while agent is working...</span></div>
+                    <div class="line"></div>
+                    <div class="line"><span class="warning">🦆 Agent is currently executing - reload will trigger after completion</span></div>
+                    <div class="line"></div>
+                    <div class="line"><span class="output">✅ Tool completed successfully</span></div>
+                    <div class="line"><span class="output">[Agent finishes response]</span></div>
+                    <div class="line"></div>
+                    <div class="line"><span class="success">🦆 Agent finished - triggering pending hot-reload...</span></div>
+                    <div class="line"><span class="success">🦆 Restarting process with fresh code...</span></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Agent Protection -->
+        <section>
+            <h2>🛡️ Agent Protection</h2>
+            
+            <div class="protection-box">
+                <h3>⚠️ Safe Reload Mechanism</h3>
+                <p>Hot reload never interrupts a running agent. When code changes are detected during execution:</p>
+                <ul style="color: var(--text-secondary); padding-left: 1.5rem; margin-top: 1rem;">
+                    <li style="margin: 0.5rem 0;"><code class="inline-code">_reload_pending</code> flag is set</li>
+                    <li style="margin: 0.5rem 0;">Agent continues processing normally</li>
+                    <li style="margin: 0.5rem 0;">After agent completes, reload triggers automatically</li>
+                    <li style="margin: 0.5rem 0;">No lost work, no corrupted state</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- Tool Hot Loading -->
+        <section>
+            <h2>🔧 Tool Hot Loading</h2>
+            <p>Create new tools by saving .py files to the <code class="inline-code">./tools/</code> directory.</p>
+            
+            <pre><code class="language-python"># Create ./tools/my_tool.py
+from strands import tool
+
+@tool
+def my_custom_tool(param: str) -> dict:
+    """My custom tool description."""
+    return {
+        "status": "success",
+        "content": [{"text": f"Processed: {param}"}]
+    }
+
+# Save the file → Tool is immediately available!
+# No restart needed</code></pre>
+
+            <h3>Disable Tool Auto-Loading</h3>
+            <pre><code class="language-bash"># Disable auto-loading tools from ./tools/ directory
+export DEVDUCK_LOAD_TOOLS_FROM_DIR=false
+devduck</code></pre>
+        </section>
+
+        <!-- Features -->
+        <section>
+            <h2>✨ Features</h2>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="icon">👁️</div>
+                    <h4>File Watcher</h4>
+                    <p>Background thread monitors source file every second for changes.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">⏱️</div>
+                    <h4>Debounce</h4>
+                    <p>3-second debounce prevents rapid reloads during file saves.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🛡️</div>
+                    <h4>Execution Protection</h4>
+                    <p>Never interrupts running agent—waits for completion.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🔄</div>
+                    <h4>Full Restart</h4>
+                    <p>Uses os.execv() for clean process restart with fresh code.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🔧</div>
+                    <h4>Tool Directory</h4>
+                    <p>Drop .py files in ./tools/ for instant tool availability.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">📊</div>
+                    <h4>Status Tracking</h4>
+                    <p>Check watcher status via devduck.status()["file_watcher"].</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Python API -->
+        <section>
+            <h2>🐍 Python API</h2>
+            <pre><code class="language-python">import devduck
+
+# Check file watcher status
+status = devduck.status()
+print(status["file_watcher"])
+# {
+#     "enabled": True,
+#     "watching": "/path/to/devduck/__init__.py"
+# }
+
+# Manually trigger hot reload
+devduck.hot_reload()
+
+# Full restart (re-initializes everything)
+devduck.restart()</code></pre>
+        </section>
+
+        <!-- Configuration -->
+        <section>
+            <h2>⚙️ Configuration</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Variable</th>
+                        <th>Default</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>DEVDUCK_LOAD_TOOLS_FROM_DIR</code></td>
+                        <td>true</td>
+                        <td>Auto-load tools from ./tools/ directory</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+    </div>
+
+    <div class="footer">
+        <p>🦆 DevDuck Hot Reload &middot; <a href="index.html">Home</a> &middot; <a href="https://github.com/cagataycali/devduck">GitHub</a></p>
+    </div>
+
+    <script>
+        hljs.highlightAll();
+    </script>
+</body>
+</html>

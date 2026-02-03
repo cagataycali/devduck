@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔀 Multi-Agent - DevDuck Nested Agents & Workflows</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-tertiary: #1a1a25;
+            --border: rgba(255, 255, 255, 0.08);
+            --text-primary: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.7);
+            --text-muted: rgba(255, 255, 255, 0.4);
+            --accent-purple: #8b5cf6;
+            --accent-blue: #3b82f6;
+            --accent-green: #10b981;
+            --accent-yellow: #f59e0b;
+            --accent-pink: #ec4899;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.7;
+        }
+
+        .header {
+            background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+            padding: 3rem 2rem;
+            text-align: center;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .header h1 {
+            font-size: 2.75rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.7) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header .subtitle { color: var(--text-secondary); font-size: 1.2rem; margin-bottom: 1rem; }
+
+        .header .badges { display: flex; justify-content: center; gap: 0.75rem; flex-wrap: wrap; }
+
+        .badge {
+            display: inline-flex; align-items: center; gap: 0.4rem;
+            padding: 0.4rem 1rem; border-radius: 2rem; font-size: 0.8rem; font-weight: 600;
+        }
+
+        .badge.purple { background: rgba(139, 92, 246, 0.2); border: 1px solid rgba(139, 92, 246, 0.4); color: var(--accent-purple); }
+        .badge.pink { background: rgba(236, 72, 153, 0.2); border: 1px solid rgba(236, 72, 153, 0.4); color: var(--accent-pink); }
+        .badge.blue { background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.4); color: var(--accent-blue); }
+
+        .nav { display: flex; justify-content: center; gap: 2rem; margin-top: 1.5rem; }
+        .nav a { color: var(--text-muted); text-decoration: none; font-size: 0.9rem; }
+        .nav a:hover { color: var(--text-primary); }
+
+        .container { max-width: 1000px; margin: 0 auto; padding: 4rem 2rem; }
+        section { margin-bottom: 5rem; }
+
+        h2 { font-size: 1.85rem; margin-bottom: 1.5rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border); }
+        h3 { font-size: 1.3rem; margin: 2.5rem 0 1rem; }
+        p { margin-bottom: 1rem; color: var(--text-secondary); }
+
+        .hero {
+            text-align: center; padding: 4rem 2rem;
+            background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+            border: 1px solid var(--border); border-radius: 1.5rem; margin-bottom: 4rem;
+        }
+        .hero-icon { font-size: 5rem; margin-bottom: 1.5rem; }
+        .hero h2 { border: none; font-size: 2.25rem; margin-bottom: 1rem; justify-content: center; }
+        .hero p { font-size: 1.15rem; max-width: 650px; margin: 0 auto; }
+
+        pre {
+            background: var(--bg-secondary); border: 1px solid var(--border);
+            border-radius: 0.75rem; padding: 1.5rem; overflow-x: auto; margin: 1rem 0;
+        }
+        code { font-family: 'Courier New', monospace; font-size: 0.9rem; }
+        .inline-code { background: rgba(139, 92, 246, 0.15); color: var(--accent-purple); padding: 0.2rem 0.5rem; border-radius: 0.3rem; }
+
+        table { width: 100%; border-collapse: collapse; margin: 1.5rem 0; background: var(--bg-secondary); border-radius: 0.75rem; overflow: hidden; }
+        th, td { text-align: left; padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); }
+        th { font-weight: 600; background: var(--bg-tertiary); font-size: 0.85rem; text-transform: uppercase; }
+        td { color: var(--text-secondary); }
+        td code { background: rgba(139, 92, 246, 0.15); color: var(--accent-purple); padding: 0.2rem 0.5rem; border-radius: 0.3rem; }
+        tr:last-child td { border-bottom: none; }
+
+        .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; margin: 2rem 0; }
+        .feature-card {
+            background: var(--bg-secondary); border: 1px solid var(--border);
+            border-radius: 1rem; padding: 1.75rem; transition: all 0.3s;
+        }
+        .feature-card:hover { transform: translateY(-4px); background: var(--bg-tertiary); }
+        .feature-card .icon { font-size: 2.25rem; margin-bottom: 1rem; }
+        .feature-card h4 { font-size: 1.15rem; margin-bottom: 0.5rem; }
+        .feature-card p { font-size: 0.9rem; color: var(--text-muted); margin: 0; }
+
+        .diagram {
+            background: var(--bg-secondary); border: 1px solid var(--border);
+            border-radius: 1rem; padding: 2rem; margin: 2rem 0;
+            font-family: 'Courier New', monospace; font-size: 0.85rem; overflow-x: auto;
+        }
+        .diagram .highlight { color: var(--accent-purple); }
+        .diagram .model { color: var(--accent-blue); }
+        .diagram .comment { color: var(--text-muted); }
+
+        .footer { text-align: center; padding: 3rem 2rem; border-top: 1px solid var(--border); color: var(--text-muted); }
+        .footer a { color: var(--text-secondary); text-decoration: none; }
+        .footer a:hover { color: var(--accent-purple); }
+
+        @media (max-width: 768px) {
+            .header h1 { font-size: 2rem; }
+            .hero-icon { font-size: 3.5rem; }
+            .feature-grid { grid-template-columns: 1fr; }
+            .nav { flex-wrap: wrap; gap: 1rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔀 Multi-Agent</h1>
+        <p class="subtitle">Nested agents, multi-model workflows</p>
+        <div class="badges">
+            <span class="badge purple">use_agent</span>
+            <span class="badge pink">Multi-Model</span>
+            <span class="badge blue">Tool Isolation</span>
+        </div>
+        <nav class="nav">
+            <a href="index.html">🏠 Home</a>
+            <a href="models.html">🤖 Models</a>
+            <a href="zenoh.html">🔌 Zenoh</a>
+            <a href="https://github.com/cagataycali/devduck">📦 GitHub</a>
+        </nav>
+    </div>
+
+    <div class="container">
+        <div class="hero">
+            <div class="hero-icon">🔀</div>
+            <h2>Agents Within Agents</h2>
+            <p>Spawn isolated sub-agents with different models, system prompts, and tool sets. Perfect for specialized tasks, model comparison, and complex workflows.</p>
+        </div>
+
+        <!-- How It Works -->
+        <section>
+            <h2>🔄 How It Works</h2>
+            
+            <div class="diagram">
+<pre>┌─────────────────────────────────────────────────────────────────────┐
+│                        <span class="highlight">Parent Agent (DevDuck)</span>                       │
+│                        Model: <span class="model">Bedrock Claude</span>                         │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│   User: "Write a poem, then analyze it mathematically"              │
+│                                                                     │
+│   ┌───────────────────────────────────────┐                         │
+│   │  <span class="highlight">use_agent()</span>                          │                         │
+│   │  model_provider: <span class="model">"anthropic"</span>         │                         │
+│   │  system_prompt: "You are a poet"      │                         │
+│   │  tools: ["file_write"]                │                         │
+│   │                                       │                         │
+│   │  <span class="comment">→ Spawns isolated sub-agent</span>         │                         │
+│   │  <span class="comment">→ Different model provider</span>          │                         │
+│   │  <span class="comment">→ Limited tool access</span>               │                         │
+│   └───────────────────────────────────────┘                         │
+│                          │                                          │
+│                          ▼                                          │
+│   ┌───────────────────────────────────────┐                         │
+│   │  <span class="highlight">use_agent()</span>                          │                         │
+│   │  model_provider: <span class="model">"openai"</span>            │                         │
+│   │  system_prompt: "You are a math expert"│                        │
+│   │  tools: ["calculator"]                │                         │
+│   └───────────────────────────────────────┘                         │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘</pre>
+            </div>
+        </section>
+
+        <!-- use_agent Tool -->
+        <section>
+            <h2>🛠️ use_agent Tool</h2>
+            
+            <table>
+                <thead>
+                    <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>prompt</code></td>
+                        <td>string (required)</td>
+                        <td>The task for the sub-agent</td>
+                    </tr>
+                    <tr>
+                        <td><code>system_prompt</code></td>
+                        <td>string (required)</td>
+                        <td>Custom personality/instructions</td>
+                    </tr>
+                    <tr>
+                        <td><code>model_provider</code></td>
+                        <td>string</td>
+                        <td>bedrock, anthropic, openai, ollama, env, etc.</td>
+                    </tr>
+                    <tr>
+                        <td><code>model_settings</code></td>
+                        <td>object</td>
+                        <td>{"model_id": "...", "params": {...}}</td>
+                    </tr>
+                    <tr>
+                        <td><code>tools</code></td>
+                        <td>array</td>
+                        <td>Tool names to make available (defaults to parent's tools)</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Examples -->
+        <section>
+            <h2>📝 Examples</h2>
+            
+            <h3>Different Model for Creative Task</h3>
+            <pre><code class="language-python"># Use Anthropic for creative writing
+use_agent(
+    prompt="Write a haiku about artificial intelligence",
+    system_prompt="You are a minimalist poet who writes profound haikus.",
+    model_provider="anthropic"
+)</code></pre>
+
+            <h3>Local Model for Privacy</h3>
+            <pre><code class="language-python"># Use local Ollama for sensitive data
+use_agent(
+    prompt="Summarize this confidential document",
+    system_prompt="You summarize documents concisely.",
+    model_provider="ollama",
+    model_settings={"model_id": "qwen3:8b"}
+)</code></pre>
+
+            <h3>Limited Tools for Safety</h3>
+            <pre><code class="language-python"># Sub-agent with only read access
+use_agent(
+    prompt="Analyze the codebase structure",
+    system_prompt="You analyze code without making changes.",
+    tools=["file_read", "shell"]  # No file_write, editor
+)</code></pre>
+
+            <h3>Model Comparison</h3>
+            <pre><code class="language-python"># Compare responses from different models
+question = "Explain quantum entanglement simply"
+
+bedrock_answer = use_agent(
+    prompt=question,
+    system_prompt="You explain complex topics simply.",
+    model_provider="bedrock"
+)
+
+openai_answer = use_agent(
+    prompt=question,
+    system_prompt="You explain complex topics simply.",
+    model_provider="openai"
+)
+
+# Compare the responses...</code></pre>
+
+            <h3>Environment-Based Model</h3>
+            <pre><code class="language-python"># Use environment variables for model config
+import os
+os.environ["STRANDS_PROVIDER"] = "litellm"
+os.environ["STRANDS_MODEL_ID"] = "openai/gpt-4o"
+
+use_agent(
+    prompt="Analyze this data",
+    system_prompt="You are a data analyst.",
+    model_provider="env"  # Uses STRANDS_* env vars
+)</code></pre>
+        </section>
+
+        <!-- Use Cases -->
+        <section>
+            <h2>💡 Use Cases</h2>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="icon">🎨</div>
+                    <h4>Specialized Tasks</h4>
+                    <p>Use different models for creative vs analytical tasks.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🔒</div>
+                    <h4>Tool Isolation</h4>
+                    <p>Limit sub-agent capabilities for safety.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">⚖️</div>
+                    <h4>Model Comparison</h4>
+                    <p>Compare outputs from different providers.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">💰</div>
+                    <h4>Cost Optimization</h4>
+                    <p>Use cheaper models for simple sub-tasks.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🏠</div>
+                    <h4>Local Processing</h4>
+                    <p>Keep sensitive data on local models.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🔄</div>
+                    <h4>Fallback Strategies</h4>
+                    <p>Switch providers if primary fails.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Supported Providers -->
+        <section>
+            <h2>🤖 Supported Model Providers</h2>
+            <table>
+                <thead>
+                    <tr><th>Provider</th><th>model_provider value</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>Amazon Bedrock</td><td><code>"bedrock"</code></td></tr>
+                    <tr><td>Anthropic</td><td><code>"anthropic"</code></td></tr>
+                    <tr><td>OpenAI</td><td><code>"openai"</code></td></tr>
+                    <tr><td>GitHub Models</td><td><code>"github"</code></td></tr>
+                    <tr><td>Google Gemini</td><td><code>"gemini"</code></td></tr>
+                    <tr><td>Ollama</td><td><code>"ollama"</code></td></tr>
+                    <tr><td>LiteLLM</td><td><code>"litellm"</code></td></tr>
+                    <tr><td>LlamaAPI</td><td><code>"llamaapi"</code></td></tr>
+                    <tr><td>Environment</td><td><code>"env"</code></td></tr>
+                    <tr><td>Parent's Model</td><td><code>None</code> (default)</td></tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Zenoh Multi-Agent -->
+        <section>
+            <h2>🌐 Distributed Multi-Agent with Zenoh</h2>
+            <p>For true distributed multi-agent, use <a href="zenoh.html" style="color: var(--accent-purple);">Zenoh P2P</a>:</p>
+            
+            <pre><code class="language-python"># Terminal 1: DevDuck instance A
+zenoh_peer(action="start")
+
+# Terminal 2: DevDuck instance B  
+zenoh_peer(action="start")
+
+# Terminal 1: Broadcast to all instances
+zenoh_peer(
+    action="broadcast",
+    message="analyze the codebase and report findings"
+)
+# Both instances work on the task independently!</code></pre>
+        </section>
+    </div>
+
+    <div class="footer">
+        <p>🦆 DevDuck Multi-Agent &middot; <a href="index.html">Home</a> &middot; <a href="https://github.com/cagataycali/devduck">GitHub</a></p>
+    </div>
+    <script>hljs.highlightAll();</script>
+</body>
+</html>

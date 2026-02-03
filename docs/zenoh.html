@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔌 Zenoh P2P - DevDuck Multi-Instance Networking</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-tertiary: #1a1a25;
+            --border: rgba(255, 255, 255, 0.08);
+            --text-primary: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.7);
+            --text-muted: rgba(255, 255, 255, 0.4);
+            --accent-purple: #8b5cf6;
+            --accent-blue: #3b82f6;
+            --accent-green: #10b981;
+            --accent-yellow: #f59e0b;
+            --accent-cyan: #06b6d4;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.7;
+        }
+
+        .header {
+            background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+            padding: 3rem 2rem;
+            text-align: center;
+            border-bottom: 1px solid var(--border);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 800px;
+            height: 400px;
+            background: radial-gradient(ellipse, rgba(6, 182, 212, 0.15) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .header h1 {
+            font-size: 2.75rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.7) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            position: relative;
+        }
+
+        .header .subtitle {
+            color: var(--text-secondary);
+            font-size: 1.2rem;
+            margin-bottom: 1rem;
+        }
+
+        .header .badges {
+            display: flex;
+            justify-content: center;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.4rem 1rem;
+            border-radius: 2rem;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .badge.cyan { background: rgba(6, 182, 212, 0.2); border: 1px solid rgba(6, 182, 212, 0.4); color: var(--accent-cyan); }
+        .badge.green { background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.4); color: var(--accent-green); }
+        .badge.purple { background: rgba(139, 92, 246, 0.2); border: 1px solid rgba(139, 92, 246, 0.4); color: var(--accent-purple); }
+
+        .nav {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-top: 1.5rem;
+            position: relative;
+        }
+
+        .nav a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+            padding: 0.5rem 0;
+            border-bottom: 2px solid transparent;
+        }
+
+        .nav a:hover {
+            color: var(--text-primary);
+            border-color: var(--accent-cyan);
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 4rem 2rem;
+        }
+
+        section {
+            margin-bottom: 5rem;
+        }
+
+        h2 {
+            font-size: 1.85rem;
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        h3 {
+            font-size: 1.3rem;
+            margin: 2.5rem 0 1rem;
+            color: var(--text-primary);
+        }
+
+        p {
+            margin-bottom: 1rem;
+            color: var(--text-secondary);
+        }
+
+        .hero {
+            text-align: center;
+            padding: 4rem 2rem;
+            background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+            border: 1px solid var(--border);
+            border-radius: 1.5rem;
+            margin-bottom: 4rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle at center, rgba(6, 182, 212, 0.05) 0%, transparent 50%);
+            animation: pulse 10s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 0.5; }
+            50% { transform: scale(1.1); opacity: 0.8; }
+        }
+
+        .hero-icon {
+            font-size: 5rem;
+            margin-bottom: 1.5rem;
+            position: relative;
+        }
+
+        .hero h2 {
+            border: none;
+            font-size: 2.25rem;
+            margin-bottom: 1rem;
+            justify-content: center;
+        }
+
+        .hero p {
+            font-size: 1.15rem;
+            color: var(--text-secondary);
+            max-width: 650px;
+            margin: 0 auto;
+        }
+
+        /* Network Diagram */
+        .network-diagram {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 1rem;
+            padding: 2rem;
+            margin: 2rem 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            line-height: 1.4;
+            overflow-x: auto;
+        }
+
+        .network-diagram .highlight { color: var(--accent-cyan); }
+        .network-diagram .peer { color: var(--accent-green); }
+        .network-diagram .comment { color: var(--text-muted); }
+
+        /* Terminal */
+        .terminal {
+            background: #0d0d0d;
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            overflow: hidden;
+            margin: 2rem 0;
+            font-family: 'Courier New', monospace;
+        }
+
+        .terminal-header {
+            background: var(--bg-tertiary);
+            padding: 0.75rem 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .terminal-header .dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .terminal-header .dot.red { background: #ff5f56; }
+        .terminal-header .dot.yellow { background: #ffbd2e; }
+        .terminal-header .dot.green { background: #27ca40; }
+
+        .terminal-header .title {
+            margin-left: 0.75rem;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .terminal-body {
+            padding: 1.5rem;
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+
+        .terminal-body .line { margin: 0.25rem 0; }
+        .terminal-body .prompt { color: var(--accent-green); }
+        .terminal-body .output { color: var(--text-secondary); }
+        .terminal-body .success { color: var(--accent-green); }
+        .terminal-body .info { color: var(--accent-cyan); }
+        .terminal-body .dim { color: var(--text-muted); }
+
+        /* Code Blocks */
+        pre {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+
+        code {
+            font-family: 'Courier New', Consolas, monospace;
+            font-size: 0.9rem;
+        }
+
+        .inline-code {
+            background: rgba(6, 182, 212, 0.15);
+            color: var(--accent-cyan);
+            padding: 0.2rem 0.5rem;
+            border-radius: 0.3rem;
+            font-size: 0.9rem;
+        }
+
+        /* Feature Grid */
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .feature-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 1rem;
+            padding: 1.75rem;
+            transition: all 0.3s;
+        }
+
+        .feature-card:hover {
+            background: var(--bg-tertiary);
+            transform: translateY(-4px);
+        }
+
+        .feature-card .icon {
+            font-size: 2.25rem;
+            margin-bottom: 1rem;
+        }
+
+        .feature-card h4 {
+            font-size: 1.15rem;
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+        }
+
+        .feature-card p {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            margin: 0;
+        }
+
+        /* Table */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.5rem 0;
+            background: var(--bg-secondary);
+            border-radius: 0.75rem;
+            overflow: hidden;
+        }
+
+        th, td {
+            text-align: left;
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        th {
+            font-weight: 600;
+            color: var(--text-primary);
+            background: var(--bg-tertiary);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        td {
+            color: var(--text-secondary);
+        }
+
+        td code {
+            background: rgba(6, 182, 212, 0.15);
+            color: var(--accent-cyan);
+            padding: 0.2rem 0.5rem;
+            border-radius: 0.3rem;
+            font-size: 0.85rem;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        /* Key Expressions */
+        .key-expr-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            margin: 1.5rem 0;
+        }
+
+        .key-expr {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 0.5rem;
+            padding: 1rem 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .key-expr .pattern {
+            font-family: 'Courier New', monospace;
+            color: var(--accent-cyan);
+            font-weight: 600;
+            min-width: 220px;
+        }
+
+        .key-expr .desc {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 3rem 2rem;
+            border-top: 1px solid var(--border);
+            color: var(--text-muted);
+        }
+
+        .footer a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .footer a:hover {
+            color: var(--accent-cyan);
+        }
+
+        @media (max-width: 768px) {
+            .header h1 { font-size: 2rem; }
+            .hero-icon { font-size: 3.5rem; }
+            .hero h2 { font-size: 1.75rem; }
+            .feature-grid { grid-template-columns: 1fr; }
+            .nav { flex-wrap: wrap; gap: 1rem; }
+            .key-expr { flex-direction: column; align-items: flex-start; }
+            .key-expr .pattern { min-width: auto; }
+        }
+
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-primary); }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔌 Zenoh P2P</h1>
+        <p class="subtitle">Multi-instance auto-discovery and communication</p>
+        <div class="badges">
+            <span class="badge cyan">Auto-Discovery</span>
+            <span class="badge green">Peer-to-Peer</span>
+            <span class="badge purple">Real-time Streaming</span>
+        </div>
+        <nav class="nav">
+            <a href="index.html">🏠 Home</a>
+            <a href="chat.html">💬 Chat</a>
+            <a href="ambient-mode.html">🌙 Ambient</a>
+            <a href="session-recording.html">🎬 Recording</a>
+            <a href="https://github.com/cagataycali/devduck">📦 GitHub</a>
+        </nav>
+    </div>
+
+    <div class="container">
+        <div class="hero">
+            <div class="hero-icon">🌐</div>
+            <h2>DevDuck Swarm</h2>
+            <p>Multiple DevDuck instances automatically find each other and communicate. Broadcast commands to all, or send to specific peers. No configuration needed.</p>
+        </div>
+
+        <!-- How It Works -->
+        <section>
+            <h2>🔄 How It Works</h2>
+            <p>Zenoh uses multicast scouting to automatically discover peers on the same network. No central server required.</p>
+            
+            <div class="network-diagram">
+<pre>┌─────────────────────────────────────────────────────────────────────┐
+│                     <span class="highlight">Zenoh Peer Network</span>                              │
+│                   (Multicast: 224.0.0.224:7446)                     │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│   <span class="peer">🦆 DevDuck-A</span>  ◄──────────────────────►  <span class="peer">🦆 DevDuck-B</span>            │
+│   (Terminal 1)        <span class="comment">heartbeat</span>           (Terminal 2)            │
+│        │                                        │                   │
+│        │    ┌──────────────────────────────┐    │                   │
+│        └───►│  <span class="highlight">devduck/broadcast</span>           │◄───┘                   │
+│             │  <span class="comment">"git pull && npm install"</span>  │                        │
+│             └──────────────────────────────┘                        │
+│                          │                                          │
+│                          ▼                                          │
+│             ┌──────────────────────────────┐                        │
+│             │  <span class="highlight">devduck/response/A/*</span>       │                        │
+│             │  <span class="comment">streaming chunks...</span>        │                        │
+│             └──────────────────────────────┘                        │
+│                                                                     │
+│   <span class="peer">🦆 DevDuck-C</span>  ◄─────────  <span class="comment">auto-discovered</span>  ─────────►  ...        │
+│   (Remote)                                                          │
+└─────────────────────────────────────────────────────────────────────┘</pre>
+            </div>
+        </section>
+
+        <!-- Quick Start -->
+        <section>
+            <h2>⚡ Quick Start</h2>
+            
+            <h3>Terminal 1 - Start First Instance</h3>
+            <div class="terminal">
+                <div class="terminal-header">
+                    <span class="dot red"></span>
+                    <span class="dot yellow"></span>
+                    <span class="dot green"></span>
+                    <span class="title">Terminal 1 — devduck</span>
+                </div>
+                <div class="terminal-body">
+                    <div class="line"><span class="prompt">$</span> devduck</div>
+                    <div class="line"><span class="output">🦆 ✓ Zenoh peer: hostname-abc123</span></div>
+                    <div class="line"></div>
+                    <div class="line"><span class="prompt">🦆</span> zenoh_peer(action="status")</div>
+                    <div class="line"><span class="info">🆔 Instance: hostname-abc123</span></div>
+                    <div class="line"><span class="dim">👥 Peers: 0</span></div>
+                </div>
+            </div>
+
+            <h3>Terminal 2 - Auto-Discovery</h3>
+            <div class="terminal">
+                <div class="terminal-header">
+                    <span class="dot red"></span>
+                    <span class="dot yellow"></span>
+                    <span class="dot green"></span>
+                    <span class="title">Terminal 2 — devduck</span>
+                </div>
+                <div class="terminal-body">
+                    <div class="line"><span class="prompt">$</span> devduck</div>
+                    <div class="line"><span class="output">🦆 ✓ Zenoh peer: hostname-def456</span></div>
+                    <div class="line"></div>
+                    <div class="line"><span class="prompt">🦆</span> zenoh_peer(action="list_peers")</div>
+                    <div class="line"><span class="success">👥 Discovered Peers (1):</span></div>
+                    <div class="line"><span class="info">  🦆 hostname-abc123</span></div>
+                    <div class="line"><span class="dim">     Host: mycomputer</span></div>
+                    <div class="line"><span class="dim">     Seen: 2.1s ago</span></div>
+                </div>
+            </div>
+
+            <h3>Broadcast to All Peers</h3>
+            <div class="terminal">
+                <div class="terminal-header">
+                    <span class="dot red"></span>
+                    <span class="dot yellow"></span>
+                    <span class="dot green"></span>
+                    <span class="title">Terminal 1 — broadcast</span>
+                </div>
+                <div class="terminal-body">
+                    <div class="line"><span class="prompt">🦆</span> zenoh_peer(action="broadcast", message="what directory are you in?")</div>
+                    <div class="line"></div>
+                    <div class="line"><span class="info">🦆 [hostname-def456] Processing...</span></div>
+                    <div class="line"><span class="output">I'm currently in /Users/cagatay/project-b</span></div>
+                    <div class="line"><span class="success">✅ [hostname-def456] Complete (12 chunks)</span></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Key Expressions -->
+        <section>
+            <h2>📡 Key Expressions</h2>
+            <p>Zenoh uses key expressions for pub/sub messaging:</p>
+            
+            <div class="key-expr-list">
+                <div class="key-expr">
+                    <span class="pattern">devduck/presence/{id}</span>
+                    <span class="desc">Heartbeat announcements (every 5s)</span>
+                </div>
+                <div class="key-expr">
+                    <span class="pattern">devduck/broadcast</span>
+                    <span class="desc">Commands to ALL peers</span>
+                </div>
+                <div class="key-expr">
+                    <span class="pattern">devduck/cmd/{id}</span>
+                    <span class="desc">Direct commands to specific peer</span>
+                </div>
+                <div class="key-expr">
+                    <span class="pattern">devduck/response/{requester}/{turn_id}</span>
+                    <span class="desc">Streaming responses back to requester</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Actions Reference -->
+        <section>
+            <h2>📋 Actions Reference</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Action</th>
+                        <th>Description</th>
+                        <th>Parameters</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>start</code></td>
+                        <td>Start Zenoh networking (auto-joins peer mesh)</td>
+                        <td><code>connect</code>, <code>listen</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>stop</code></td>
+                        <td>Stop Zenoh networking</td>
+                        <td>—</td>
+                    </tr>
+                    <tr>
+                        <td><code>status</code></td>
+                        <td>Show current status and peer count</td>
+                        <td>—</td>
+                    </tr>
+                    <tr>
+                        <td><code>list_peers</code></td>
+                        <td>List all discovered peers</td>
+                        <td>—</td>
+                    </tr>
+                    <tr>
+                        <td><code>broadcast</code></td>
+                        <td>Send command to ALL peers</td>
+                        <td><code>message</code>, <code>wait_time</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>send</code></td>
+                        <td>Send command to specific peer</td>
+                        <td><code>peer_id</code>, <code>message</code>, <code>wait_time</code></td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Remote Connections -->
+        <section>
+            <h2>🌍 Remote Connections</h2>
+            <p>Connect DevDuck instances across different networks using TCP endpoints.</p>
+            
+            <h3>Connect to Remote Peer/Router</h3>
+            <pre><code class="language-bash"># Via environment variable
+ZENOH_CONNECT="tcp/remote-host.example.com:7447" devduck
+
+# Via tool parameter
+zenoh_peer(action="start", connect="tcp/192.168.1.100:7447")</code></pre>
+
+            <h3>Listen for Remote Connections</h3>
+            <pre><code class="language-bash"># Via environment variable
+ZENOH_LISTEN="tcp/0.0.0.0:7447" devduck
+
+# Via tool parameter
+zenoh_peer(action="start", listen="tcp/0.0.0.0:7447")</code></pre>
+
+            <h3>Zenoh Router (for complex topologies)</h3>
+            <pre><code class="language-bash"># Start a Zenoh router on a server
+zenohd --listen tcp/0.0.0.0:7447
+
+# Connect DevDuck instances to the router
+ZENOH_CONNECT="tcp/router.example.com:7447" devduck</code></pre>
+        </section>
+
+        <!-- Features -->
+        <section>
+            <h2>✨ Features</h2>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="icon">🔍</div>
+                    <h4>Auto-Discovery</h4>
+                    <p>Multicast scouting finds peers automatically on local network. Zero configuration.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">📡</div>
+                    <h4>Real-time Streaming</h4>
+                    <p>Responses stream chunk-by-chunk as they're generated. Same experience as local.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🔄</div>
+                    <h4>Heartbeat & Cleanup</h4>
+                    <p>Peers announce presence every 5s. Stale peers auto-removed after 15s timeout.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🛡️</div>
+                    <h4>Isolated Execution</h4>
+                    <p>Each command spawns a fresh DevDuck instance. No concurrent invocation conflicts.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🌐</div>
+                    <h4>Cross-Network</h4>
+                    <p>Use TCP endpoints to connect peers across different networks or data centers.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">📊</div>
+                    <h4>Context Injection</h4>
+                    <p>Zenoh peer status automatically injected into agent system prompt for awareness.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Configuration -->
+        <section>
+            <h2>⚙️ Configuration</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Variable</th>
+                        <th>Default</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>DEVDUCK_ENABLE_ZENOH</code></td>
+                        <td>true</td>
+                        <td>Auto-start Zenoh on DevDuck launch</td>
+                    </tr>
+                    <tr>
+                        <td><code>ZENOH_CONNECT</code></td>
+                        <td>—</td>
+                        <td>Remote endpoint(s) to connect to</td>
+                    </tr>
+                    <tr>
+                        <td><code>ZENOH_LISTEN</code></td>
+                        <td>—</td>
+                        <td>Endpoint(s) to listen on for remote connections</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Use Cases -->
+        <section>
+            <h2>💡 Use Cases</h2>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="icon">🖥️</div>
+                    <h4>Multi-Terminal</h4>
+                    <p>Coordinate multiple DevDuck instances across terminal windows.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🚀</div>
+                    <h4>Distributed Tasks</h4>
+                    <p>Broadcast "git pull && npm install" to all development machines.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">👀</div>
+                    <h4>Peer Monitoring</h4>
+                    <p>See all active DevDuck instances and their status.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🎯</div>
+                    <h4>Direct Messaging</h4>
+                    <p>Send specific tasks to specific instances by peer ID.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Python API -->
+        <section>
+            <h2>🐍 Python API</h2>
+            <pre><code class="language-python"># Check Zenoh status
+zenoh_peer(action="status")
+
+# List discovered peers
+zenoh_peer(action="list_peers")
+
+# Broadcast to all peers
+zenoh_peer(
+    action="broadcast",
+    message="run the test suite",
+    wait_time=120.0  # Wait up to 2 minutes for responses
+)
+
+# Send to specific peer
+zenoh_peer(
+    action="send",
+    peer_id="hostname-abc123",
+    message="what files have you modified?",
+    wait_time=60.0
+)
+
+# Start with remote connection
+zenoh_peer(
+    action="start",
+    connect="tcp/192.168.1.100:7447",
+    listen="tcp/0.0.0.0:7447"
+)</code></pre>
+        </section>
+    </div>
+
+    <div class="footer">
+        <p>🦆 DevDuck Zenoh P2P &middot; <a href="index.html">Home</a> &middot; <a href="https://github.com/cagataycali/devduck">GitHub</a></p>
+    </div>
+
+    <script>
+        hljs.highlightAll();
+    </script>
+</body>
+</html>

@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🤖 Models - DevDuck Multi-Provider Support</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-tertiary: #1a1a25;
+            --border: rgba(255, 255, 255, 0.08);
+            --text-primary: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.7);
+            --text-muted: rgba(255, 255, 255, 0.4);
+            --accent-purple: #8b5cf6;
+            --accent-blue: #3b82f6;
+            --accent-green: #10b981;
+            --accent-yellow: #f59e0b;
+            --accent-orange: #f97316;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.7;
+        }
+
+        .header {
+            background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+            padding: 3rem 2rem;
+            text-align: center;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .header h1 {
+            font-size: 2.75rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.7) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header .subtitle { color: var(--text-secondary); font-size: 1.2rem; margin-bottom: 1rem; }
+
+        .nav { display: flex; justify-content: center; gap: 2rem; margin-top: 1.5rem; }
+        .nav a { color: var(--text-muted); text-decoration: none; font-size: 0.9rem; }
+        .nav a:hover { color: var(--text-primary); }
+
+        .container { max-width: 1000px; margin: 0 auto; padding: 4rem 2rem; }
+        section { margin-bottom: 5rem; }
+
+        h2 { font-size: 1.85rem; margin-bottom: 1.5rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border); }
+        h3 { font-size: 1.3rem; margin: 2.5rem 0 1rem; }
+        p { margin-bottom: 1rem; color: var(--text-secondary); }
+
+        .hero {
+            text-align: center; padding: 4rem 2rem;
+            background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+            border: 1px solid var(--border); border-radius: 1.5rem; margin-bottom: 4rem;
+        }
+        .hero-icon { font-size: 5rem; margin-bottom: 1.5rem; }
+        .hero h2 { border: none; font-size: 2.25rem; margin-bottom: 1rem; justify-content: center; }
+        .hero p { font-size: 1.15rem; max-width: 650px; margin: 0 auto; }
+
+        pre {
+            background: var(--bg-secondary); border: 1px solid var(--border);
+            border-radius: 0.75rem; padding: 1.5rem; overflow-x: auto; margin: 1rem 0;
+        }
+        code { font-family: 'Courier New', monospace; font-size: 0.9rem; }
+        .inline-code { background: rgba(139, 92, 246, 0.15); color: var(--accent-purple); padding: 0.2rem 0.5rem; border-radius: 0.3rem; }
+
+        table { width: 100%; border-collapse: collapse; margin: 1.5rem 0; background: var(--bg-secondary); border-radius: 0.75rem; overflow: hidden; }
+        th, td { text-align: left; padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); }
+        th { font-weight: 600; background: var(--bg-tertiary); font-size: 0.85rem; text-transform: uppercase; }
+        td { color: var(--text-secondary); }
+        td code { background: rgba(139, 92, 246, 0.15); color: var(--accent-purple); padding: 0.2rem 0.5rem; border-radius: 0.3rem; }
+        tr:last-child td { border-bottom: none; }
+
+        .provider-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin: 2rem 0; }
+
+        .provider-card {
+            background: var(--bg-secondary); border: 1px solid var(--border);
+            border-radius: 0.75rem; padding: 1.25rem; text-align: center; transition: all 0.3s;
+        }
+        .provider-card:hover { transform: translateY(-3px); background: var(--bg-tertiary); }
+        .provider-card .num { font-size: 1.5rem; font-weight: 800; color: var(--accent-purple); }
+        .provider-card .name { font-size: 0.9rem; color: var(--text-secondary); margin-top: 0.25rem; }
+
+        .priority-list {
+            counter-reset: priority;
+            list-style: none;
+            padding: 0;
+        }
+        .priority-list li {
+            counter-increment: priority;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 0.5rem;
+            padding: 1rem 1.25rem;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        .priority-list li::before {
+            content: counter(priority);
+            background: var(--accent-purple);
+            color: white;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 0.85rem;
+            flex-shrink: 0;
+        }
+        .priority-list .provider { font-weight: 600; min-width: 120px; }
+        .priority-list .check { color: var(--text-muted); font-size: 0.9rem; }
+
+        .footer { text-align: center; padding: 3rem 2rem; border-top: 1px solid var(--border); color: var(--text-muted); }
+        .footer a { color: var(--text-secondary); text-decoration: none; }
+        .footer a:hover { color: var(--accent-purple); }
+
+        @media (max-width: 768px) {
+            .header h1 { font-size: 2rem; }
+            .hero-icon { font-size: 3.5rem; }
+            .provider-grid { grid-template-columns: repeat(2, 1fr); }
+            .nav { flex-wrap: wrap; gap: 1rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🤖 Model Providers</h1>
+        <p class="subtitle">14 providers with smart auto-selection</p>
+        <nav class="nav">
+            <a href="index.html">🏠 Home</a>
+            <a href="tools.html">🔧 Tools</a>
+            <a href="multi-agent.html">🔀 Multi-Agent</a>
+            <a href="https://github.com/cagataycali/devduck">📦 GitHub</a>
+        </nav>
+    </div>
+
+    <div class="container">
+        <div class="hero">
+            <div class="hero-icon">🤖</div>
+            <h2>Universal Model Support</h2>
+            <p>DevDuck auto-detects available credentials and picks the best provider. Or specify exactly what you want. 14 providers supported.</p>
+        </div>
+
+        <!-- Supported Providers -->
+        <section>
+            <h2>📦 Supported Providers</h2>
+            
+            <div class="provider-grid">
+                <div class="provider-card"><div class="num">1</div><div class="name">Amazon Bedrock</div></div>
+                <div class="provider-card"><div class="num">2</div><div class="name">Anthropic</div></div>
+                <div class="provider-card"><div class="num">3</div><div class="name">OpenAI</div></div>
+                <div class="provider-card"><div class="num">4</div><div class="name">GitHub Models</div></div>
+                <div class="provider-card"><div class="num">5</div><div class="name">Google Gemini</div></div>
+                <div class="provider-card"><div class="num">6</div><div class="name">Cohere</div></div>
+                <div class="provider-card"><div class="num">7</div><div class="name">Writer</div></div>
+                <div class="provider-card"><div class="num">8</div><div class="name">Mistral</div></div>
+                <div class="provider-card"><div class="num">9</div><div class="name">LiteLLM</div></div>
+                <div class="provider-card"><div class="num">10</div><div class="name">LlamaAPI</div></div>
+                <div class="provider-card"><div class="num">11</div><div class="name">SageMaker</div></div>
+                <div class="provider-card"><div class="num">12</div><div class="name">LlamaCpp</div></div>
+                <div class="provider-card"><div class="num">13</div><div class="name">MLX (Apple)</div></div>
+                <div class="provider-card"><div class="num">14</div><div class="name">Ollama</div></div>
+            </div>
+        </section>
+
+        <!-- Auto-Detection -->
+        <section>
+            <h2>🔍 Auto-Detection Priority</h2>
+            <p>DevDuck checks for credentials in this order:</p>
+            
+            <ol class="priority-list">
+                <li><span class="provider">Bedrock</span><span class="check">AWS_BEARER_TOKEN_BEDROCK or AWS STS credentials</span></li>
+                <li><span class="provider">Anthropic</span><span class="check">ANTHROPIC_API_KEY</span></li>
+                <li><span class="provider">OpenAI</span><span class="check">OPENAI_API_KEY</span></li>
+                <li><span class="provider">GitHub</span><span class="check">GITHUB_TOKEN or PAT_TOKEN</span></li>
+                <li><span class="provider">Gemini</span><span class="check">GOOGLE_API_KEY or GEMINI_API_KEY</span></li>
+                <li><span class="provider">Cohere</span><span class="check">COHERE_API_KEY</span></li>
+                <li><span class="provider">Writer</span><span class="check">WRITER_API_KEY</span></li>
+                <li><span class="provider">Mistral</span><span class="check">MISTRAL_API_KEY</span></li>
+                <li><span class="provider">LiteLLM</span><span class="check">LITELLM_API_KEY</span></li>
+                <li><span class="provider">LlamaAPI</span><span class="check">LLAMAAPI_API_KEY</span></li>
+                <li><span class="provider">SageMaker</span><span class="check">SAGEMAKER_ENDPOINT_NAME</span></li>
+                <li><span class="provider">LlamaCpp</span><span class="check">LLAMACPP_MODEL_PATH</span></li>
+                <li><span class="provider">MLX</span><span class="check">Apple Silicon detected + strands_mlx installed</span></li>
+                <li><span class="provider">Ollama</span><span class="check">Fallback (always available)</span></li>
+            </ol>
+        </section>
+
+        <!-- Manual Selection -->
+        <section>
+            <h2>⚙️ Manual Selection</h2>
+            
+            <pre><code class="language-bash"># Force specific provider
+export MODEL_PROVIDER=anthropic
+devduck
+
+# With specific model
+export MODEL_PROVIDER=bedrock
+export STRANDS_MODEL_ID=us.anthropic.claude-sonnet-4-20250514-v1:0
+devduck
+
+# Common parameters
+export STRANDS_MAX_TOKENS=60000
+export STRANDS_TEMPERATURE=1.0</code></pre>
+        </section>
+
+        <!-- Provider Configuration -->
+        <section>
+            <h2>📋 Provider Configuration</h2>
+            
+            <table>
+                <thead>
+                    <tr><th>Provider</th><th>Environment Variables</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Bedrock</td>
+                        <td><code>AWS_BEARER_TOKEN_BEDROCK</code> or AWS credentials</td>
+                    </tr>
+                    <tr>
+                        <td>Anthropic</td>
+                        <td><code>ANTHROPIC_API_KEY</code></td>
+                    </tr>
+                    <tr>
+                        <td>OpenAI</td>
+                        <td><code>OPENAI_API_KEY</code></td>
+                    </tr>
+                    <tr>
+                        <td>Gemini</td>
+                        <td><code>GOOGLE_API_KEY</code> or <code>GEMINI_API_KEY</code></td>
+                    </tr>
+                    <tr>
+                        <td>Ollama</td>
+                        <td><code>OLLAMA_HOST</code> (default: http://localhost:11434)</td>
+                    </tr>
+                    <tr>
+                        <td>MLX</td>
+                        <td><code>STRANDS_MODEL_ID</code> (default: mlx-community/Qwen3-1.7B-4bit)</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- use_agent Multi-Model -->
+        <section>
+            <h2>🔀 Multi-Model with use_agent</h2>
+            <p>Use different models for different tasks within the same session:</p>
+            
+            <pre><code class="language-python"># Use Bedrock for main agent, but OpenAI for a specific task
+use_agent(
+    prompt="Write a haiku about coding",
+    system_prompt="You are a poet",
+    model_provider="openai",
+    model_settings={"model_id": "gpt-4o"}
+)
+
+# Use Ollama for local processing
+use_agent(
+    prompt="Summarize this text",
+    system_prompt="You summarize text concisely",
+    model_provider="ollama",
+    model_settings={"model_id": "qwen3:8b"}
+)
+
+# Use environment config
+use_agent(
+    prompt="Analyze data",
+    system_prompt="You are a data analyst",
+    model_provider="env"  # Uses STRANDS_* env vars
+)</code></pre>
+        </section>
+
+        <!-- Ollama Smart Selection -->
+        <section>
+            <h2>🦙 Ollama Smart Defaults</h2>
+            <p>Ollama model auto-selected based on OS:</p>
+            
+            <table>
+                <thead>
+                    <tr><th>Platform</th><th>Default Model</th><th>Reason</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>macOS</td><td>qwen3:1.7b</td><td>Optimized for Apple Silicon</td></tr>
+                    <tr><td>Linux</td><td>qwen3:30b</td><td>Larger models for servers</td></tr>
+                    <tr><td>Other</td><td>qwen3:8b</td><td>Balanced default</td></tr>
+                </tbody>
+            </table>
+        </section>
+    </div>
+
+    <div class="footer">
+        <p>🦆 DevDuck Models &middot; <a href="index.html">Home</a> &middot; <a href="https://github.com/cagataycali/devduck">GitHub</a></p>
+    </div>
+    <script>hljs.highlightAll();</script>
+</body>
+</html>

@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>💾 Knowledge Base - DevDuck RAG Integration</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-tertiary: #1a1a25;
+            --border: rgba(255, 255, 255, 0.08);
+            --text-primary: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.7);
+            --text-muted: rgba(255, 255, 255, 0.4);
+            --accent-purple: #8b5cf6;
+            --accent-blue: #3b82f6;
+            --accent-green: #10b981;
+            --accent-yellow: #f59e0b;
+            --accent-pink: #ec4899;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.7;
+        }
+
+        .header {
+            background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+            padding: 3rem 2rem;
+            text-align: center;
+            border-bottom: 1px solid var(--border);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 800px;
+            height: 400px;
+            background: radial-gradient(ellipse, rgba(236, 72, 153, 0.15) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .header h1 {
+            font-size: 2.75rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.7) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            position: relative;
+        }
+
+        .header .subtitle {
+            color: var(--text-secondary);
+            font-size: 1.2rem;
+            margin-bottom: 1rem;
+        }
+
+        .header .badges {
+            display: flex;
+            justify-content: center;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.4rem 1rem;
+            border-radius: 2rem;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .badge.pink { background: rgba(236, 72, 153, 0.2); border: 1px solid rgba(236, 72, 153, 0.4); color: var(--accent-pink); }
+        .badge.blue { background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.4); color: var(--accent-blue); }
+        .badge.green { background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.4); color: var(--accent-green); }
+
+        .nav {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-top: 1.5rem;
+            position: relative;
+        }
+
+        .nav a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+            padding: 0.5rem 0;
+            border-bottom: 2px solid transparent;
+        }
+
+        .nav a:hover {
+            color: var(--text-primary);
+            border-color: var(--accent-pink);
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 4rem 2rem;
+        }
+
+        section {
+            margin-bottom: 5rem;
+        }
+
+        h2 {
+            font-size: 1.85rem;
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        h3 {
+            font-size: 1.3rem;
+            margin: 2.5rem 0 1rem;
+            color: var(--text-primary);
+        }
+
+        p {
+            margin-bottom: 1rem;
+            color: var(--text-secondary);
+        }
+
+        .hero {
+            text-align: center;
+            padding: 4rem 2rem;
+            background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+            border: 1px solid var(--border);
+            border-radius: 1.5rem;
+            margin-bottom: 4rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero-icon {
+            font-size: 5rem;
+            margin-bottom: 1.5rem;
+            position: relative;
+        }
+
+        .hero h2 {
+            border: none;
+            font-size: 2.25rem;
+            margin-bottom: 1rem;
+            justify-content: center;
+        }
+
+        .hero p {
+            font-size: 1.15rem;
+            color: var(--text-secondary);
+            max-width: 650px;
+            margin: 0 auto;
+        }
+
+        /* Flow Diagram */
+        .flow-diagram {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 1rem;
+            padding: 2rem;
+            margin: 2rem 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            overflow-x: auto;
+        }
+
+        .flow-diagram .highlight { color: var(--accent-pink); }
+        .flow-diagram .retrieve { color: var(--accent-blue); }
+        .flow-diagram .store { color: var(--accent-green); }
+        .flow-diagram .comment { color: var(--text-muted); }
+
+        /* Code Blocks */
+        pre {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+
+        code {
+            font-family: 'Courier New', Consolas, monospace;
+            font-size: 0.9rem;
+        }
+
+        .inline-code {
+            background: rgba(236, 72, 153, 0.15);
+            color: var(--accent-pink);
+            padding: 0.2rem 0.5rem;
+            border-radius: 0.3rem;
+            font-size: 0.9rem;
+        }
+
+        /* Feature Grid */
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .feature-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 1rem;
+            padding: 1.75rem;
+            transition: all 0.3s;
+        }
+
+        .feature-card:hover {
+            background: var(--bg-tertiary);
+            transform: translateY(-4px);
+        }
+
+        .feature-card .icon {
+            font-size: 2.25rem;
+            margin-bottom: 1rem;
+        }
+
+        .feature-card h4 {
+            font-size: 1.15rem;
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+        }
+
+        .feature-card p {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            margin: 0;
+        }
+
+        /* Table */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.5rem 0;
+            background: var(--bg-secondary);
+            border-radius: 0.75rem;
+            overflow: hidden;
+        }
+
+        th, td {
+            text-align: left;
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        th {
+            font-weight: 600;
+            color: var(--text-primary);
+            background: var(--bg-tertiary);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        td {
+            color: var(--text-secondary);
+        }
+
+        td code {
+            background: rgba(236, 72, 153, 0.15);
+            color: var(--accent-pink);
+            padding: 0.2rem 0.5rem;
+            border-radius: 0.3rem;
+            font-size: 0.85rem;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        /* Auto Box */
+        .auto-box {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0.05) 100%);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: 1rem;
+            padding: 2rem;
+            margin: 2rem 0;
+        }
+
+        .auto-box h3 {
+            color: var(--accent-green);
+            margin-top: 0;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .footer {
+            text-align: center;
+            padding: 3rem 2rem;
+            border-top: 1px solid var(--border);
+            color: var(--text-muted);
+        }
+
+        .footer a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .footer a:hover {
+            color: var(--accent-pink);
+        }
+
+        @media (max-width: 768px) {
+            .header h1 { font-size: 2rem; }
+            .hero-icon { font-size: 3.5rem; }
+            .hero h2 { font-size: 1.75rem; }
+            .feature-grid { grid-template-columns: 1fr; }
+            .nav { flex-wrap: wrap; gap: 1rem; }
+        }
+
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-primary); }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>💾 Knowledge Base</h1>
+        <p class="subtitle">Automatic RAG with Amazon Bedrock</p>
+        <div class="badges">
+            <span class="badge pink">Auto Retrieve</span>
+            <span class="badge blue">Auto Store</span>
+            <span class="badge green">Seamless Memory</span>
+        </div>
+        <nav class="nav">
+            <a href="index.html">🏠 Home</a>
+            <a href="chat.html">💬 Chat</a>
+            <a href="zenoh.html">🔌 Zenoh</a>
+            <a href="session-recording.html">🎬 Recording</a>
+            <a href="https://github.com/cagataycali/devduck">📦 GitHub</a>
+        </nav>
+    </div>
+
+    <div class="container">
+        <div class="hero">
+            <div class="hero-icon">🧠</div>
+            <h2>Seamless Long-term Memory</h2>
+            <p>DevDuck automatically retrieves relevant context before each query and stores conversations after. No manual RAG calls needed—just set an environment variable.</p>
+        </div>
+
+        <!-- How It Works -->
+        <section>
+            <h2>🔄 Automatic RAG Flow</h2>
+            <p>When <code class="inline-code">DEVDUCK_KNOWLEDGE_BASE_ID</code> is set, DevDuck performs automatic retrieval and storage:</p>
+            
+            <div class="flow-diagram">
+<pre>┌─────────────────────────────────────────────────────────────────────┐
+│                        <span class="highlight">DevDuck Query Flow</span>                          │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│   User Query                                                        │
+│       │                                                             │
+│       ▼                                                             │
+│   ┌─────────────────────────────────────────┐                       │
+│   │  <span class="retrieve">1. RETRIEVE</span> - Before Agent Runs           │                       │
+│   │                                         │                       │
+│   │  retrieve(                              │                       │
+│   │    text=query,                          │                       │
+│   │    knowledgeBaseId=KB_ID                │                       │
+│   │  )                                      │                       │
+│   │                                         │                       │
+│   │  <span class="comment">→ Injects relevant context into agent</span>   │                       │
+│   └─────────────────────────────────────────┘                       │
+│       │                                                             │
+│       ▼                                                             │
+│   ┌─────────────────────────────────────────┐                       │
+│   │  <span class="highlight">2. AGENT EXECUTION</span>                       │                       │
+│   │                                         │                       │
+│   │  Agent processes query with context     │                       │
+│   │  from knowledge base                    │                       │
+│   └─────────────────────────────────────────┘                       │
+│       │                                                             │
+│       ▼                                                             │
+│   ┌─────────────────────────────────────────┐                       │
+│   │  <span class="store">3. STORE</span> - After Agent Completes          │                       │
+│   │                                         │                       │
+│   │  store_in_kb(                           │                       │
+│   │    content="Input: ... Result: ...",    │                       │
+│   │    title="DevDuck: 2026-02-02 | ...",   │                       │
+│   │    knowledge_base_id=KB_ID              │                       │
+│   │  )                                      │                       │
+│   │                                         │                       │
+│   │  <span class="comment">→ Saves for future reference</span>            │                       │
+│   └─────────────────────────────────────────┘                       │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘</pre>
+            </div>
+        </section>
+
+        <!-- Quick Start -->
+        <section>
+            <h2>⚡ Quick Start</h2>
+            
+            <div class="auto-box">
+                <h3>🚀 One Environment Variable</h3>
+                <p>Just set your Bedrock Knowledge Base ID and DevDuck handles the rest automatically:</p>
+                <pre><code class="language-bash"># Enable automatic RAG
+export DEVDUCK_KNOWLEDGE_BASE_ID="your-kb-id-here"
+
+# Start DevDuck
+devduck
+
+# Every query now:
+# 1. Retrieves relevant context from KB
+# 2. Processes with enriched context
+# 3. Stores conversation for future</code></pre>
+            </div>
+
+            <h3>Manual Tool Usage</h3>
+            <pre><code class="language-python"># Retrieve from knowledge base
+retrieve(
+    text="how do I configure bedrock?",
+    knowledgeBaseId="your-kb-id",
+    numberOfResults=5,
+    score=0.4  # Minimum relevance threshold
+)
+
+# Store content in knowledge base
+store_in_kb(
+    content="Important information to remember...",
+    title="Session Notes - 2026-02-02",
+    knowledge_base_id="your-kb-id"
+)</code></pre>
+        </section>
+
+        <!-- Retrieve Tool -->
+        <section>
+            <h2>🔍 Retrieve Tool</h2>
+            <p>Semantic search against your Bedrock Knowledge Base with relevance scoring.</p>
+            
+            <table>
+                <thead>
+                    <tr>
+                        <th>Parameter</th>
+                        <th>Default</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>text</code></td>
+                        <td>required</td>
+                        <td>Query text for semantic search</td>
+                    </tr>
+                    <tr>
+                        <td><code>knowledgeBaseId</code></td>
+                        <td>env var</td>
+                        <td>Bedrock Knowledge Base ID</td>
+                    </tr>
+                    <tr>
+                        <td><code>numberOfResults</code></td>
+                        <td>5</td>
+                        <td>Maximum results to return</td>
+                    </tr>
+                    <tr>
+                        <td><code>score</code></td>
+                        <td>0.4</td>
+                        <td>Minimum relevance score (0.0-1.0)</td>
+                    </tr>
+                    <tr>
+                        <td><code>region</code></td>
+                        <td>us-west-2</td>
+                        <td>AWS region</td>
+                    </tr>
+                    <tr>
+                        <td><code>enableMetadata</code></td>
+                        <td>false</td>
+                        <td>Include source metadata in results</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>Response Format</h3>
+            <pre><code class="language-json">{
+  "content": {
+    "text": "Retrieved document content...",
+    "type": "TEXT"
+  },
+  "location": {
+    "customDocumentLocation": {
+      "id": "document_id"
+    },
+    "type": "CUSTOM"
+  },
+  "metadata": {
+    "x-amz-bedrock-kb-source-uri": "source_uri",
+    "x-amz-bedrock-kb-chunk-id": "chunk_id",
+    "x-amz-bedrock-kb-data-source-id": "data_source_id"
+  },
+  "score": 0.95
+}</code></pre>
+        </section>
+
+        <!-- Store Tool -->
+        <section>
+            <h2>💾 Store Tool</h2>
+            <p>Real-time ingestion into Bedrock Knowledge Base. Runs async in background thread.</p>
+            
+            <table>
+                <thead>
+                    <tr>
+                        <th>Parameter</th>
+                        <th>Default</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>content</code></td>
+                        <td>required</td>
+                        <td>Text content to store</td>
+                    </tr>
+                    <tr>
+                        <td><code>title</code></td>
+                        <td>timestamp</td>
+                        <td>Optional title for the content</td>
+                    </tr>
+                    <tr>
+                        <td><code>knowledge_base_id</code></td>
+                        <td>env var</td>
+                        <td>Target Knowledge Base ID</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <pre><code class="language-python"># Store with custom title
+store_in_kb(
+    content="Complete API documentation for the user service...",
+    title="API Docs - User Service v2.0",
+    knowledge_base_id="kb-12345"
+)
+
+# Store with auto-generated timestamp title
+store_in_kb(content="Important meeting notes...")</code></pre>
+        </section>
+
+        <!-- Features -->
+        <section>
+            <h2>✨ Features</h2>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="icon">🔄</div>
+                    <h4>Automatic RAG</h4>
+                    <p>Retrieval and storage happen automatically—no manual tool calls needed.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🧠</div>
+                    <h4>Cross-Session Memory</h4>
+                    <p>Conversations persist across sessions. DevDuck remembers past interactions.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">⚡</div>
+                    <h4>Async Storage</h4>
+                    <p>Storage runs in background thread. No impact on response latency.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">📊</div>
+                    <h4>Relevance Scoring</h4>
+                    <p>Filter results by relevance score. Only high-quality context injected.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🔍</div>
+                    <h4>Semantic Search</h4>
+                    <p>Vector-based similarity matching. Finds conceptually related content.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🏷️</div>
+                    <h4>Metadata Tracking</h4>
+                    <p>Track sources, chunk IDs, and data sources for audit trails.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Configuration -->
+        <section>
+            <h2>⚙️ Configuration</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Variable</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>DEVDUCK_KNOWLEDGE_BASE_ID</code></td>
+                        <td>Bedrock Knowledge Base ID for automatic RAG</td>
+                    </tr>
+                    <tr>
+                        <td><code>STRANDS_KNOWLEDGE_BASE_ID</code></td>
+                        <td>Alternative env var for KB ID (used by strands_tools)</td>
+                    </tr>
+                    <tr>
+                        <td><code>AWS_REGION</code></td>
+                        <td>AWS region for Bedrock (default: us-west-2)</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Use Cases -->
+        <section>
+            <h2>💡 Use Cases</h2>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="icon">📚</div>
+                    <h4>Documentation Assistant</h4>
+                    <p>Index project docs for instant retrieval during development.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🔄</div>
+                    <h4>Session Continuity</h4>
+                    <p>Pick up where you left off across multiple DevDuck sessions.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">👥</div>
+                    <h4>Team Knowledge</h4>
+                    <p>Share knowledge across team members through shared KB.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🧪</div>
+                    <h4>Research Memory</h4>
+                    <p>Build up knowledge over long research projects.</p>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <div class="footer">
+        <p>🦆 DevDuck Knowledge Base &middot; <a href="index.html">Home</a> &middot; <a href="https://github.com/cagataycali/devduck">GitHub</a></p>
+    </div>
+
+    <script>
+        hljs.highlightAll();
+    </script>
+</body>
+</html>

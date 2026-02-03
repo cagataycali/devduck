@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔗 MCP Integration - DevDuck Model Context Protocol</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-tertiary: #1a1a25;
+            --border: rgba(255, 255, 255, 0.08);
+            --text-primary: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.7);
+            --text-muted: rgba(255, 255, 255, 0.4);
+            --accent-purple: #8b5cf6;
+            --accent-blue: #3b82f6;
+            --accent-green: #10b981;
+            --accent-yellow: #f59e0b;
+            --accent-orange: #f97316;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.7;
+        }
+
+        .header {
+            background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+            padding: 3rem 2rem;
+            text-align: center;
+            border-bottom: 1px solid var(--border);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 800px;
+            height: 400px;
+            background: radial-gradient(ellipse, rgba(249, 115, 22, 0.15) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .header h1 {
+            font-size: 2.75rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.7) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            position: relative;
+        }
+
+        .header .subtitle {
+            color: var(--text-secondary);
+            font-size: 1.2rem;
+            margin-bottom: 1rem;
+        }
+
+        .header .badges {
+            display: flex;
+            justify-content: center;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.4rem 1rem;
+            border-radius: 2rem;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .badge.orange { background: rgba(249, 115, 22, 0.2); border: 1px solid rgba(249, 115, 22, 0.4); color: var(--accent-orange); }
+        .badge.blue { background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.4); color: var(--accent-blue); }
+        .badge.green { background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.4); color: var(--accent-green); }
+
+        .nav {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-top: 1.5rem;
+            position: relative;
+        }
+
+        .nav a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+            padding: 0.5rem 0;
+            border-bottom: 2px solid transparent;
+        }
+
+        .nav a:hover {
+            color: var(--text-primary);
+            border-color: var(--accent-orange);
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 4rem 2rem;
+        }
+
+        section {
+            margin-bottom: 5rem;
+        }
+
+        h2 {
+            font-size: 1.85rem;
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        h3 {
+            font-size: 1.3rem;
+            margin: 2.5rem 0 1rem;
+            color: var(--text-primary);
+        }
+
+        p {
+            margin-bottom: 1rem;
+            color: var(--text-secondary);
+        }
+
+        .hero {
+            text-align: center;
+            padding: 4rem 2rem;
+            background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+            border: 1px solid var(--border);
+            border-radius: 1.5rem;
+            margin-bottom: 4rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero-icon {
+            font-size: 5rem;
+            margin-bottom: 1.5rem;
+            position: relative;
+        }
+
+        .hero h2 {
+            border: none;
+            font-size: 2.25rem;
+            margin-bottom: 1rem;
+            justify-content: center;
+        }
+
+        .hero p {
+            font-size: 1.15rem;
+            color: var(--text-secondary);
+            max-width: 650px;
+            margin: 0 auto;
+        }
+
+        /* Two-way diagram */
+        .two-way {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            gap: 2rem;
+            align-items: center;
+            margin: 3rem 0;
+        }
+
+        .two-way-box {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 1rem;
+            padding: 2rem;
+            text-align: center;
+        }
+
+        .two-way-box .icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        .two-way-box h4 {
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .two-way-box p {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            margin: 0;
+        }
+
+        .two-way-arrow {
+            font-size: 2rem;
+            color: var(--accent-orange);
+        }
+
+        /* Code Blocks */
+        pre {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+
+        code {
+            font-family: 'Courier New', Consolas, monospace;
+            font-size: 0.9rem;
+        }
+
+        .inline-code {
+            background: rgba(249, 115, 22, 0.15);
+            color: var(--accent-orange);
+            padding: 0.2rem 0.5rem;
+            border-radius: 0.3rem;
+            font-size: 0.9rem;
+        }
+
+        /* Config Box */
+        .config-box {
+            background: linear-gradient(135deg, rgba(249, 115, 22, 0.1) 0%, rgba(249, 115, 22, 0.05) 100%);
+            border: 1px solid rgba(249, 115, 22, 0.3);
+            border-radius: 1rem;
+            padding: 2rem;
+            margin: 2rem 0;
+        }
+
+        .config-box h3 {
+            color: var(--accent-orange);
+            margin-top: 0;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .config-box pre {
+            background: rgba(0,0,0,0.3);
+            margin-top: 1rem;
+        }
+
+        /* Feature Grid */
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .feature-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 1rem;
+            padding: 1.75rem;
+            transition: all 0.3s;
+        }
+
+        .feature-card:hover {
+            background: var(--bg-tertiary);
+            transform: translateY(-4px);
+        }
+
+        .feature-card .icon {
+            font-size: 2.25rem;
+            margin-bottom: 1rem;
+        }
+
+        .feature-card h4 {
+            font-size: 1.15rem;
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+        }
+
+        .feature-card p {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            margin: 0;
+        }
+
+        /* Table */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.5rem 0;
+            background: var(--bg-secondary);
+            border-radius: 0.75rem;
+            overflow: hidden;
+        }
+
+        th, td {
+            text-align: left;
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        th {
+            font-weight: 600;
+            color: var(--text-primary);
+            background: var(--bg-tertiary);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        td {
+            color: var(--text-secondary);
+        }
+
+        td code {
+            background: rgba(249, 115, 22, 0.15);
+            color: var(--accent-orange);
+            padding: 0.2rem 0.5rem;
+            border-radius: 0.3rem;
+            font-size: 0.85rem;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        .footer {
+            text-align: center;
+            padding: 3rem 2rem;
+            border-top: 1px solid var(--border);
+            color: var(--text-muted);
+        }
+
+        .footer a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .footer a:hover {
+            color: var(--accent-orange);
+        }
+
+        @media (max-width: 768px) {
+            .header h1 { font-size: 2rem; }
+            .hero-icon { font-size: 3.5rem; }
+            .hero h2 { font-size: 1.75rem; }
+            .feature-grid { grid-template-columns: 1fr; }
+            .nav { flex-wrap: wrap; gap: 1rem; }
+            .two-way { grid-template-columns: 1fr; }
+            .two-way-arrow { transform: rotate(90deg); justify-self: center; }
+        }
+
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-primary); }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🔗 MCP Integration</h1>
+        <p class="subtitle">Model Context Protocol for AI interoperability</p>
+        <div class="badges">
+            <span class="badge orange">Expose as Server</span>
+            <span class="badge blue">Load Servers</span>
+            <span class="badge green">Claude Desktop</span>
+        </div>
+        <nav class="nav">
+            <a href="index.html">🏠 Home</a>
+            <a href="chat.html">💬 Chat</a>
+            <a href="zenoh.html">🔌 Zenoh</a>
+            <a href="tools.html">🔧 Tools</a>
+            <a href="https://github.com/cagataycali/devduck">📦 GitHub</a>
+        </nav>
+    </div>
+
+    <div class="container">
+        <div class="hero">
+            <div class="hero-icon">🔗</div>
+            <h2>Two-Way MCP</h2>
+            <p>Expose DevDuck as an MCP server for Claude Desktop, or load external MCP servers to extend capabilities. Full bidirectional protocol support.</p>
+        </div>
+
+        <!-- Two-Way Diagram -->
+        <section>
+            <h2>🔄 Bidirectional Integration</h2>
+            
+            <div class="two-way">
+                <div class="two-way-box">
+                    <div class="icon">🦆</div>
+                    <h4>DevDuck as Server</h4>
+                    <p>Expose DevDuck's tools via MCP protocol for Claude Desktop or other clients</p>
+                </div>
+                <div class="two-way-arrow">⟷</div>
+                <div class="two-way-box">
+                    <div class="icon">🔌</div>
+                    <h4>Load MCP Servers</h4>
+                    <p>Import tools from external MCP servers into DevDuck's toolset</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Expose as MCP Server -->
+        <section>
+            <h2>📤 Expose DevDuck as MCP Server</h2>
+            <p>Run DevDuck as an MCP server so Claude Desktop or other MCP clients can use its tools.</p>
+            
+            <h3>Stdio Mode (for Claude Desktop)</h3>
+            <pre><code class="language-bash"># Start in MCP stdio mode
+devduck --mcp</code></pre>
+
+            <div class="config-box">
+                <h3>🖥️ Claude Desktop Configuration</h3>
+                <p>Add to your Claude Desktop config file (<code class="inline-code">~/Library/Application Support/Claude/claude_desktop_config.json</code>):</p>
+                <pre><code class="language-json">{
+  "mcpServers": {
+    "devduck": {
+      "command": "uvx",
+      "args": ["devduck", "--mcp"]
+    }
+  }
+}</code></pre>
+            </div>
+
+            <h3>HTTP Mode (for web clients)</h3>
+            <pre><code class="language-python"># Start MCP HTTP server
+mcp_server(action="start", transport="http", port=8000)
+
+# Access at: http://localhost:8000/mcp</code></pre>
+
+            <h3>Tool API</h3>
+            <pre><code class="language-python"># Start MCP server with full agent access
+mcp_server(
+    action="start",
+    transport="http",    # or "stdio"
+    port=8000,
+    expose_agent=True,   # Expose full DevDuck agent
+    agent=devduck.agent
+)
+
+# Check status
+mcp_server(action="status")
+
+# Stop server
+mcp_server(action="stop")</code></pre>
+        </section>
+
+        <!-- Load MCP Servers -->
+        <section>
+            <h2>📥 Load External MCP Servers</h2>
+            <p>Import tools from external MCP servers to extend DevDuck's capabilities.</p>
+            
+            <h3>Environment Variable Configuration</h3>
+            <pre><code class="language-bash"># Set MCP_SERVERS with JSON configuration
+export MCP_SERVERS='{
+  "mcpServers": {
+    "strands-docs": {
+      "command": "uvx",
+      "args": ["strands-agents-mcp-server"]
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_TOKEN": "your-token"
+      }
+    }
+  }
+}'
+
+devduck</code></pre>
+
+            <h3>Supported Transport Types</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Transport</th>
+                        <th>Config Keys</th>
+                        <th>Example</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Stdio</td>
+                        <td><code>command</code>, <code>args</code>, <code>env</code></td>
+                        <td>Local CLI tools, uvx packages</td>
+                    </tr>
+                    <tr>
+                        <td>SSE</td>
+                        <td><code>url</code> (with /sse)</td>
+                        <td>Server-sent events endpoints</td>
+                    </tr>
+                    <tr>
+                        <td>HTTP</td>
+                        <td><code>url</code>, <code>headers</code></td>
+                        <td>Streamable HTTP endpoints</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>Example: Strands Docs MCP</h3>
+            <pre><code class="language-bash"># Load strands-agents documentation
+export MCP_SERVERS='{
+  "mcpServers": {
+    "strands-docs": {
+      "command": "uvx",
+      "args": ["strands-agents-mcp-server"],
+      "prefix": "strands-docs"
+    }
+  }
+}'
+
+devduck
+
+# Now use the tools:
+🦆 strands-docs_search_docs(query="how to use bedrock")</code></pre>
+        </section>
+
+        <!-- Features -->
+        <section>
+            <h2>✨ Features</h2>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="icon">🖥️</div>
+                    <h4>Claude Desktop</h4>
+                    <p>Run DevDuck as an MCP server for Claude Desktop integration.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🔌</div>
+                    <h4>Tool Import</h4>
+                    <p>Load tools from any MCP-compatible server into DevDuck.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">📡</div>
+                    <h4>Multiple Transports</h4>
+                    <p>Stdio, HTTP, and SSE transports supported.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🏷️</div>
+                    <h4>Tool Prefixing</h4>
+                    <p>Imported tools get prefixed to avoid naming conflicts.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🔄</div>
+                    <h4>Auto-Load</h4>
+                    <p>MCP servers auto-load from MCP_SERVERS env var on startup.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🛡️</div>
+                    <h4>Managed Lifecycle</h4>
+                    <p>Agent handles MCP client lifecycle automatically.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Configuration Reference -->
+        <section>
+            <h2>⚙️ Configuration Reference</h2>
+            
+            <h3>Environment Variables</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Variable</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>MCP_SERVERS</code></td>
+                        <td>JSON config for auto-loading MCP servers</td>
+                    </tr>
+                    <tr>
+                        <td><code>DEVDUCK_ENABLE_MCP</code></td>
+                        <td>Enable MCP HTTP server on startup (default: false)</td>
+                    </tr>
+                    <tr>
+                        <td><code>DEVDUCK_MCP_PORT</code></td>
+                        <td>MCP HTTP server port (default: 8000)</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>MCP Server Config Schema</h3>
+            <pre><code class="language-json">{
+  "mcpServers": {
+    "server-name": {
+      // Stdio transport
+      "command": "executable",
+      "args": ["arg1", "arg2"],
+      "env": {"KEY": "value"},
+      
+      // OR HTTP/SSE transport
+      "url": "http://localhost:8000/mcp",
+      "headers": {"Authorization": "Bearer token"},
+      
+      // Optional
+      "prefix": "custom-prefix"  // Default: server-name
+    }
+  }
+}</code></pre>
+        </section>
+
+        <!-- Use Cases -->
+        <section>
+            <h2>💡 Use Cases</h2>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="icon">📚</div>
+                    <h4>Documentation Access</h4>
+                    <p>Load Strands docs MCP for instant framework documentation.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🐙</div>
+                    <h4>GitHub Integration</h4>
+                    <p>Load GitHub MCP server for repo management tools.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">💬</div>
+                    <h4>Claude + DevDuck</h4>
+                    <p>Use DevDuck's tools from within Claude Desktop.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🔧</div>
+                    <h4>Tool Ecosystem</h4>
+                    <p>Access the growing MCP tool ecosystem from DevDuck.</p>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <div class="footer">
+        <p>🦆 DevDuck MCP Integration &middot; <a href="index.html">Home</a> &middot; <a href="https://github.com/cagataycali/devduck">GitHub</a></p>
+    </div>
+
+    <script>
+        hljs.highlightAll();
+    </script>
+</body>
+</html>

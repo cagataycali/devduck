@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📡 Servers - DevDuck Communication Endpoints</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-tertiary: #1a1a25;
+            --border: rgba(255, 255, 255, 0.08);
+            --text-primary: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.7);
+            --text-muted: rgba(255, 255, 255, 0.4);
+            --accent-purple: #8b5cf6;
+            --accent-blue: #3b82f6;
+            --accent-green: #10b981;
+            --accent-yellow: #f59e0b;
+            --accent-cyan: #06b6d4;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.7;
+        }
+
+        .header {
+            background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+            padding: 3rem 2rem;
+            text-align: center;
+            border-bottom: 1px solid var(--border);
+            position: relative;
+        }
+
+        .header h1 {
+            font-size: 2.75rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.7) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header .subtitle { color: var(--text-secondary); font-size: 1.2rem; margin-bottom: 1rem; }
+
+        .header .badges { display: flex; justify-content: center; gap: 0.75rem; flex-wrap: wrap; }
+
+        .badge {
+            display: inline-flex; align-items: center; gap: 0.4rem;
+            padding: 0.4rem 1rem; border-radius: 2rem; font-size: 0.8rem; font-weight: 600;
+        }
+
+        .badge.blue { background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.4); color: var(--accent-blue); }
+        .badge.green { background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.4); color: var(--accent-green); }
+        .badge.purple { background: rgba(139, 92, 246, 0.2); border: 1px solid rgba(139, 92, 246, 0.4); color: var(--accent-purple); }
+
+        .nav { display: flex; justify-content: center; gap: 2rem; margin-top: 1.5rem; }
+        .nav a { color: var(--text-muted); text-decoration: none; font-size: 0.9rem; transition: all 0.2s; }
+        .nav a:hover { color: var(--text-primary); }
+
+        .container { max-width: 1000px; margin: 0 auto; padding: 4rem 2rem; }
+        section { margin-bottom: 5rem; }
+
+        h2 { font-size: 1.85rem; margin-bottom: 1.5rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border); }
+        h3 { font-size: 1.3rem; margin: 2.5rem 0 1rem; color: var(--text-primary); }
+        p { margin-bottom: 1rem; color: var(--text-secondary); }
+
+        .hero {
+            text-align: center; padding: 4rem 2rem;
+            background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+            border: 1px solid var(--border); border-radius: 1.5rem; margin-bottom: 4rem;
+        }
+        .hero-icon { font-size: 5rem; margin-bottom: 1.5rem; }
+        .hero h2 { border: none; font-size: 2.25rem; margin-bottom: 1rem; justify-content: center; }
+        .hero p { font-size: 1.15rem; max-width: 650px; margin: 0 auto; }
+
+        pre {
+            background: var(--bg-secondary); border: 1px solid var(--border);
+            border-radius: 0.75rem; padding: 1.5rem; overflow-x: auto; margin: 1rem 0;
+        }
+        code { font-family: 'Courier New', monospace; font-size: 0.9rem; }
+        .inline-code { background: rgba(59, 130, 246, 0.15); color: var(--accent-blue); padding: 0.2rem 0.5rem; border-radius: 0.3rem; }
+
+        table { width: 100%; border-collapse: collapse; margin: 1.5rem 0; background: var(--bg-secondary); border-radius: 0.75rem; overflow: hidden; }
+        th, td { text-align: left; padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); }
+        th { font-weight: 600; background: var(--bg-tertiary); font-size: 0.85rem; text-transform: uppercase; }
+        td { color: var(--text-secondary); }
+        td code { background: rgba(59, 130, 246, 0.15); color: var(--accent-blue); padding: 0.2rem 0.5rem; border-radius: 0.3rem; }
+        tr:last-child td { border-bottom: none; }
+
+        .server-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; margin: 2rem 0; }
+
+        .server-card {
+            background: var(--bg-secondary); border: 1px solid var(--border);
+            border-radius: 1rem; padding: 2rem; transition: all 0.3s;
+        }
+        .server-card:hover { transform: translateY(-4px); background: var(--bg-tertiary); }
+        .server-card .icon { font-size: 2.5rem; margin-bottom: 1rem; }
+        .server-card h3 { margin: 0 0 0.5rem; font-size: 1.25rem; }
+        .server-card .port { font-family: 'Courier New', monospace; color: var(--accent-blue); font-size: 0.9rem; margin-bottom: 1rem; }
+        .server-card p { font-size: 0.9rem; color: var(--text-muted); margin: 0; }
+
+        .footer { text-align: center; padding: 3rem 2rem; border-top: 1px solid var(--border); color: var(--text-muted); }
+        .footer a { color: var(--text-secondary); text-decoration: none; }
+        .footer a:hover { color: var(--accent-blue); }
+
+        @media (max-width: 768px) {
+            .header h1 { font-size: 2rem; }
+            .hero-icon { font-size: 3.5rem; }
+            .server-grid { grid-template-columns: 1fr; }
+            .nav { flex-wrap: wrap; gap: 1rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📡 Servers</h1>
+        <p class="subtitle">WebSocket, TCP, and IPC communication</p>
+        <div class="badges">
+            <span class="badge blue">WebSocket :8080</span>
+            <span class="badge green">TCP :9999</span>
+            <span class="badge purple">Unix Socket</span>
+        </div>
+        <nav class="nav">
+            <a href="index.html">🏠 Home</a>
+            <a href="zenoh.html">🔌 Zenoh</a>
+            <a href="mcp.html">🔗 MCP</a>
+            <a href="chat.html">💬 Chat</a>
+            <a href="https://github.com/cagataycali/devduck">📦 GitHub</a>
+        </nav>
+    </div>
+
+    <div class="container">
+        <div class="hero">
+            <div class="hero-icon">📡</div>
+            <h2>Multiple Endpoints</h2>
+            <p>Connect to DevDuck via WebSocket for web apps, TCP for scripts, or Unix sockets for local IPC. All with real-time streaming.</p>
+        </div>
+
+        <!-- Server Overview -->
+        <section>
+            <h2>🔌 Available Servers</h2>
+            
+            <div class="server-grid">
+                <div class="server-card">
+                    <div class="icon">🌐</div>
+                    <h3>WebSocket</h3>
+                    <div class="port">ws://localhost:8080</div>
+                    <p>Real-time streaming for web browsers and apps. JSON messages with turn tracking.</p>
+                </div>
+                <div class="server-card">
+                    <div class="icon">🔗</div>
+                    <h3>TCP</h3>
+                    <div class="port">tcp://localhost:9999</div>
+                    <p>Raw TCP for scripts and CLI tools. Simple text protocol with streaming.</p>
+                </div>
+                <div class="server-card">
+                    <div class="icon">🔌</div>
+                    <h3>IPC (Unix Socket)</h3>
+                    <div class="port">/tmp/devduck_main.sock</div>
+                    <p>Fast local communication. Best for same-machine agent coordination.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Configuration -->
+        <section>
+            <h2>⚙️ Configuration</h2>
+            
+            <table>
+                <thead>
+                    <tr><th>Variable</th><th>Default</th><th>Description</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td><code>DEVDUCK_ENABLE_WS</code></td><td>true</td><td>Enable WebSocket server</td></tr>
+                    <tr><td><code>DEVDUCK_WS_PORT</code></td><td>8080</td><td>WebSocket port</td></tr>
+                    <tr><td><code>DEVDUCK_ENABLE_TCP</code></td><td>false</td><td>Enable TCP server</td></tr>
+                    <tr><td><code>DEVDUCK_TCP_PORT</code></td><td>9999</td><td>TCP port</td></tr>
+                    <tr><td><code>DEVDUCK_ENABLE_IPC</code></td><td>false</td><td>Enable IPC server</td></tr>
+                    <tr><td><code>DEVDUCK_IPC_SOCKET</code></td><td>/tmp/devduck_main.sock</td><td>Unix socket path</td></tr>
+                </tbody>
+            </table>
+
+            <pre><code class="language-bash"># Enable all servers
+export DEVDUCK_ENABLE_WS=true
+export DEVDUCK_ENABLE_TCP=true
+export DEVDUCK_ENABLE_IPC=true
+
+devduck</code></pre>
+        </section>
+
+        <!-- WebSocket -->
+        <section>
+            <h2>🌐 WebSocket Server</h2>
+            <p>JSON-based protocol with turn tracking, streaming chunks, and tool status updates.</p>
+            
+            <h3>Message Types</h3>
+            <table>
+                <thead>
+                    <tr><th>Type</th><th>Direction</th><th>Description</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td><code>connected</code></td><td>Server→Client</td><td>Connection established</td></tr>
+                    <tr><td><code>turn_start</code></td><td>Server→Client</td><td>New conversation turn started</td></tr>
+                    <tr><td><code>chunk</code></td><td>Server→Client</td><td>Streaming text chunk</td></tr>
+                    <tr><td><code>tool_start</code></td><td>Server→Client</td><td>Tool invocation started</td></tr>
+                    <tr><td><code>tool_end</code></td><td>Server→Client</td><td>Tool completed (success/error)</td></tr>
+                    <tr><td><code>turn_end</code></td><td>Server→Client</td><td>Turn completed</td></tr>
+                    <tr><td><code>error</code></td><td>Server→Client</td><td>Error occurred</td></tr>
+                </tbody>
+            </table>
+
+            <h3>Example Client</h3>
+            <pre><code class="language-javascript">const ws = new WebSocket('ws://localhost:8080');
+
+ws.onmessage = (event) => {
+    const msg = JSON.parse(event.data);
+    
+    switch(msg.type) {
+        case 'chunk':
+            process.stdout.write(msg.data);
+            break;
+        case 'tool_start':
+            console.log(`🛠️ Tool #${msg.tool_number}: ${msg.data}`);
+            break;
+        case 'turn_end':
+            console.log('\\n✅ Complete');
+            break;
+    }
+};
+
+ws.onopen = () => ws.send('Hello DevDuck!');</code></pre>
+
+            <h3>Tool API</h3>
+            <pre><code class="language-python"># Start WebSocket server
+websocket(action="start_server", port=8080)
+
+# Check status
+websocket(action="get_status")
+
+# Stop server
+websocket(action="stop_server")</code></pre>
+        </section>
+
+        <!-- TCP -->
+        <section>
+            <h2>🔗 TCP Server</h2>
+            <p>Simple text protocol for scripts and CLI tools. Responses stream in real-time.</p>
+            
+            <h3>Usage</h3>
+            <pre><code class="language-bash"># Connect with netcat
+echo "list all files" | nc localhost 9999
+
+# Or use the TCP client
+python -c "
+import socket
+s = socket.socket()
+s.connect(('localhost', 9999))
+s.send(b'what time is it?')
+while True:
+    data = s.recv(4096)
+    if not data: break
+    print(data.decode(), end='')
+"</code></pre>
+
+            <h3>Tool API</h3>
+            <pre><code class="language-python"># Start TCP server
+tcp(action="start_server", port=9999)
+
+# Send message to TCP server
+tcp(action="send", host="localhost", port=9999, message="hello")
+
+# Stop server
+tcp(action="stop_server")</code></pre>
+        </section>
+
+        <!-- IPC -->
+        <section>
+            <h2>🔌 IPC Server (Unix Socket)</h2>
+            <p>Fastest option for local inter-process communication. No network overhead.</p>
+            
+            <h3>Usage</h3>
+            <pre><code class="language-bash"># Connect with socat
+echo "status" | socat - UNIX-CONNECT:/tmp/devduck_main.sock
+
+# Python client
+python -c "
+import socket
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+s.connect('/tmp/devduck_main.sock')
+s.send(b'what is 2+2?')
+print(s.recv(4096).decode())
+"</code></pre>
+
+            <h3>Tool API</h3>
+            <pre><code class="language-python"># Start IPC server
+ipc(action="start_server", socket_path="/tmp/devduck.sock")
+
+# Send message
+ipc(action="send", socket_path="/tmp/devduck.sock", message="hello")
+
+# Stop server
+ipc(action="stop_server")</code></pre>
+        </section>
+
+        <!-- Port Conflict Handling -->
+        <section>
+            <h2>🔀 Port Conflict Handling</h2>
+            <p>DevDuck automatically finds available ports if defaults are in use:</p>
+            
+            <pre><code class="language-bash"># If port 8080 is in use:
+🦆 Port 8080 in use, using 8081
+🦆 ✓ WebSocket server: localhost:8081
+
+# Same for TCP and IPC sockets</code></pre>
+        </section>
+    </div>
+
+    <div class="footer">
+        <p>🦆 DevDuck Servers &middot; <a href="index.html">Home</a> &middot; <a href="https://github.com/cagataycali/devduck">GitHub</a></p>
+    </div>
+    <script>hljs.highlightAll();</script>
+</body>
+</html>

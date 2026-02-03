@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🧠 System Prompt - DevDuck Self-Improvement</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-tertiary: #1a1a25;
+            --border: rgba(255, 255, 255, 0.08);
+            --text-primary: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.7);
+            --text-muted: rgba(255, 255, 255, 0.4);
+            --accent-purple: #8b5cf6;
+            --accent-blue: #3b82f6;
+            --accent-green: #10b981;
+            --accent-yellow: #f59e0b;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.7;
+        }
+
+        .header {
+            background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+            padding: 3rem 2rem;
+            text-align: center;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .header h1 {
+            font-size: 2.75rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.7) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header .subtitle { color: var(--text-secondary); font-size: 1.2rem; margin-bottom: 1rem; }
+
+        .header .badges { display: flex; justify-content: center; gap: 0.75rem; flex-wrap: wrap; }
+
+        .badge {
+            display: inline-flex; align-items: center; gap: 0.4rem;
+            padding: 0.4rem 1rem; border-radius: 2rem; font-size: 0.8rem; font-weight: 600;
+        }
+
+        .badge.purple { background: rgba(139, 92, 246, 0.2); border: 1px solid rgba(139, 92, 246, 0.4); color: var(--accent-purple); }
+        .badge.green { background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.4); color: var(--accent-green); }
+        .badge.yellow { background: rgba(245, 158, 11, 0.2); border: 1px solid rgba(245, 158, 11, 0.4); color: var(--accent-yellow); }
+
+        .nav { display: flex; justify-content: center; gap: 2rem; margin-top: 1.5rem; }
+        .nav a { color: var(--text-muted); text-decoration: none; font-size: 0.9rem; }
+        .nav a:hover { color: var(--text-primary); }
+
+        .container { max-width: 1000px; margin: 0 auto; padding: 4rem 2rem; }
+        section { margin-bottom: 5rem; }
+
+        h2 { font-size: 1.85rem; margin-bottom: 1.5rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border); }
+        h3 { font-size: 1.3rem; margin: 2.5rem 0 1rem; }
+        p { margin-bottom: 1rem; color: var(--text-secondary); }
+
+        .hero {
+            text-align: center; padding: 4rem 2rem;
+            background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+            border: 1px solid var(--border); border-radius: 1.5rem; margin-bottom: 4rem;
+        }
+        .hero-icon { font-size: 5rem; margin-bottom: 1.5rem; }
+        .hero h2 { border: none; font-size: 2.25rem; margin-bottom: 1rem; justify-content: center; }
+        .hero p { font-size: 1.15rem; max-width: 650px; margin: 0 auto; }
+
+        pre {
+            background: var(--bg-secondary); border: 1px solid var(--border);
+            border-radius: 0.75rem; padding: 1.5rem; overflow-x: auto; margin: 1rem 0;
+        }
+        code { font-family: 'Courier New', monospace; font-size: 0.9rem; }
+        .inline-code { background: rgba(139, 92, 246, 0.15); color: var(--accent-purple); padding: 0.2rem 0.5rem; border-radius: 0.3rem; }
+
+        table { width: 100%; border-collapse: collapse; margin: 1.5rem 0; background: var(--bg-secondary); border-radius: 0.75rem; overflow: hidden; }
+        th, td { text-align: left; padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); }
+        th { font-weight: 600; background: var(--bg-tertiary); font-size: 0.85rem; text-transform: uppercase; }
+        td { color: var(--text-secondary); }
+        td code { background: rgba(139, 92, 246, 0.15); color: var(--accent-purple); padding: 0.2rem 0.5rem; border-radius: 0.3rem; }
+        tr:last-child td { border-bottom: none; }
+
+        .feature-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; margin: 2rem 0; }
+        .feature-card {
+            background: var(--bg-secondary); border: 1px solid var(--border);
+            border-radius: 1rem; padding: 1.75rem; transition: all 0.3s;
+        }
+        .feature-card:hover { transform: translateY(-4px); background: var(--bg-tertiary); }
+        .feature-card .icon { font-size: 2.25rem; margin-bottom: 1rem; }
+        .feature-card h4 { font-size: 1.15rem; margin-bottom: 0.5rem; }
+        .feature-card p { font-size: 0.9rem; color: var(--text-muted); margin: 0; }
+
+        .workflow-box {
+            background: linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(139, 92, 246, 0.05) 100%);
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            border-radius: 1rem; padding: 2rem; margin: 2rem 0;
+        }
+        .workflow-box h3 { color: var(--accent-purple); margin-top: 0; }
+
+        .footer { text-align: center; padding: 3rem 2rem; border-top: 1px solid var(--border); color: var(--text-muted); }
+        .footer a { color: var(--text-secondary); text-decoration: none; }
+        .footer a:hover { color: var(--accent-purple); }
+
+        @media (max-width: 768px) {
+            .header h1 { font-size: 2rem; }
+            .hero-icon { font-size: 3.5rem; }
+            .feature-grid { grid-template-columns: 1fr; }
+            .nav { flex-wrap: wrap; gap: 1rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🧠 System Prompt</h1>
+        <p class="subtitle">View, update, and sync your agent's personality</p>
+        <div class="badges">
+            <span class="badge purple">Self-Improvement</span>
+            <span class="badge green">GitHub Sync</span>
+            <span class="badge yellow">Persistent Learning</span>
+        </div>
+        <nav class="nav">
+            <a href="index.html">🏠 Home</a>
+            <a href="tools.html">🔧 Tools</a>
+            <a href="knowledge-base.html">💾 KB</a>
+            <a href="https://github.com/cagataycali/devduck">📦 GitHub</a>
+        </nav>
+    </div>
+
+    <div class="container">
+        <div class="hero">
+            <div class="hero-icon">🧠</div>
+            <h2>Evolving Intelligence</h2>
+            <p>DevDuck can view and modify its own system prompt at runtime. Learn from conversations and persist improvements across sessions via GitHub sync.</p>
+        </div>
+
+        <!-- Actions -->
+        <section>
+            <h2>📋 Actions Reference</h2>
+            
+            <table>
+                <thead>
+                    <tr><th>Action</th><th>Description</th><th>Parameters</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>view</code></td>
+                        <td>View current system prompt</td>
+                        <td>—</td>
+                    </tr>
+                    <tr>
+                        <td><code>update</code></td>
+                        <td>Replace the system prompt</td>
+                        <td><code>prompt</code>, <code>repository</code> (optional)</td>
+                    </tr>
+                    <tr>
+                        <td><code>add_context</code></td>
+                        <td>Append without replacing</td>
+                        <td><code>context</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>reset</code></td>
+                        <td>Reset to default</td>
+                        <td>—</td>
+                    </tr>
+                    <tr>
+                        <td><code>get_github_context</code></td>
+                        <td>Get GitHub event context</td>
+                        <td>—</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Basic Usage -->
+        <section>
+            <h2>⚡ Basic Usage</h2>
+            
+            <h3>View Current Prompt</h3>
+            <pre><code class="language-python"># See what the current system prompt contains
+system_prompt(action="view")</code></pre>
+
+            <h3>Update Locally</h3>
+            <pre><code class="language-python"># Update system prompt (saves to env var + .prompt file)
+system_prompt(
+    action="update",
+    prompt="You are a specialized Python developer..."
+)</code></pre>
+
+            <h3>Add Context (Append)</h3>
+            <pre><code class="language-python"># Add new learnings without replacing existing prompt
+system_prompt(
+    action="add_context",
+    context="When working with async code, always use asyncio.gather for parallel execution."
+)</code></pre>
+        </section>
+
+        <!-- GitHub Sync -->
+        <section>
+            <h2>🔄 GitHub Repository Sync</h2>
+            <p>Persist system prompt changes across deployments by syncing to GitHub repository variables.</p>
+            
+            <pre><code class="language-python"># Update and sync to GitHub repository
+system_prompt(
+    action="update",
+    prompt="You are DevDuck, an expert AI developer...",
+    repository="cagataycali/devduck"
+)
+
+# Use custom variable name
+system_prompt(
+    action="update",
+    prompt="Specialized for data analysis...",
+    repository="owner/repo",
+    variable_name="DATA_AGENT_PROMPT"
+)</code></pre>
+
+            <h3>What Gets Updated</h3>
+            <ul style="color: var(--text-secondary); padding-left: 1.5rem;">
+                <li style="margin: 0.5rem 0;">Environment variable (<code class="inline-code">SYSTEM_PROMPT</code>)</li>
+                <li style="margin: 0.5rem 0;">Local <code class="inline-code">.prompt</code> file</li>
+                <li style="margin: 0.5rem 0;">GitHub repository variable (if repository specified)</li>
+            </ul>
+        </section>
+
+        <!-- Self-Improvement Pattern -->
+        <section>
+            <h2>🚀 Self-Improvement Pattern</h2>
+            
+            <div class="workflow-box">
+                <h3>🧠 Learning Loop</h3>
+                <p>When DevDuck discovers valuable patterns during conversations, it can persist them:</p>
+                
+                <pre><code class="language-python"># Step 1: Identify new insight during conversation
+insight = "Always validate JSON before parsing to avoid crashes"
+
+# Step 2: Add to system prompt
+system_prompt(action="add_context", context=insight)
+
+# Step 3: Sync to GitHub for persistence
+current = system_prompt(action="view")
+system_prompt(
+    action="update",
+    prompt=current["content"][0]["text"] + f"\n\n## Learned:\n- {insight}",
+    repository="cagataycali/devduck"
+)
+
+# Now this learning persists across all sessions!</code></pre>
+            </div>
+        </section>
+
+        <!-- Features -->
+        <section>
+            <h2>✨ Features</h2>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="icon">👁️</div>
+                    <h4>Self-Aware</h4>
+                    <p>DevDuck can read and understand its own system prompt at any time.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">✏️</div>
+                    <h4>Runtime Updates</h4>
+                    <p>Modify personality and behavior without restarting.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🔄</div>
+                    <h4>GitHub Sync</h4>
+                    <p>Persist changes to repository variables for team sharing.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">📝</div>
+                    <h4>File Persistence</h4>
+                    <p>Changes saved to .prompt file for local persistence.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">➕</div>
+                    <h4>Additive Learning</h4>
+                    <p>Add context without replacing existing prompt.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🔧</div>
+                    <h4>Custom Variables</h4>
+                    <p>Use custom env var names for different agent personalities.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Environment Variables -->
+        <section>
+            <h2>⚙️ Environment Variables</h2>
+            <table>
+                <thead>
+                    <tr><th>Variable</th><th>Description</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>SYSTEM_PROMPT</code></td>
+                        <td>Default system prompt (loaded on startup)</td>
+                    </tr>
+                    <tr>
+                        <td><code>GITHUB_TOKEN</code></td>
+                        <td>Required for GitHub repository sync</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Prompt File -->
+        <section>
+            <h2>📄 Prompt File</h2>
+            <p>System prompts are saved to <code class="inline-code">.prompt</code> files for persistence:</p>
+            
+            <pre><code class="language-bash"># Search order for .prompt file:
+1. Current working directory (./.prompt)
+2. /tmp/devduck/.prompt
+3. System temp directory
+
+# The file contains the raw prompt text
+cat .prompt</code></pre>
+        </section>
+    </div>
+
+    <div class="footer">
+        <p>🦆 DevDuck System Prompt &middot; <a href="index.html">Home</a> &middot; <a href="https://github.com/cagataycali/devduck">GitHub</a></p>
+    </div>
+    <script>hljs.highlightAll();</script>
+</body>
+</html>

@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🐙 GitHub Integration - DevDuck GitHub Tools</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-tertiary: #1a1a25;
+            --border: rgba(255, 255, 255, 0.08);
+            --text-primary: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.7);
+            --text-muted: rgba(255, 255, 255, 0.4);
+            --accent-purple: #8b5cf6;
+            --accent-blue: #3b82f6;
+            --accent-green: #10b981;
+            --accent-yellow: #f59e0b;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.7;
+        }
+
+        .header {
+            background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+            padding: 3rem 2rem;
+            text-align: center;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .header h1 {
+            font-size: 2.75rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.7) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header .subtitle { color: var(--text-secondary); font-size: 1.2rem; margin-bottom: 1rem; }
+
+        .header .badges { display: flex; justify-content: center; gap: 0.75rem; flex-wrap: wrap; }
+
+        .badge {
+            display: inline-flex; align-items: center; gap: 0.4rem;
+            padding: 0.4rem 1rem; border-radius: 2rem; font-size: 0.8rem; font-weight: 600;
+        }
+
+        .badge.purple { background: rgba(139, 92, 246, 0.2); border: 1px solid rgba(139, 92, 246, 0.4); color: var(--accent-purple); }
+        .badge.green { background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.4); color: var(--accent-green); }
+        .badge.blue { background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.4); color: var(--accent-blue); }
+
+        .nav { display: flex; justify-content: center; gap: 2rem; margin-top: 1.5rem; }
+        .nav a { color: var(--text-muted); text-decoration: none; font-size: 0.9rem; }
+        .nav a:hover { color: var(--text-primary); }
+
+        .container { max-width: 1000px; margin: 0 auto; padding: 4rem 2rem; }
+        section { margin-bottom: 5rem; }
+
+        h2 { font-size: 1.85rem; margin-bottom: 1.5rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border); }
+        h3 { font-size: 1.3rem; margin: 2.5rem 0 1rem; }
+        p { margin-bottom: 1rem; color: var(--text-secondary); }
+
+        .hero {
+            text-align: center; padding: 4rem 2rem;
+            background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+            border: 1px solid var(--border); border-radius: 1.5rem; margin-bottom: 4rem;
+        }
+        .hero-icon { font-size: 5rem; margin-bottom: 1.5rem; }
+        .hero h2 { border: none; font-size: 2.25rem; margin-bottom: 1rem; justify-content: center; }
+        .hero p { font-size: 1.15rem; max-width: 650px; margin: 0 auto; }
+
+        pre {
+            background: var(--bg-secondary); border: 1px solid var(--border);
+            border-radius: 0.75rem; padding: 1.5rem; overflow-x: auto; margin: 1rem 0;
+        }
+        code { font-family: 'Courier New', monospace; font-size: 0.9rem; }
+        .inline-code { background: rgba(139, 92, 246, 0.15); color: var(--accent-purple); padding: 0.2rem 0.5rem; border-radius: 0.3rem; }
+
+        table { width: 100%; border-collapse: collapse; margin: 1.5rem 0; background: var(--bg-secondary); border-radius: 0.75rem; overflow: hidden; }
+        th, td { text-align: left; padding: 1rem 1.25rem; border-bottom: 1px solid var(--border); }
+        th { font-weight: 600; background: var(--bg-tertiary); font-size: 0.85rem; text-transform: uppercase; }
+        td { color: var(--text-secondary); }
+        td code { background: rgba(139, 92, 246, 0.15); color: var(--accent-purple); padding: 0.2rem 0.5rem; border-radius: 0.3rem; }
+        tr:last-child td { border-bottom: none; }
+
+        .tool-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; margin: 2rem 0; }
+
+        .tool-card {
+            background: var(--bg-secondary); border: 1px solid var(--border);
+            border-radius: 1rem; padding: 1.75rem; transition: all 0.3s;
+        }
+        .tool-card:hover { transform: translateY(-4px); background: var(--bg-tertiary); }
+        .tool-card .icon { font-size: 2rem; margin-bottom: 0.75rem; }
+        .tool-card h4 { font-size: 1.1rem; margin-bottom: 0.5rem; font-family: 'Courier New', monospace; color: var(--accent-purple); }
+        .tool-card p { font-size: 0.9rem; color: var(--text-muted); margin: 0; }
+
+        .footer { text-align: center; padding: 3rem 2rem; border-top: 1px solid var(--border); color: var(--text-muted); }
+        .footer a { color: var(--text-secondary); text-decoration: none; }
+        .footer a:hover { color: var(--accent-purple); }
+
+        @media (max-width: 768px) {
+            .header h1 { font-size: 2rem; }
+            .hero-icon { font-size: 3.5rem; }
+            .tool-grid { grid-template-columns: 1fr; }
+            .nav { flex-wrap: wrap; gap: 1rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🐙 GitHub Integration</h1>
+        <p class="subtitle">Issues, PRs, Gists, and more</p>
+        <div class="badges">
+            <span class="badge purple">Gist Management</span>
+            <span class="badge green">Issues & PRs</span>
+            <span class="badge blue">Tool Fetching</span>
+        </div>
+        <nav class="nav">
+            <a href="index.html">🏠 Home</a>
+            <a href="tools.html">🔧 Tools</a>
+            <a href="system-prompt.html">🧠 Prompt</a>
+            <a href="https://github.com/cagataycali/devduck">📦 GitHub</a>
+        </nav>
+    </div>
+
+    <div class="container">
+        <div class="hero">
+            <div class="hero-icon">🐙</div>
+            <h2>Full GitHub Access</h2>
+            <p>Manage gists, issues, pull requests, and even fetch tools directly from GitHub repositories. Complete GitHub workflow integration.</p>
+        </div>
+
+        <!-- Available Tools -->
+        <section>
+            <h2>🔧 Available Tools</h2>
+            
+            <div class="tool-grid">
+                <div class="tool-card">
+                    <div class="icon">📝</div>
+                    <h4>gist()</h4>
+                    <p>Full gist lifecycle: create, read, update, delete, fork, star, and comment management.</p>
+                </div>
+                <div class="tool-card">
+                    <div class="icon">🐛</div>
+                    <h4>list_issues()</h4>
+                    <p>List issues from a repository with state filtering (open, closed, all).</p>
+                </div>
+                <div class="tool-card">
+                    <div class="icon">🔀</div>
+                    <h4>list_pull_requests()</h4>
+                    <p>List pull requests with state filtering.</p>
+                </div>
+                <div class="tool-card">
+                    <div class="icon">💬</div>
+                    <h4>add_comment()</h4>
+                    <p>Add comments to issues or pull requests.</p>
+                </div>
+                <div class="tool-card">
+                    <div class="icon">📥</div>
+                    <h4>fetch_github_tool()</h4>
+                    <p>Download and load tools directly from GitHub URLs.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Gist Tool -->
+        <section>
+            <h2>📝 Gist Management</h2>
+            
+            <h3>Actions</h3>
+            <table>
+                <thead>
+                    <tr><th>Action</th><th>Description</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td><code>create</code></td><td>Create a new gist</td></tr>
+                    <tr><td><code>list</code></td><td>List gists (user, starred, public)</td></tr>
+                    <tr><td><code>get</code></td><td>Get gist details</td></tr>
+                    <tr><td><code>update</code></td><td>Update existing gist</td></tr>
+                    <tr><td><code>delete</code></td><td>Delete a gist</td></tr>
+                    <tr><td><code>fork</code></td><td>Fork a gist</td></tr>
+                    <tr><td><code>star</code> / <code>unstar</code></td><td>Star/unstar a gist</td></tr>
+                    <tr><td><code>comments</code></td><td>List gist comments</td></tr>
+                    <tr><td><code>add_comment</code></td><td>Add comment to gist</td></tr>
+                </tbody>
+            </table>
+
+            <h3>Examples</h3>
+            <pre><code class="language-python"># Create a gist
+gist(
+    action="create",
+    description="My code snippet",
+    files={"hello.py": "print('Hello!')"},
+    public=False
+)
+
+# List my gists
+gist(action="list", gist_type="user")
+
+# Get gist with content
+gist(action="get", gist_id="abc123", include_content=True)
+
+# Update gist
+gist(
+    action="update",
+    gist_id="abc123",
+    files={"hello.py": "print('Updated!')"}
+)
+
+# Star a gist
+gist(action="star", gist_id="abc123")
+
+# Add comment
+gist(action="add_comment", gist_id="abc123", comment_text="Great work!")</code></pre>
+        </section>
+
+        <!-- Issues & PRs -->
+        <section>
+            <h2>🐛 Issues & Pull Requests</h2>
+            
+            <pre><code class="language-python"># List open issues
+list_issues(repo="owner/repo", state="open")
+
+# List all PRs
+list_pull_requests(repo="owner/repo", state="all")
+
+# Add comment to issue #42
+add_comment(
+    repo="owner/repo",
+    issue_number=42,
+    comment_text="Thanks for reporting! Looking into this."
+)
+
+# Uses GITHUB_REPOSITORY env var if repo not specified
+list_issues()  # Uses env var</code></pre>
+        </section>
+
+        <!-- Fetch Tools -->
+        <section>
+            <h2>📥 Fetch Tools from GitHub</h2>
+            <p>Download Python tools directly from GitHub and load them into DevDuck.</p>
+            
+            <pre><code class="language-python"># Fetch and load a tool
+fetch_github_tool(
+    github_url="https://github.com/owner/repo/blob/main/tools/my_tool.py",
+    tool_name="my_tool"  # Optional, auto-detected from filename
+)
+
+# Tool is immediately available!
+my_tool(param="value")
+
+# Supported URL formats:
+# - https://github.com/owner/repo/blob/main/file.py
+# - https://github.com/owner/repo/tree/main/file.py
+# - https://raw.githubusercontent.com/owner/repo/main/file.py</code></pre>
+        </section>
+
+        <!-- Environment -->
+        <section>
+            <h2>⚙️ Configuration</h2>
+            <table>
+                <thead>
+                    <tr><th>Variable</th><th>Description</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>GITHUB_TOKEN</code></td>
+                        <td>GitHub personal access token (required for most operations)</td>
+                    </tr>
+                    <tr>
+                        <td><code>PAT_TOKEN</code></td>
+                        <td>Alternative token variable</td>
+                    </tr>
+                    <tr>
+                        <td><code>GITHUB_REPOSITORY</code></td>
+                        <td>Default repository (owner/repo format)</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+    </div>
+
+    <div class="footer">
+        <p>🦆 DevDuck GitHub Integration &middot; <a href="index.html">Home</a> &middot; <a href="https://github.com/cagataycali/devduck">GitHub</a></p>
+    </div>
+    <script>hljs.highlightAll();</script>
+</body>
+</html>
