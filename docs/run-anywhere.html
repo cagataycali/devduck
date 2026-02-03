@@ -1,0 +1,1586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>🦆 DevDuck - Run Anywhere Setup</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-tertiary: #1a1a25;
+            --border: rgba(255, 255, 255, 0.08);
+            --text-primary: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.7);
+            --text-muted: rgba(255, 255, 255, 0.4);
+            --accent-purple: #8b5cf6;
+            --accent-blue: #3b82f6;
+            --accent-green: #10b981;
+            --accent-yellow: #f59e0b;
+            --accent-red: #ef4444;
+            --accent-pink: #ec4899;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 0;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 0;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+            padding: 24px;
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2rem;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, #fff 0%, var(--accent-purple) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-weight: 800;
+        }
+        
+        .header .subtitle {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            font-weight: 400;
+        }
+        
+        .platform-selector {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            justify-content: center;
+            padding: 16px 24px;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .platform-btn {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .platform-btn:hover {
+            border-color: var(--accent-purple);
+            color: var(--text-primary);
+        }
+        
+        .platform-btn.active {
+            background: var(--accent-purple);
+            border-color: var(--accent-purple);
+            color: white;
+        }
+        
+        .section {
+            padding: 20px 24px;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .section-title {
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--accent-purple);
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .section-title::before {
+            content: '';
+            width: 4px;
+            height: 16px;
+            background: var(--accent-purple);
+            border-radius: 2px;
+        }
+        
+        .card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            margin-bottom: 12px;
+            overflow: hidden;
+            transition: all 0.2s;
+        }
+        
+        .card:hover {
+            border-color: rgba(139, 92, 246, 0.3);
+        }
+        
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            user-select: none;
+            padding: 16px;
+        }
+        
+        .card-header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex: 1;
+        }
+        
+        .card-icon {
+            font-size: 1.4rem;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg-tertiary);
+            border-radius: 10px;
+        }
+        
+        .card-title {
+            font-weight: 600;
+            font-size: 0.95rem;
+            color: #fff;
+        }
+        
+        .card-subtitle {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+        
+        .card-chevron {
+            color: var(--text-muted);
+            transition: transform 0.2s;
+            font-size: 0.9rem;
+        }
+        
+        .card.expanded .card-chevron {
+            transform: rotate(180deg);
+        }
+        
+        .card-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+        
+        .card.expanded .card-content {
+            max-height: 5000px;
+            padding: 0 16px 16px 16px;
+        }
+        
+        .form-group {
+            margin-bottom: 16px;
+        }
+        
+        label {
+            display: block;
+            font-weight: 500;
+            margin-bottom: 6px;
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+        }
+        
+        input, select, textarea {
+            width: 100%;
+            padding: 12px 14px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 0.9rem;
+            color: #fff;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+        
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: var(--accent-purple);
+            box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.1);
+        }
+        
+        textarea {
+            min-height: 100px;
+            font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+            font-size: 0.8rem;
+            resize: vertical;
+        }
+        
+        select {
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%238b5cf6' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10l-5 5z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+        }
+        
+        .hint {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 6px;
+        }
+        
+        .hint a {
+            color: var(--accent-purple);
+        }
+        
+        .provider-info {
+            background: rgba(139, 92, 246, 0.05);
+            padding: 14px;
+            border-radius: 8px;
+            margin: 12px 0;
+            border-left: 3px solid var(--accent-purple);
+        }
+        
+        .provider-info-title {
+            font-weight: 600;
+            color: var(--accent-purple);
+            font-size: 0.9rem;
+            margin-bottom: 6px;
+        }
+        
+        .provider-info-desc {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-bottom: 10px;
+        }
+        
+        .provider-info-item {
+            display: flex;
+            gap: 8px;
+            font-size: 0.75rem;
+            margin-top: 6px;
+            color: var(--text-muted);
+        }
+        
+        .provider-info-label {
+            font-weight: 600;
+            color: var(--accent-purple);
+            min-width: 100px;
+        }
+        
+        .env-var-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 6px;
+        }
+        
+        .env-var-tag {
+            background: var(--bg-tertiary);
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-family: 'SF Mono', monospace;
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+        }
+        
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 0;
+        }
+        
+        input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+            accent-color: var(--accent-purple);
+            border-radius: 4px;
+        }
+        
+        .checkbox-group label {
+            margin: 0;
+            cursor: pointer;
+            flex: 1;
+            font-weight: 400;
+        }
+        
+        .tools-grid {
+            display: grid;
+            gap: 8px;
+        }
+        
+        .tool-package {
+            margin-bottom: 20px;
+        }
+        
+        .tool-package-title {
+            font-weight: 600;
+            color: var(--accent-green);
+            margin-bottom: 10px;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .tool-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+            transition: background 0.2s;
+        }
+        
+        .tool-item:hover {
+            background: rgba(139, 92, 246, 0.1);
+        }
+        
+        .tool-item input[type="checkbox"] {
+            margin: 0;
+            width: 18px;
+            height: 18px;
+        }
+        
+        .tool-item label {
+            margin: 0;
+            font-weight: 400;
+            font-size: 0.85rem;
+        }
+        
+        .button {
+            background: linear-gradient(135deg, var(--accent-purple) 0%, var(--accent-blue) 100%);
+            color: #fff;
+            border: none;
+            padding: 16px 24px;
+            border-radius: 10px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 8px;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(139, 92, 246, 0.3);
+        }
+        
+        .button:active {
+            transform: translateY(0);
+        }
+        
+        .button.secondary {
+            background: transparent;
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+        }
+        
+        .button.secondary:hover {
+            border-color: var(--accent-purple);
+            color: var(--text-primary);
+            box-shadow: none;
+        }
+        
+        .code-block {
+            background: #0d0d12;
+            padding: 16px;
+            border-radius: 10px;
+            font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+            font-size: 0.8rem;
+            overflow-x: auto;
+            position: relative;
+            margin-bottom: 12px;
+            border: 1px solid var(--border);
+        }
+        
+        .code-block pre {
+            margin: 0;
+            color: var(--accent-green);
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            line-height: 1.6;
+        }
+        
+        .copy-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: var(--bg-tertiary);
+            color: var(--accent-purple);
+            border: 1px solid var(--border);
+            padding: 6px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.75rem;
+            font-weight: 600;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .copy-btn:hover {
+            background: var(--accent-purple);
+            color: #fff;
+            border-color: var(--accent-purple);
+        }
+        
+        .copy-btn.copied {
+            background: var(--accent-green);
+            color: #fff;
+            border-color: var(--accent-green);
+        }
+        
+        .json-preview {
+            background: rgba(16, 185, 129, 0.05);
+            padding: 10px;
+            border-radius: 6px;
+            font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+            font-size: 0.75rem;
+            margin-top: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+        
+        .json-preview pre {
+            margin: 0;
+            color: var(--accent-green);
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        
+        .error-text {
+            color: var(--accent-red);
+            font-size: 0.75rem;
+            margin-top: 8px;
+            padding: 8px 10px;
+            background: rgba(239, 68, 68, 0.1);
+            border-radius: 6px;
+            border-left: 3px solid var(--accent-red);
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 3px 10px;
+            background: rgba(139, 92, 246, 0.15);
+            color: var(--accent-purple);
+            border-radius: 6px;
+            font-size: 0.65rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-left: 8px;
+        }
+        
+        .badge.optional {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-muted);
+        }
+        
+        .badge.new {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--accent-green);
+        }
+        
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 12px;
+            margin-top: 12px;
+        }
+        
+        .feature-item {
+            background: var(--bg-tertiary);
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+        
+        .feature-item-title {
+            font-weight: 600;
+            color: var(--accent-purple);
+            font-size: 0.85rem;
+            margin-bottom: 4px;
+        }
+        
+        .feature-item-desc {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+        
+        .advanced-section {
+            background: rgba(139, 92, 246, 0.03);
+            padding: 14px;
+            border-radius: 8px;
+            margin-top: 16px;
+            border: 1px solid rgba(139, 92, 246, 0.1);
+        }
+        
+        .advanced-section-title {
+            font-weight: 600;
+            color: var(--accent-purple);
+            font-size: 0.8rem;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: rgba(139, 92, 246, 0.3);
+            border-radius: 3px;
+        }
+        
+        .nav-link {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.85rem;
+            transition: color 0.2s;
+        }
+        
+        .nav-link:hover {
+            color: var(--accent-purple);
+        }
+        
+        @media (max-width: 600px) {
+            .header h1 {
+                font-size: 1.5rem;
+            }
+            
+            .platform-selector {
+                padding: 12px 16px;
+            }
+            
+            .platform-btn {
+                padding: 6px 12px;
+                font-size: 0.8rem;
+            }
+            
+            .section {
+                padding: 16px;
+            }
+            
+            .feature-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <p style="margin-bottom: 8px;"><a href="index.html" class="nav-link">← Back to Docs</a></p>
+            <h1>🦆 DevDuck Run Anywhere</h1>
+            <p class="subtitle">Generate installation & configuration for any platform</p>
+        </div>
+        
+        <!-- Platform Selector -->
+        <div class="platform-selector">
+            <button class="platform-btn active" data-platform="linux" onclick="selectPlatform('linux')">
+                🐧 Linux
+            </button>
+            <button class="platform-btn" data-platform="macos" onclick="selectPlatform('macos')">
+                🍎 macOS
+            </button>
+            <button class="platform-btn" data-platform="windows" onclick="selectPlatform('windows')">
+                🪟 Windows
+            </button>
+            <button class="platform-btn" data-platform="docker" onclick="selectPlatform('docker')">
+                🐳 Docker
+            </button>
+            <button class="platform-btn" data-platform="android" onclick="selectPlatform('android')">
+                📱 Android
+            </button>
+            <button class="platform-btn" data-platform="cloud" onclick="selectPlatform('cloud')">
+                ☁️ Cloud
+            </button>
+        </div>
+        
+        <!-- Install Command (platform specific) -->
+        <div class="section">
+            <div class="section-title">1. Install DevDuck</div>
+            <div id="installInstructions">
+                <!-- Dynamically populated based on platform -->
+            </div>
+        </div>
+        
+        <!-- Configuration -->
+        <div class="section">
+            <div class="section-title">2. Configure Your Agent</div>
+            
+            <!-- System Prompt -->
+            <div class="card" data-card="system-prompt">
+                <div class="card-header" onclick="toggleCard(event)">
+                    <div class="card-header-left">
+                        <span class="card-icon">💬</span>
+                        <div>
+                            <div class="card-title">System Prompt <span class="badge optional">Optional</span></div>
+                            <div class="card-subtitle">Customize agent personality & behavior</div>
+                        </div>
+                    </div>
+                    <span class="card-chevron">▼</span>
+                </div>
+                <div class="card-content">
+                    <div class="form-group">
+                        <label for="systemPrompt">System Prompt</label>
+                        <textarea id="systemPrompt" placeholder="You are a helpful DevOps assistant that specializes in..."></textarea>
+                        <div class="hint">Define how the agent should behave. Supports GitHub sync via system_prompt tool.</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Model Provider -->
+            <div class="card expanded" data-card="model">
+                <div class="card-header" onclick="toggleCard(event)">
+                    <div class="card-header-left">
+                        <span class="card-icon">🤖</span>
+                        <div>
+                            <div class="card-title">Model Provider <span class="badge">Required</span></div>
+                            <div class="card-subtitle">Choose your AI model backend</div>
+                        </div>
+                    </div>
+                    <span class="card-chevron">▼</span>
+                </div>
+                <div class="card-content">
+                    <div class="form-group">
+                        <label for="modelProvider">Provider</label>
+                        <select id="modelProvider" onchange="updateModelDefaults()">
+                            <option value="bedrock" selected>AWS Bedrock</option>
+                            <option value="anthropic">Anthropic (Direct)</option>
+                            <option value="openai">OpenAI</option>
+                            <option value="gemini">Google Gemini</option>
+                            <option value="ollama">Ollama (Local)</option>
+                            <option value="litellm">LiteLLM (100+ providers)</option>
+                            <option value="llamaapi">Llama API</option>
+                            <option value="writer">Writer</option>
+                            <option value="cohere">Cohere</option>
+                            <option value="github">GitHub Models</option>
+                            <option value="mistral">Mistral AI</option>
+                            <option value="sagemaker">AWS SageMaker</option>
+                        </select>
+                    </div>
+                    
+                    <div id="providerInfo" class="provider-info"></div>
+                    
+                    <div class="form-group">
+                        <label for="modelId">Model ID</label>
+                        <input type="text" id="modelId" value="us.anthropic.claude-sonnet-4-20250514-v1:0">
+                        <div class="hint" id="modelHint">Default model for selected provider</div>
+                    </div>
+                    
+                    <div class="form-group" id="apiKeyGroup">
+                        <label for="apiKey">API Key</label>
+                        <input type="password" id="apiKey" placeholder="Enter your API key...">
+                        <div class="hint" id="apiKeyHint">Required for API authentication</div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="maxTokens">Max Tokens</label>
+                        <input type="number" id="maxTokens" value="60000" placeholder="60000">
+                        <div class="hint">Maximum tokens for model response</div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="temperature">Temperature</label>
+                        <input type="number" id="temperature" value="1.0" step="0.1" min="0" max="2" placeholder="1.0">
+                        <div class="hint">Controls creativity (0=deterministic, 2=creative)</div>
+                    </div>
+                    
+                    <div class="advanced-section" id="advancedModelConfig" style="display: none;">
+                        <div class="advanced-section-title">
+                            <span>🧠</span>
+                            <span>Advanced Model Features (Anthropic/Bedrock)</span>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Beta Features</label>
+                            <div class="checkbox-group" onclick="event.stopPropagation()">
+                                <input type="checkbox" id="betaThinking" checked>
+                                <label for="betaThinking">Extended Thinking (interleaved-thinking-2025-05-14)</label>
+                            </div>
+                            <div class="checkbox-group" onclick="event.stopPropagation()">
+                                <input type="checkbox" id="betaContext" checked>
+                                <label for="betaContext">Extended Context (context-1m-2025-08-07)</label>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group">
+                            <div class="checkbox-group" onclick="event.stopPropagation()">
+                                <input type="checkbox" id="enableThinking" checked onchange="toggleThinkingBudget()">
+                                <label for="enableThinking">Enable Extended Thinking</label>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group" id="thinkingBudgetGroup">
+                            <label for="thinkingBudget">Thinking Budget (tokens)</label>
+                            <input type="number" id="thinkingBudget" value="2048" placeholder="2048">
+                            <div class="hint">Token budget for thinking process (1000-10000 recommended)</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Tools -->
+            <div class="card" data-card="tools">
+                <div class="card-header" onclick="toggleCard(event)">
+                    <div class="card-header-left">
+                        <span class="card-icon">🔧</span>
+                        <div>
+                            <div class="card-title">Tools <span class="badge">Required</span></div>
+                            <div class="card-subtitle">Select agent capabilities</div>
+                        </div>
+                    </div>
+                    <span class="card-chevron">▼</span>
+                </div>
+                <div class="card-content" id="toolsContent">
+                    <!-- Core DevDuck Tools -->
+                    <div class="tool-package">
+                        <div class="tool-package-title">🦆 DevDuck Core</div>
+                        <div class="tools-grid">
+                            <div class="tool-item"><input type="checkbox" id="t_system_prompt" value="devduck.tools:system_prompt" checked><label for="t_system_prompt">system_prompt</label></div>
+                            <div class="tool-item"><input type="checkbox" id="t_websocket" value="devduck.tools:websocket" checked><label for="t_websocket">websocket</label></div>
+                            <div class="tool-item"><input type="checkbox" id="t_zenoh" value="devduck.tools:zenoh_peer"><label for="t_zenoh">zenoh_peer (P2P)</label></div>
+                            <div class="tool-item"><input type="checkbox" id="t_ambient" value="devduck.tools:ambient_mode"><label for="t_ambient">ambient_mode</label></div>
+                            <div class="tool-item"><input type="checkbox" id="t_store_kb" value="devduck.tools:store_in_kb"><label for="t_store_kb">store_in_kb</label></div>
+                            <div class="tool-item"><input type="checkbox" id="t_fetch_gh" value="devduck.tools:fetch_github_tool" checked><label for="t_fetch_gh">fetch_github_tool</label></div>
+                            <div class="tool-item"><input type="checkbox" id="t_scraper" value="devduck.tools:scraper"><label for="t_scraper">scraper</label></div>
+                            <div class="tool-item"><input type="checkbox" id="t_speech" value="devduck.tools:speech_to_speech"><label for="t_speech">speech_to_speech</label></div>
+                        </div>
+                    </div>
+                    
+                    <!-- Strands Tools -->
+                    <div class="tool-package">
+                        <div class="tool-package-title">⚡ Strands Core</div>
+                        <div class="tools-grid">
+                            <div class="tool-item"><input type="checkbox" id="t_shell" value="strands_tools:shell" checked><label for="t_shell">shell</label></div>
+                            <div class="tool-item"><input type="checkbox" id="t_editor" value="strands_tools:editor" checked><label for="t_editor">editor</label></div>
+                            <div class="tool-item"><input type="checkbox" id="t_file_read" value="strands_tools:file_read" checked><label for="t_file_read">file_read</label></div>
+                            <div class="tool-item"><input type="checkbox" id="t_file_write" value="strands_tools:file_write" checked><label for="t_file_write">file_write</label></div>
+                            <div class="tool-item"><input type="checkbox" id="t_retrieve" value="strands_tools:retrieve"><label for="t_retrieve">retrieve (RAG)</label></div>
+                            <div class="tool-item"><input type="checkbox" id="t_use_agent" value="strands_tools:use_agent"><label for="t_use_agent">use_agent</label></div>
+                            <div class="tool-item"><input type="checkbox" id="t_calculator" value="strands_tools:calculator"><label for="t_calculator">calculator</label></div>
+                            <div class="tool-item"><input type="checkbox" id="t_slack" value="strands_tools:slack"><label for="t_slack">slack</label></div>
+                        </div>
+                    </div>
+                    
+                    <!-- Fun Tools -->
+                    <div class="tool-package">
+                        <div class="tool-package-title">🎮 Strands Fun (Device Access)</div>
+                        <div class="tools-grid">
+                            <div class="tool-item"><input type="checkbox" id="t_clipboard" value="strands_fun_tools:clipboard"><label for="t_clipboard">clipboard</label></div>
+                            <div class="tool-item"><input type="checkbox" id="t_screen" value="strands_fun_tools:screen_reader"><label for="t_screen">screen_reader</label></div>
+                            <div class="tool-item"><input type="checkbox" id="t_cursor" value="strands_fun_tools:cursor"><label for="t_cursor">cursor</label></div>
+                            <div class="tool-item"><input type="checkbox" id="t_listen" value="strands_fun_tools:listen"><label for="t_listen">listen</label></div>
+                            <div class="tool-item"><input type="checkbox" id="t_yolo" value="strands_fun_tools:yolo_vision"><label for="t_yolo">yolo_vision</label></div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group" style="margin-top: 16px;">
+                        <label for="customTools">Custom Tools</label>
+                        <input type="text" id="customTools" placeholder="my_package:tool1,tool2;another:tool3">
+                        <div class="hint">Format: package:tool1,tool2;another_package:tool3</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Servers -->
+            <div class="card" data-card="servers">
+                <div class="card-header" onclick="toggleCard(event)">
+                    <div class="card-header-left">
+                        <span class="card-icon">🌐</span>
+                        <div>
+                            <div class="card-title">Servers <span class="badge new">New</span></div>
+                            <div class="card-subtitle">WebSocket, MCP, Zenoh P2P networking</div>
+                        </div>
+                    </div>
+                    <span class="card-chevron">▼</span>
+                </div>
+                <div class="card-content">
+                    <div class="feature-grid">
+                        <div class="feature-item">
+                            <div class="feature-item-title">WebSocket</div>
+                            <div class="feature-item-desc">Real-time bidirectional communication</div>
+                        </div>
+                        <div class="feature-item">
+                            <div class="feature-item-title">MCP Server</div>
+                            <div class="feature-item-desc">Model Context Protocol for Claude Desktop</div>
+                        </div>
+                        <div class="feature-item">
+                            <div class="feature-item-title">Zenoh P2P</div>
+                            <div class="feature-item-desc">Auto-discovery mesh networking</div>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 16px;">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="enableWs" checked>
+                            <label for="enableWs">Enable WebSocket Server</label>
+                        </div>
+                        <div class="form-group">
+                            <input type="number" id="wsPort" value="8080" placeholder="8080">
+                            <div class="hint">WebSocket port (default: 8080)</div>
+                        </div>
+                        
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="enableMcp">
+                            <label for="enableMcp">Enable MCP HTTP Server</label>
+                        </div>
+                        <div class="form-group">
+                            <input type="number" id="mcpPort" value="8000" placeholder="8000">
+                            <div class="hint">MCP HTTP port (default: 8000)</div>
+                        </div>
+                        
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="enableZenoh" checked>
+                            <label for="enableZenoh">Enable Zenoh P2P Networking</label>
+                        </div>
+                        <div class="hint">Auto-discovers other DevDuck instances on your network</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Ambient Mode -->
+            <div class="card" data-card="ambient">
+                <div class="card-header" onclick="toggleCard(event)">
+                    <div class="card-header-left">
+                        <span class="card-icon">🌙</span>
+                        <div>
+                            <div class="card-title">Ambient Mode <span class="badge new">New</span></div>
+                            <div class="card-subtitle">Background thinking when idle</div>
+                        </div>
+                    </div>
+                    <span class="card-chevron">▼</span>
+                </div>
+                <div class="card-content">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="enableAmbient">
+                        <label for="enableAmbient">Enable Ambient Mode on startup</label>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="ambientIdle">Idle Threshold (seconds)</label>
+                        <input type="number" id="ambientIdle" value="30" placeholder="30">
+                        <div class="hint">Start ambient thinking after this idle time</div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="ambientIterations">Max Iterations</label>
+                        <input type="number" id="ambientIterations" value="3" placeholder="3">
+                        <div class="hint">Maximum ambient thinking iterations</div>
+                    </div>
+                    
+                    <div class="hint" style="margin-top: 12px; padding: 10px; background: rgba(139, 92, 246, 0.05); border-radius: 6px;">
+                        💡 Type <code>ambient</code> or <code>auto</code> in the REPL to toggle modes at runtime
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Session Recording -->
+            <div class="card" data-card="recording">
+                <div class="card-header" onclick="toggleCard(event)">
+                    <div class="card-header-left">
+                        <span class="card-icon">🎬</span>
+                        <div>
+                            <div class="card-title">Session Recording <span class="badge new">New</span></div>
+                            <div class="card-subtitle">Record & replay agent sessions</div>
+                        </div>
+                    </div>
+                    <span class="card-chevron">▼</span>
+                </div>
+                <div class="card-content">
+                    <div class="hint" style="padding: 10px; background: rgba(16, 185, 129, 0.05); border-radius: 6px;">
+                        📽️ Use <code>devduck --record</code> to start with recording enabled, or type <code>record</code> in the REPL.
+                        Sessions are saved to <code>/tmp/devduck/recordings/</code> and can be resumed with <code>devduck --resume session.zip</code>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- MCP Servers (External) -->
+            <div class="card" data-card="mcp-external">
+                <div class="card-header" onclick="toggleCard(event)">
+                    <div class="card-header-left">
+                        <span class="card-icon">🔌</span>
+                        <div>
+                            <div class="card-title">External MCP Servers <span class="badge optional">Optional</span></div>
+                            <div class="card-subtitle">Connect to MCP tool servers</div>
+                        </div>
+                    </div>
+                    <span class="card-chevron">▼</span>
+                </div>
+                <div class="card-content">
+                    <div class="form-group">
+                        <label for="mcpServers">MCP Servers JSON</label>
+                        <textarea id="mcpServers" placeholder='{"mcpServers": {"strands": {"command": "uvx", "args": ["strands-agents-mcp-server"]}}}'></textarea>
+                        <div class="hint">Configure external MCP servers to load tools from</div>
+                        <div id="mcpError" class="error-text" style="display: none;"></div>
+                        <div id="mcpPreview" class="json-preview" style="display: none;"></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Knowledge Base -->
+            <div class="card" data-card="kb">
+                <div class="card-header" onclick="toggleCard(event)">
+                    <div class="card-header-left">
+                        <span class="card-icon">🧠</span>
+                        <div>
+                            <div class="card-title">Knowledge Base <span class="badge optional">Optional</span></div>
+                            <div class="card-subtitle">Automatic RAG with Bedrock KB</div>
+                        </div>
+                    </div>
+                    <span class="card-chevron">▼</span>
+                </div>
+                <div class="card-content">
+                    <div class="form-group">
+                        <label for="kbId">Knowledge Base ID</label>
+                        <input type="text" id="kbId" placeholder="KB-XXXXX">
+                        <div class="hint">Amazon Bedrock Knowledge Base ID for automatic RAG</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Dependencies -->
+            <div class="card" data-card="deps">
+                <div class="card-header" onclick="toggleCard(event)">
+                    <div class="card-header-left">
+                        <span class="card-icon">📦</span>
+                        <div>
+                            <div class="card-title">Dependencies <span class="badge optional">Optional</span></div>
+                            <div class="card-subtitle">Extra packages & setup commands</div>
+                        </div>
+                    </div>
+                    <span class="card-chevron">▼</span>
+                </div>
+                <div class="card-content">
+                    <div class="form-group">
+                        <label for="pipPackages">Python Packages</label>
+                        <input type="text" id="pipPackages" placeholder="requests pandas numpy">
+                        <div class="hint">Space-separated pip packages to install</div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="sysPackages">System Packages</label>
+                        <input type="text" id="sysPackages" placeholder="git curl wget ffmpeg">
+                        <div class="hint">Space-separated system packages (apt/brew/pkg)</div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="customCommands">Custom Setup Commands</label>
+                        <textarea id="customCommands" placeholder="echo 'Setting up...'
+mkdir -p ~/.config/devduck
+# Your custom setup here"></textarea>
+                        <div class="hint">Shell commands to run after installation</div>
+                    </div>
+                </div>
+            </div>
+            
+            <button class="button" onclick="generateConfig()">🚀 Generate Installation Script</button>
+        </div>
+        
+        <!-- Output -->
+        <div id="output" class="section" style="display: none;">
+            <div class="section-title">3. Run This Command</div>
+            <div class="hint" style="margin-bottom: 16px; padding: 12px; background: rgba(16, 185, 129, 0.05); border-radius: 8px;">
+                💡 <strong>One command setup</strong> - just copy and paste. Creates config file and starts DevDuck!
+            </div>
+            <div class="code-block">
+                <button class="copy-btn" onclick="copyCode('outputScript')">Copy</button>
+                <pre id="outputScript"></pre>
+            </div>
+            <button class="button secondary" onclick="location.reload()">↺ Start Over</button>
+        </div>
+        
+        <!-- Footer -->
+        <div style="padding: 24px; text-align: center; color: var(--text-muted); font-size: 0.8rem;">
+            <p>🦆 DevDuck - Extreme Minimalist Self-Adapting Agent</p>
+            <p style="margin-top: 8px;">
+                <a href="index.html" class="nav-link">Docs</a> · 
+                <a href="https://github.com/cagataycali/devduck" class="nav-link">GitHub</a> · 
+                <a href="models.html" class="nav-link">Models</a> · 
+                <a href="tools.html" class="nav-link">Tools</a>
+            </p>
+        </div>
+    </div>
+    
+    <script>
+        // Platform-specific install instructions
+        const PLATFORM_INSTALL = {
+            linux: {
+                name: "Linux",
+                commands: [
+                    { title: "Using pipx (recommended)", cmd: "pipx install devduck" },
+                    { title: "Using pip", cmd: "pip install devduck" },
+                    { title: "From source", cmd: "git clone https://github.com/cagataycali/devduck && cd devduck && pip install -e ." }
+                ],
+                notes: "Requires Python 3.10+"
+            },
+            macos: {
+                name: "macOS",
+                commands: [
+                    { title: "Using pipx (recommended)", cmd: "pipx install devduck" },
+                    { title: "Using Homebrew + pipx", cmd: "brew install pipx && pipx install devduck" },
+                    { title: "Using pip", cmd: "pip3 install devduck" }
+                ],
+                notes: "Works on Intel and Apple Silicon. MLX model support on M-series chips."
+            },
+            windows: {
+                name: "Windows (WSL)",
+                commands: [
+                    { title: "1. Install WSL", cmd: "wsl --install" },
+                    { title: "2. Inside WSL", cmd: "pip install devduck" }
+                ],
+                notes: "WSL2 recommended for best performance. Native Windows support coming soon."
+            },
+            docker: {
+                name: "Docker",
+                commands: [
+                    { title: "Pull & Run", cmd: "docker run -it --rm -v ~/.aws:/root/.aws ghcr.io/cagataycali/devduck:latest" },
+                    { title: "With custom config", cmd: "docker run -it --rm \\\n  -e MODEL_PROVIDER=anthropic \\\n  -e ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY \\\n  ghcr.io/cagataycali/devduck:latest" }
+                ],
+                notes: "Mount ~/.aws for Bedrock access. Pass API keys via -e flags."
+            },
+            android: {
+                name: "Android (Termux)",
+                commands: [
+                    { title: "1. Install Termux from F-Droid", cmd: "# Download from https://f-droid.org/packages/com.termux/" },
+                    { title: "2. Setup Python", cmd: "pkg update && pkg install python" },
+                    { title: "3. Install DevDuck", cmd: "pip install devduck" }
+                ],
+                notes: "Works great with Ollama models for local AI on Android!"
+            },
+            cloud: {
+                name: "Cloud (EC2/GCE/Azure)",
+                commands: [
+                    { title: "EC2 with Bedrock", cmd: "# Launch Amazon Linux 2023 with IAM role\nsudo yum install python3-pip\npip3 install devduck\ndevduck" },
+                    { title: "Generic cloud", cmd: "curl -sSL https://install.python-poetry.org | python3 -\npip install devduck" }
+                ],
+                notes: "For Bedrock: attach IAM role with bedrock:InvokeModel permissions."
+            }
+        };
+        
+        // Provider information
+        const PROVIDER_INFO = {
+            bedrock: {
+                name: "Amazon Bedrock",
+                description: "AWS managed service with Claude, Llama, and more",
+                defaultModel: "us.anthropic.claude-sonnet-4-20250514-v1:0",
+                envVars: ["STRANDS_MODEL_ID", "AWS_REGION", "AWS_PROFILE"],
+                apiKeyVar: null,
+                apiKeyHint: "Uses AWS credentials (~/.aws/credentials or IAM role)",
+                supportsAdvanced: true,
+                features: ["Prompt Caching", "Cross-region", "Extended Thinking"]
+            },
+            anthropic: {
+                name: "Anthropic (Direct)",
+                description: "Direct API access to Claude models",
+                defaultModel: "claude-sonnet-4-20250514",
+                envVars: ["ANTHROPIC_API_KEY", "STRANDS_MODEL_ID"],
+                apiKeyVar: "ANTHROPIC_API_KEY",
+                apiKeyHint: "Get from console.anthropic.com",
+                supportsAdvanced: true,
+                features: ["Latest Models", "Extended Context", "Vision"]
+            },
+            openai: {
+                name: "OpenAI",
+                description: "GPT-4o, o1, o3 and more",
+                defaultModel: "gpt-4o",
+                envVars: ["OPENAI_API_KEY", "STRANDS_MODEL_ID"],
+                apiKeyVar: "OPENAI_API_KEY",
+                apiKeyHint: "Get from platform.openai.com",
+                supportsAdvanced: false,
+                features: ["GPT-4o", "o1 Reasoning", "Vision", "Function Calling"]
+            },
+            gemini: {
+                name: "Google Gemini",
+                description: "Gemini 2.5 Flash/Pro with multimodal support",
+                defaultModel: "gemini-2.5-flash",
+                envVars: ["GOOGLE_API_KEY", "STRANDS_MODEL_ID"],
+                apiKeyVar: "GOOGLE_API_KEY",
+                apiKeyHint: "Get from aistudio.google.com",
+                supportsAdvanced: false,
+                features: ["2M Context", "Multimodal", "Grounding"]
+            },
+            ollama: {
+                name: "Ollama (Local)",
+                description: "Run models locally - no API keys needed",
+                defaultModel: "qwen3:4b",
+                envVars: ["OLLAMA_HOST", "STRANDS_MODEL_ID"],
+                apiKeyVar: null,
+                apiKeyHint: "No API key needed - runs locally",
+                supportsAdvanced: false,
+                features: ["100% Local", "Private", "Offline", "Free"]
+            },
+            litellm: {
+                name: "LiteLLM",
+                description: "Unified API for 100+ LLM providers",
+                defaultModel: "anthropic/claude-sonnet-4-20250514",
+                envVars: ["LITELLM_API_KEY", "LITELLM_BASE_URL", "STRANDS_MODEL_ID"],
+                apiKeyVar: "LITELLM_API_KEY",
+                apiKeyHint: "Depends on backend provider",
+                supportsAdvanced: false,
+                features: ["100+ Providers", "Fallbacks", "Load Balancing"]
+            },
+            llamaapi: {
+                name: "Llama API",
+                description: "Meta's Llama models via managed API",
+                defaultModel: "Llama-4-Maverick-17B-128E-Instruct-FP8",
+                envVars: ["LLAMAAPI_API_KEY", "STRANDS_MODEL_ID"],
+                apiKeyVar: "LLAMAAPI_API_KEY",
+                apiKeyHint: "Get from llama-api.com",
+                supportsAdvanced: false,
+                features: ["Llama 3.1", "405B Model", "Open Source"]
+            },
+            writer: {
+                name: "Writer",
+                description: "Enterprise AI with Palmyra models",
+                defaultModel: "palmyra-x5",
+                envVars: ["WRITER_API_KEY", "STRANDS_MODEL_ID"],
+                apiKeyVar: "WRITER_API_KEY",
+                apiKeyHint: "Get from writer.com",
+                supportsAdvanced: false,
+                features: ["Enterprise", "Custom Training", "Compliance"]
+            },
+            cohere: {
+                name: "Cohere",
+                description: "Enterprise RAG-optimized models",
+                defaultModel: "command-a-03-2025",
+                envVars: ["COHERE_API_KEY", "STRANDS_MODEL_ID"],
+                apiKeyVar: "COHERE_API_KEY",
+                apiKeyHint: "Get from cohere.com",
+                supportsAdvanced: false,
+                features: ["RAG Optimized", "Multilingual", "Embeddings"]
+            },
+            github: {
+                name: "GitHub Models",
+                description: "AI models via GitHub's infrastructure",
+                defaultModel: "openai/gpt-4o",
+                envVars: ["GITHUB_TOKEN", "STRANDS_MODEL_ID"],
+                apiKeyVar: "GITHUB_TOKEN",
+                apiKeyHint: "Use your GitHub personal access token",
+                supportsAdvanced: false,
+                features: ["Multiple Models", "Free Tier", "GitHub Integration"]
+            },
+            mistral: {
+                name: "Mistral AI",
+                description: "European AI with strong reasoning",
+                defaultModel: "mistral-large-latest",
+                envVars: ["MISTRAL_API_KEY", "STRANDS_MODEL_ID"],
+                apiKeyVar: "MISTRAL_API_KEY",
+                apiKeyHint: "Get from console.mistral.ai",
+                supportsAdvanced: false,
+                features: ["Code Generation", "32K Context", "Function Calling"]
+            },
+            sagemaker: {
+                name: "AWS SageMaker",
+                description: "Custom models on SageMaker endpoints",
+                defaultModel: "your-endpoint-name",
+                envVars: ["SAGEMAKER_ENDPOINT_NAME", "AWS_REGION"],
+                apiKeyVar: null,
+                apiKeyHint: "Uses AWS credentials + endpoint name",
+                supportsAdvanced: false,
+                features: ["Custom Models", "Fine-tuned", "AWS Native"]
+            }
+        };
+        
+        let currentPlatform = 'linux';
+        
+        function selectPlatform(platform) {
+            currentPlatform = platform;
+            document.querySelectorAll('.platform-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.platform === platform);
+            });
+            updateInstallInstructions();
+        }
+        
+        function updateInstallInstructions() {
+            const info = PLATFORM_INSTALL[currentPlatform];
+            const container = document.getElementById('installInstructions');
+            
+            let html = '';
+            info.commands.forEach(cmd => {
+                html += `
+                    <div style="margin-bottom: 12px;">
+                        <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 6px;">${cmd.title}</div>
+                        <div class="code-block">
+                            <button class="copy-btn" onclick="copyText(this, \`${cmd.cmd.replace(/`/g, '\\`')}\`)">Copy</button>
+                            <pre>${cmd.cmd}</pre>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            html += `<div class="hint" style="margin-top: 12px;">📝 ${info.notes}</div>`;
+            container.innerHTML = html;
+        }
+        
+        function toggleCard(event) {
+            const card = event.currentTarget.closest('.card');
+            card.classList.toggle('expanded');
+        }
+        
+        function toggleThinkingBudget() {
+            const enabled = document.getElementById('enableThinking').checked;
+            document.getElementById('thinkingBudgetGroup').style.display = enabled ? 'block' : 'none';
+        }
+        
+        function updateModelDefaults() {
+            const provider = document.getElementById('modelProvider').value;
+            const info = PROVIDER_INFO[provider];
+            
+            if (!info) return;
+            
+            document.getElementById('modelId').value = info.defaultModel;
+            document.getElementById('modelHint').textContent = `Default: ${info.defaultModel}`;
+            
+            const apiKeyGroup = document.getElementById('apiKeyGroup');
+            const apiKeyHint = document.getElementById('apiKeyHint');
+            
+            if (info.apiKeyVar) {
+                apiKeyGroup.style.display = 'block';
+                document.getElementById('apiKey').placeholder = info.apiKeyVar;
+                apiKeyHint.textContent = info.apiKeyHint;
+            } else {
+                apiKeyGroup.style.display = 'none';
+                apiKeyHint.textContent = info.apiKeyHint;
+            }
+            
+            document.getElementById('advancedModelConfig').style.display = info.supportsAdvanced ? 'block' : 'none';
+            
+            const providerInfoDiv = document.getElementById('providerInfo');
+            providerInfoDiv.innerHTML = `
+                <div class="provider-info-title">${info.name}</div>
+                <div class="provider-info-desc">${info.description}</div>
+                <div class="provider-info-item">
+                    <span class="provider-info-label">Features:</span>
+                    <span>${info.features.join(' • ')}</span>
+                </div>
+                <div class="provider-info-item">
+                    <span class="provider-info-label">Env Variables:</span>
+                </div>
+                <div class="env-var-list">
+                    ${info.envVars.map(v => `<span class="env-var-tag">${v}</span>`).join('')}
+                </div>
+            `;
+        }
+        
+        function validateJson(input, previewId, errorId) {
+            const text = input.value.trim();
+            const preview = document.getElementById(previewId);
+            const error = document.getElementById(errorId);
+            
+            if (!text) {
+                if (preview) preview.style.display = 'none';
+                error.style.display = 'none';
+                return null;
+            }
+            
+            try {
+                const json = JSON.parse(text);
+                if (preview) {
+                    preview.innerHTML = '<pre>' + JSON.stringify(json, null, 2) + '</pre>';
+                    preview.style.display = 'block';
+                }
+                error.style.display = 'none';
+                return json;
+            } catch (e) {
+                error.textContent = 'Invalid JSON: ' + e.message;
+                error.style.display = 'block';
+                if (preview) preview.style.display = 'none';
+                return false;
+            }
+        }
+        
+        function getSelectedTools() {
+            const checkboxes = document.querySelectorAll('.tool-item input[type="checkbox"]:checked');
+            const toolsByPkg = {};
+            
+            checkboxes.forEach(cb => {
+                const [pkg, tool] = cb.value.split(':');
+                if (!toolsByPkg[pkg]) toolsByPkg[pkg] = [];
+                toolsByPkg[pkg].push(tool);
+            });
+            
+            let result = Object.entries(toolsByPkg)
+                .map(([pkg, tools]) => `${pkg}:${tools.join(',')}`)
+                .join(';');
+            
+            const custom = document.getElementById('customTools').value.trim();
+            if (custom) result += (result ? ';' : '') + custom;
+            
+            return result;
+        }
+        
+        function escapeShell(str) {
+            return "'" + str.replace(/'/g, "'\\''") + "'";
+        }
+        
+        function generateConfig() {
+            const mcpServers = validateJson(document.getElementById('mcpServers'), 'mcpPreview', 'mcpError');
+            if (mcpServers === false) {
+                alert('Please fix JSON errors in MCP Servers');
+                return;
+            }
+            
+            const data = {
+                systemPrompt: document.getElementById('systemPrompt').value.trim(),
+                provider: document.getElementById('modelProvider').value,
+                modelId: document.getElementById('modelId').value,
+                apiKey: document.getElementById('apiKey').value,
+                maxTokens: document.getElementById('maxTokens').value,
+                temperature: document.getElementById('temperature').value,
+                tools: getSelectedTools(),
+                enableWs: document.getElementById('enableWs').checked,
+                wsPort: document.getElementById('wsPort').value,
+                enableMcp: document.getElementById('enableMcp').checked,
+                mcpPort: document.getElementById('mcpPort').value,
+                enableZenoh: document.getElementById('enableZenoh').checked,
+                enableAmbient: document.getElementById('enableAmbient').checked,
+                ambientIdle: document.getElementById('ambientIdle').value,
+                ambientIterations: document.getElementById('ambientIterations').value,
+                mcpServers: mcpServers,
+                kbId: document.getElementById('kbId').value,
+                pipPackages: document.getElementById('pipPackages').value.trim(),
+                sysPackages: document.getElementById('sysPackages').value.trim(),
+                customCommands: document.getElementById('customCommands').value.trim()
+            };
+            
+            // Build advanced request fields for Anthropic/Bedrock
+            let additionalFields = null;
+            const provider = data.provider;
+            const info = PROVIDER_INFO[provider];
+            
+            if (info && info.supportsAdvanced) {
+                additionalFields = {};
+                const betaFeatures = [];
+                
+                if (document.getElementById('betaThinking').checked) {
+                    betaFeatures.push('interleaved-thinking-2025-05-14');
+                }
+                if (document.getElementById('betaContext').checked) {
+                    betaFeatures.push('context-1m-2025-08-07');
+                }
+                if (betaFeatures.length > 0) {
+                    additionalFields.anthropic_beta = betaFeatures;
+                }
+                
+                if (document.getElementById('enableThinking').checked) {
+                    additionalFields.thinking = {
+                        type: 'enabled',
+                        budget_tokens: parseInt(document.getElementById('thinkingBudget').value) || 2048
+                    };
+                }
+                
+                if (Object.keys(additionalFields).length === 0) additionalFields = null;
+            }
+            
+            // Generate the script
+            let script = `#!/bin/bash
+set -e
+
+# 🦆 DevDuck Configuration Script
+# Generated for: ${PLATFORM_INSTALL[currentPlatform].name}
+
+`;
+
+            // Determine RC file based on platform
+            if (currentPlatform === 'macos') {
+                script += `RC="$HOME/.zshrc"\n`;
+            } else {
+                script += `RC="$HOME/.bashrc"\n`;
+            }
+            
+            script += `
+add_var() {
+    grep -v "export $1=" "$RC" > "$RC.tmp" 2>/dev/null || true
+    mv "$RC.tmp" "$RC" 2>/dev/null || true
+    echo "export $1=\\"$2\\"" >> "$RC"
+}
+
+echo "🦆 Configuring DevDuck..."
+`;
+
+            // System prompt
+            if (data.systemPrompt) {
+                script += `\nadd_var "SYSTEM_PROMPT" ${escapeShell(data.systemPrompt)}\n`;
+            }
+            
+            // Model configuration
+            script += `\n# Model Configuration\n`;
+            script += `add_var "MODEL_PROVIDER" "${data.provider}"\n`;
+            script += `add_var "STRANDS_MODEL_ID" "${data.modelId}"\n`;
+            script += `add_var "STRANDS_MAX_TOKENS" "${data.maxTokens}"\n`;
+            script += `add_var "STRANDS_TEMPERATURE" "${data.temperature}"\n`;
+            
+            if (data.apiKey && info && info.apiKeyVar) {
+                script += `add_var "${info.apiKeyVar}" "${data.apiKey}"\n`;
+            }
+            
+            if (additionalFields) {
+                script += `add_var "STRANDS_ADDITIONAL_REQUEST_FIELDS" ${escapeShell(JSON.stringify(additionalFields))}\n`;
+            }
+            
+            // Tools
+            if (data.tools) {
+                script += `\n# Tools\n`;
+                script += `add_var "DEVDUCK_TOOLS" "${data.tools}"\n`;
+            }
+            
+            // Servers
+            script += `\n# Servers\n`;
+            script += `add_var "DEVDUCK_ENABLE_WS" "${data.enableWs}"\n`;
+            if (data.enableWs) script += `add_var "DEVDUCK_WS_PORT" "${data.wsPort}"\n`;
+            script += `add_var "DEVDUCK_ENABLE_MCP" "${data.enableMcp}"\n`;
+            if (data.enableMcp) script += `add_var "DEVDUCK_MCP_PORT" "${data.mcpPort}"\n`;
+            script += `add_var "DEVDUCK_ENABLE_ZENOH" "${data.enableZenoh}"\n`;
+            
+            // Ambient mode
+            if (data.enableAmbient) {
+                script += `\n# Ambient Mode\n`;
+                script += `add_var "DEVDUCK_AMBIENT_MODE" "true"\n`;
+                script += `add_var "DEVDUCK_AMBIENT_IDLE_SECONDS" "${data.ambientIdle}"\n`;
+                script += `add_var "DEVDUCK_AMBIENT_MAX_ITERATIONS" "${data.ambientIterations}"\n`;
+            }
+            
+            // MCP Servers
+            if (data.mcpServers) {
+                script += `\n# External MCP Servers\n`;
+                script += `add_var "MCP_SERVERS" ${escapeShell(JSON.stringify(data.mcpServers))}\n`;
+            }
+            
+            // Knowledge Base
+            if (data.kbId) {
+                script += `\nadd_var "DEVDUCK_KNOWLEDGE_BASE_ID" "${data.kbId}"\n`;
+            }
+            
+            // Dependencies
+            if (data.sysPackages) {
+                script += `\necho "📦 Installing system packages..."\n`;
+                if (currentPlatform === 'macos') {
+                    script += `brew install ${data.sysPackages} || true\n`;
+                } else if (currentPlatform === 'android') {
+                    script += `pkg install ${data.sysPackages} || true\n`;
+                } else {
+                    script += `sudo apt-get update && sudo apt-get install -y ${data.sysPackages} || true\n`;
+                }
+            }
+            
+            if (data.pipPackages) {
+                script += `\necho "🐍 Installing Python packages..."\n`;
+                script += `pip install ${data.pipPackages}\n`;
+            }
+            
+            if (data.customCommands) {
+                script += `\necho "⚙️ Running custom setup..."\n`;
+                script += data.customCommands + '\n';
+            }
+            
+            // Finish
+            script += `
+add_var "BYPASS_TOOL_CONSENT" "true"
+
+echo ""
+echo "✅ Configuration complete!"
+echo ""
+echo "Run these commands to start:"
+echo "  source $RC"
+echo "  devduck"
+echo ""
+echo "🦆 Happy hacking!"
+`;
+
+            // Wrap in heredoc for easy copy-paste
+            const finalScript = `bash << 'DEVDUCK_SETUP'\n${script}\nDEVDUCK_SETUP`;
+            
+            document.getElementById('outputScript').textContent = finalScript;
+            document.getElementById('output').style.display = 'block';
+            document.getElementById('output').scrollIntoView({ behavior: 'smooth' });
+        }
+        
+        function copyCode(id) {
+            const text = document.getElementById(id).textContent;
+            copyText(event.target, text);
+        }
+        
+        function copyText(btn, text) {
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(text).then(() => {
+                    btn.textContent = 'Copied!';
+                    btn.classList.add('copied');
+                    setTimeout(() => {
+                        btn.textContent = 'Copy';
+                        btn.classList.remove('copied');
+                    }, 2000);
+                });
+            } else {
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                btn.textContent = 'Copied!';
+                btn.classList.add('copied');
+                setTimeout(() => {
+                    btn.textContent = 'Copy';
+                    btn.classList.remove('copied');
+                }, 2000);
+            }
+        }
+        
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            updateInstallInstructions();
+            updateModelDefaults();
+            
+            document.getElementById('mcpServers').addEventListener('input', function() {
+                validateJson(this, 'mcpPreview', 'mcpError');
+            });
+        });
+    </script>
+</body>
+</html>
