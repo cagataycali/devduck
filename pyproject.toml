@@ -47,6 +47,7 @@ dependencies = [
     "rumps; sys_platform == 'darwin'",
     "strands-mlx; sys_platform == 'darwin'",
     "eclipse-zenoh",
+    "halo",
 ]
 
 [project.optional-dependencies]

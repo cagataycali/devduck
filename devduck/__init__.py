@@ -20,6 +20,7 @@ from datetime import datetime
 from typing import Dict, Any
 from logging.handlers import RotatingFileHandler
 from strands import Agent, tool
+from .callback_handler import callback_handler
 
 # Import system prompt helper for loading prompts from files
 try:
@@ -458,6 +459,30 @@ def parse_history_line(line, history_type):
     return None
 
 
+def get_ambient_status_context():
+    """Get ambient mode status for dynamic context injection."""
+    try:
+        if not hasattr(devduck, "ambient") or not devduck.ambient:
+            return ""
+
+        ambient = devduck.ambient
+        context = f"\n\n## 🌙 Ambient Mode Status:\n"
+        context += f"- **Enabled**: {ambient.running}\n"
+        context += f"- **Mode**: {'AUTONOMOUS' if ambient.autonomous else 'Standard'}\n"
+        context += f"- **Iterations**: {ambient.ambient_iterations}/{ambient.autonomous_max_iterations if ambient.autonomous else ambient.max_iterations}\n"
+        context += (
+            f"- **Pending Results**: {len(ambient.ambient_results_history)} stored\n"
+        )
+
+        if ambient.last_query:
+            context += f"- **Last Query**: {ambient.last_query[:100]}...\n"
+
+        return context
+    except Exception as e:
+        logger.debug(f"Could not get ambient status context: {e}")
+        return ""
+
+
 def get_zenoh_peers_context():
     """Get current zenoh peers for dynamic context injection."""
     try:
@@ -603,6 +628,283 @@ def append_to_shell_history(query, response):
         os.chmod(history_file, 0o600)
     except Exception:
         pass
+
+
+# 🌙 Ambient Mode - Background thinking while user is idle
+class AmbientMode:
+    """Background thread that continues working when user is idle.
+
+    Two modes:
+    - Standard: Runs up to max_iterations when user is idle, injects into next query
+    - Autonomous: Runs continuously until stopped or agent signals completion
+    """
+
+    # Magic phrases the agent can use to signal completion
+    COMPLETION_SIGNALS = [
+        "[AMBIENT_DONE]",
+        "[TASK_COMPLETE]",
+        "[NOTHING_MORE_TO_DO]",
+        "I've completed my exploration",
+        "Nothing more to explore",
+    ]
+
+    def __init__(self, devduck_instance):
+        self.devduck = devduck_instance
+        self.running = False
+        self.thread = None
+
+        # Configuration
+        self.idle_threshold = float(os.getenv("DEVDUCK_AMBIENT_IDLE_SECONDS", "30"))
+        self.max_iterations = int(os.getenv("DEVDUCK_AMBIENT_MAX_ITERATIONS", "3"))
+        self.cooldown = float(os.getenv("DEVDUCK_AMBIENT_COOLDOWN", "60"))
+
+        # Autonomous mode settings
+        self.autonomous = False
+        self.autonomous_cooldown = float(os.getenv("DEVDUCK_AUTONOMOUS_COOLDOWN", "10"))
+        self.autonomous_max_iterations = int(
+            os.getenv("DEVDUCK_AUTONOMOUS_MAX_ITERATIONS", "50")
+        )
+
+        # State
+        self.last_interaction = time.time()
+        self.last_query = None
+        self.last_response = None
+        self.ambient_result = None
+        self.ambient_results_history = []  # Keep history in autonomous mode
+        self.ambient_iterations = 0
+        self.last_ambient_run = 0
+        self._interrupted = False
+
+    def start(self, autonomous=False):
+        """Start ambient mode background thread.
+
+        Args:
+            autonomous: If True, run continuously until stopped or completion signal
+        """
+        if self.running:
+            # If switching to autonomous mode while running
+            if autonomous and not self.autonomous:
+                self.autonomous = True
+                logger.info("Switched to autonomous mode")
+                print(
+                    "🌙 [ambient] Switched to AUTONOMOUS mode - will run until stopped or complete"
+                )
+            return
+
+        self.running = True
+        self.autonomous = autonomous
+        self._interrupted = False
+        self.thread = threading.Thread(target=self._ambient_loop, daemon=True)
+        self.thread.start()
+
+        if autonomous:
+            logger.info("Ambient mode started (AUTONOMOUS)")
+            print(
+                "🌙 Ambient mode started (AUTONOMOUS - runs until stopped or [AMBIENT_DONE])"
+            )
+        else:
+            logger.info("Ambient mode started (standard)")
+
+    def stop(self):
+        """Stop ambient mode."""
+        self.running = False
+        self.autonomous = False
+        self._interrupted = True
+        logger.info("Ambient mode stopped")
+
+    def record_interaction(self, query, response):
+        """Record user interaction to inform ambient continuation."""
+        self.last_interaction = time.time()
+        self.last_query = query
+        self.last_response = str(response)[:5000]  # Truncate for context
+
+        # In autonomous mode, don't reset iterations - keep going
+        if not self.autonomous:
+            self.ambient_iterations = 0
+            self.ambient_results_history = []
+
+        self._interrupted = False
+
+    def interrupt(self):
+        """Interrupt current ambient work (user started typing)."""
+        self._interrupted = True
+
+    def get_and_clear_result(self):
+        """Get ambient result and clear it."""
+        if self.autonomous and self.ambient_results_history:
+            # In autonomous mode, return all accumulated results
+            iteration_count = len(
+                self.ambient_results_history
+            )  # Capture count BEFORE clearing
+            result = "\n\n".join(self.ambient_results_history)
+            self.ambient_results_history = []
+            self.ambient_result = None
+            return (
+                f"[Autonomous ambient work - {iteration_count} iterations]:\n{result}"
+            )
+
+        result = self.ambient_result
+        self.ambient_result = None
+        return result
+
+    def _check_completion_signal(self, result_text):
+        """Check if the agent signaled completion."""
+        result_lower = str(result_text).lower()
+        for signal in self.COMPLETION_SIGNALS:
+            if signal.lower() in result_lower:
+                return True
+        return False
+
+    def _build_ambient_prompt(self):
+        """Build a continuation prompt based on last context."""
+        if not self.last_query:
+            return None
+
+        if self.autonomous:
+            # Autonomous mode - more directive prompts
+            if self.ambient_iterations == 0:
+                return (
+                    f"You're in AUTONOMOUS mode. Work on this task until complete: '{self.last_query[:300]}'\n\n"
+                    f"Take action, make progress, explore deeply. When you're truly done with nothing "
+                    f"more to do, include '[AMBIENT_DONE]' in your response. Otherwise, keep working."
+                )
+            else:
+                history_summary = ""
+                if self.ambient_results_history:
+                    history_summary = f"\n\nPrevious iterations summary: {len(self.ambient_results_history)} completed."
+
+                return (
+                    f"Continue working on: '{self.last_query[:200]}'{history_summary}\n\n"
+                    f"Iteration {self.ambient_iterations + 1}. What's the next step? Take action.\n"
+                    f"If truly complete, say '[AMBIENT_DONE]'. Otherwise, keep making progress."
+                )
+        else:
+            # Standard ambient mode prompts
+            prompts = [
+                f"Continue exploring the topic from the last interaction. Last query was: '{self.last_query[:200]}'. "
+                f"Think deeper, find connections, validate assumptions, or explore related areas. "
+                f"Be proactive and useful.",
+                f"Based on our recent work on '{self.last_query[:100]}', what else should be considered? "
+                f"Are there edge cases, improvements, or related topics worth exploring?",
+                f"Reflect on the last task: '{self.last_query[:100]}'. "
+                f"What would make the solution better? Any risks or opportunities missed?",
+            ]
+
+            # Rotate through prompts based on iteration
+            return prompts[self.ambient_iterations % len(prompts)]
+
+    def _ambient_loop(self):
+        """Background loop that triggers ambient thinking."""
+        logger.info(f"Ambient loop started (autonomous={self.autonomous})")
+
+        while self.running:
+            try:
+                current_time = time.time()
+                idle_time = current_time - self.last_interaction
+                cooldown_elapsed = current_time - self.last_ambient_run
+
+                # Different conditions for autonomous vs standard mode
+                if self.autonomous:
+                    # Autonomous: shorter cooldown, higher iteration limit
+                    effective_cooldown = self.autonomous_cooldown
+                    effective_max_iterations = self.autonomous_max_iterations
+                else:
+                    # Standard: wait for idle, respect normal limits
+                    effective_cooldown = self.cooldown
+                    effective_max_iterations = self.max_iterations
+
+                    # In standard mode, must be idle first
+                    if idle_time < self.idle_threshold:
+                        time.sleep(5)
+                        continue
+
+                # Check conditions for ambient run
+                should_run = (
+                    cooldown_elapsed > effective_cooldown
+                    and self.ambient_iterations < effective_max_iterations
+                    and self.last_query is not None
+                    and not self.devduck._agent_executing
+                    and not self._interrupted
+                )
+
+                if should_run:
+                    prompt = self._build_ambient_prompt()
+                    if not prompt:
+                        time.sleep(5)
+                        continue
+
+                    mode_label = "AUTONOMOUS" if self.autonomous else "ambient"
+                    iter_display = (
+                        f"{self.ambient_iterations + 1}/{effective_max_iterations}"
+                    )
+
+                    logger.info(
+                        f"Ambient mode triggering ({mode_label}, iteration: {iter_display})"
+                    )
+                    print(
+                        f"\n\n🌙 [{mode_label}] Thinking... (iteration {iter_display})"
+                    )
+                    print("─" * 50)
+
+                    try:
+                        self.devduck._agent_executing = True
+
+                        # Run agent with ambient prompt
+                        result = self.devduck.agent(prompt)
+                        result_str = str(result)
+
+                        # Only store result if not interrupted
+                        if not self._interrupted:
+                            # Check for completion signal in autonomous mode
+                            if self.autonomous and self._check_completion_signal(
+                                result_str
+                            ):
+                                print("─" * 50)
+                                print(
+                                    "🌙 [AUTONOMOUS] Agent signaled completion. Stopping."
+                                )
+                                self.ambient_results_history.append(
+                                    f"[Final iteration {self.ambient_iterations + 1}]:\n{result_str}"
+                                )
+                                self.autonomous = False
+                                self.running = False
+                                break
+
+                            # Store result
+                            if self.autonomous:
+                                self.ambient_results_history.append(
+                                    f"[Iteration {self.ambient_iterations + 1}]:\n{result_str[:2000]}"
+                                )
+                                print("─" * 50)
+                                print(
+                                    f"🌙 [AUTONOMOUS] Iteration complete. Continuing... ({len(self.ambient_results_history)} stored)\n"
+                                )
+                            else:
+                                self.ambient_result = f"[Ambient thinking - iteration {self.ambient_iterations + 1}]:\n{result_str}"
+                                print("─" * 50)
+                                print(
+                                    "🌙 [ambient] Work stored. Will be injected into next query.\n"
+                                )
+
+                            self.ambient_iterations += 1
+                            self.last_ambient_run = time.time()
+                        else:
+                            print("\n🌙 [ambient] Interrupted by user input.\n")
+
+                    except Exception as e:
+                        logger.error(f"Ambient mode error: {e}")
+                        print(f"\n🌙 [ambient] Error: {e}\n")
+                    finally:
+                        self.devduck._agent_executing = False
+
+            except Exception as e:
+                logger.error(f"Ambient loop error: {e}")
+
+            # Check interval - faster in autonomous mode
+            sleep_time = 2 if self.autonomous else 5
+            time.sleep(sleep_time)
+
+        logger.info("Ambient loop stopped")
 
 
 # 🦆 The devduck agent
@@ -814,6 +1116,7 @@ class DevDuck:
                 tools=self.tools,
                 system_prompt=self._build_system_prompt(),
                 load_tools_from_directory=load_from_dir,
+                callback_handler=callback_handler,
                 trace_attributes={
                     "session.id": self.session_id,
                     "user.id": self.env_info["hostname"],
@@ -827,6 +1130,14 @@ class DevDuck:
 
             # Start file watcher for auto hot-reload
             self._start_file_watcher()
+
+            # 🌙 Initialize Ambient Mode (background thinking)
+            self.ambient = None
+            if os.getenv("DEVDUCK_AMBIENT_MODE", "false").lower() == "true":
+                self.ambient = AmbientMode(self)
+                self.ambient.start()
+                logger.info("Ambient mode enabled")
+                print("🌙 Ambient mode enabled (background thinking when idle)")
 
             logger.info(
                 f"DevDuck agent initialized successfully with model {self.model}"
@@ -1263,6 +1574,26 @@ When you learn something valuable during conversations:
 - Example: ! ls -la (lists files)
 - Example: ! pwd (shows current directory)
 
+## 🌙 Ambient Mode (Background Thinking):
+When enabled, I continue working in the background while you're idle:
+- **Enable**: Set `DEVDUCK_AMBIENT_MODE=true` or type `ambient` in REPL
+- **Idle Threshold**: `DEVDUCK_AMBIENT_IDLE_SECONDS=30` (default: 30s)
+- **Max Iterations**: `DEVDUCK_AMBIENT_MAX_ITERATIONS=3` (default: 3)
+- **Cooldown**: `DEVDUCK_AMBIENT_COOLDOWN=60` (default: 60s between runs)
+
+### 🚀 Autonomous Mode (Fully Self-Directed):
+Type `auto` or `autonomous` in REPL - I'll keep working until done:
+- **Max Iterations**: `DEVDUCK_AUTONOMOUS_MAX_ITERATIONS=50` (default: 50)
+- **Cooldown**: `DEVDUCK_AUTONOMOUS_COOLDOWN=10` (default: 10s)
+- **Completion Signal**: Include `[AMBIENT_DONE]` in response to stop
+
+How it works:
+1. **Standard**: After you go idle (30s), I explore the topic (max 3 iterations)
+2. **Autonomous**: I work continuously until `[AMBIENT_DONE]` or you stop me
+3. My background work streams to terminal with 🌙 prefix
+4. When you return, my findings are injected into your next query
+5. Typing interrupts ambient work gracefully
+
 **Response Format:**
 - Tool calls: **MAXIMUM PARALLELISM - ALWAYS** 
 - Communication: **MINIMAL WORDS**
@@ -1520,6 +1851,15 @@ When you learn something valuable during conversations:
             # Mark agent as executing to prevent hot-reload interruption
             self._agent_executing = True
 
+            # 🌙 Inject ambient result if available
+            original_query = query
+            if self.ambient:
+                ambient_result = self.ambient.get_and_clear_result()
+                if ambient_result:
+                    logger.info("Injecting ambient mode result into query")
+                    print("🌙 [ambient] Injecting background work into context...")
+                    query = f"{ambient_result}\n\n[New user query]:\n{query}"
+
             # 📚 Knowledge Base Retrieval (BEFORE agent runs)
             knowledge_base_id = os.getenv("DEVDUCK_KNOWLEDGE_BASE_ID")
             if knowledge_base_id and hasattr(self.agent, "tool"):
@@ -1532,12 +1872,14 @@ When you learn something valuable during conversations:
                 except Exception as e:
                     logger.warning(f"KB retrieval failed: {e}")
 
-            # 🔗 Inject dynamic zenoh peers context
+            # 🔗 Inject dynamic context (zenoh + ambient)
             zenoh_context = get_zenoh_peers_context()
-            if zenoh_context:
-                # Prepend dynamic context to query for visibility
+            ambient_context = get_ambient_status_context()
+
+            dynamic_context = zenoh_context + ambient_context
+            if dynamic_context:
                 query_with_context = (
-                    f"[Dynamic Context]{zenoh_context}\n\n[User Query]\n{query}"
+                    f"[Dynamic Context]{dynamic_context}\n\n[User Query]\n{query}"
                 )
             else:
                 query_with_context = query
@@ -1545,12 +1887,18 @@ When you learn something valuable during conversations:
             # Run the agent
             result = self.agent(query_with_context)
 
+            # 🌙 Record interaction for ambient mode
+            if self.ambient:
+                self.ambient.record_interaction(original_query, result)
+
             # 💾 Knowledge Base Storage (AFTER agent runs)
             if knowledge_base_id and hasattr(self.agent, "tool"):
                 try:
                     if "store_in_kb" in self.agent.tool_names:
-                        conversation_content = f"Input: {query}, Result: {result!s}"
-                        conversation_title = f"DevDuck: {datetime.now().strftime('%Y-%m-%d')} | {query[:500]}"
+                        conversation_content = (
+                            f"Input: {original_query}, Result: {result!s}"
+                        )
+                        conversation_title = f"DevDuck: {datetime.now().strftime('%Y-%m-%d')} | {original_query[:500]}"
                         self.agent.tool.store_in_kb(
                             content=conversation_content,
                             title=conversation_title,
@@ -1700,7 +2048,7 @@ When you learn something valuable during conversations:
 
     def status(self):
         """Show current status"""
-        return {
+        status_dict = {
             "model": self.model,
             "env": self.env_info,
             "agent_ready": self.agent is not None,
@@ -1712,6 +2060,30 @@ When you learn something valuable during conversations:
                 ),
             },
         }
+
+        # 🌙 Ambient mode status
+        if self.ambient:
+            status_dict["ambient_mode"] = {
+                "enabled": self.ambient.running,
+                "autonomous": self.ambient.autonomous,
+                "idle_threshold": self.ambient.idle_threshold,
+                "max_iterations": (
+                    self.ambient.autonomous_max_iterations
+                    if self.ambient.autonomous
+                    else self.ambient.max_iterations
+                ),
+                "current_iterations": self.ambient.ambient_iterations,
+                "has_pending_result": self.ambient.ambient_result is not None
+                or len(self.ambient.ambient_results_history) > 0,
+                "results_stored": len(self.ambient.ambient_results_history),
+                "last_query": (
+                    self.ambient.last_query[:50] if self.ambient.last_query else None
+                ),
+            }
+        else:
+            status_dict["ambient_mode"] = {"enabled": False}
+
+        return status_dict
 
 
 # 🦆 Auto-initialize when imported
@@ -1828,6 +2200,8 @@ def interactive():
 
     print("🦆 DevDuck")
     print(f"📝 Logs: {LOG_DIR}")
+    if devduck.ambient:
+        print(f"🌙 Ambient mode: ON (idle: {devduck.ambient.idle_threshold}s)")
     print("Type 'exit', 'quit', or 'q' to quit.")
     print("Prefix with ! to run shell commands (e.g., ! ls -la)")
     print("\n\n")
@@ -1838,7 +2212,18 @@ def interactive():
     history = FileHistory(history_file)
 
     # Create completions from common commands and shell history
-    base_commands = ["exit", "quit", "q", "help", "clear", "status", "reload"]
+    base_commands = [
+        "exit",
+        "quit",
+        "q",
+        "help",
+        "clear",
+        "status",
+        "reload",
+        "ambient",
+        "auto",
+        "autonomous",
+    ]
     history_commands = extract_commands_from_history()
 
     # Combine base commands with commands from history
@@ -1865,11 +2250,43 @@ def interactive():
 
             # Check for exit command
             if q.lower() in ["exit", "quit", "q"]:
+                if devduck.ambient:
+                    devduck.ambient.stop()
                 print("\n🦆 Goodbye!")
                 break
 
             # Skip empty inputs
             if q.strip() == "":
+                continue
+
+            # Handle ambient mode toggle
+            if q.lower() == "ambient":
+                if devduck.ambient:
+                    if devduck.ambient.running:
+                        devduck.ambient.stop()
+                        print("🌙 Ambient mode disabled")
+                    else:
+                        devduck.ambient.start()
+                        print("🌙 Ambient mode enabled (standard)")
+                else:
+                    devduck.ambient = AmbientMode(devduck)
+                    devduck.ambient.start()
+                    print("🌙 Ambient mode enabled (standard)")
+                continue
+
+            # Handle autonomous mode toggle
+            if q.lower() in ["auto", "autonomous"]:
+                if devduck.ambient:
+                    if devduck.ambient.autonomous:
+                        devduck.ambient.stop()
+                        print("🌙 Autonomous mode disabled")
+                    elif devduck.ambient.running:
+                        devduck.ambient.start(autonomous=True)
+                    else:
+                        devduck.ambient.start(autonomous=True)
+                else:
+                    devduck.ambient = AmbientMode(devduck)
+                    devduck.ambient.start(autonomous=True)
                 continue
 
             # Handle shell commands with ! prefix
@@ -1921,6 +2338,8 @@ def interactive():
             if current_time - last_interrupt < 2:
                 interrupt_count += 1
                 if interrupt_count >= 2:
+                    if devduck.ambient:
+                        devduck.ambient.stop()
                     print("\n🦆 Exiting...")
                     break
                 else:
