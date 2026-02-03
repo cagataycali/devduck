@@ -1,0 +1,1691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>▶️ Session Player - DevDuck Time Machine</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-tertiary: #1a1a25;
+            --border: rgba(255, 255, 255, 0.08);
+            --text-primary: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.7);
+            --text-muted: rgba(255, 255, 255, 0.4);
+            --accent-purple: #8b5cf6;
+            --accent-blue: #3b82f6;
+            --accent-green: #10b981;
+            --accent-yellow: #f59e0b;
+            --accent-red: #ef4444;
+            --accent-pink: #ec4899;
+            --layer-sys: #f59e0b;
+            --layer-tool: #10b981;
+            --layer-agent: #8b5cf6;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+            padding: 2rem;
+            text-align: center;
+            border-bottom: 1px solid var(--border);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 600px;
+            height: 300px;
+            background: radial-gradient(ellipse, rgba(139, 92, 246, 0.15) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.7) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            position: relative;
+        }
+
+        .header .subtitle {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+            margin-bottom: 1rem;
+        }
+
+        .header .badge {
+            display: inline-block;
+            background: rgba(139, 92, 246, 0.2);
+            border: 1px solid rgba(139, 92, 246, 0.4);
+            color: var(--accent-purple);
+            padding: 0.25rem 0.75rem;
+            border-radius: 2rem;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .nav {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-top: 1.5rem;
+            position: relative;
+        }
+
+        .nav a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+            padding: 0.5rem 0;
+            border-bottom: 2px solid transparent;
+        }
+
+        .nav a:hover {
+            color: var(--text-primary);
+            border-color: var(--accent-purple);
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        /* Upload Zone */
+        .upload-zone {
+            background: var(--bg-secondary);
+            border: 2px dashed var(--border);
+            border-radius: 1.5rem;
+            padding: 5rem 2rem;
+            text-align: center;
+            transition: all 0.3s;
+            cursor: pointer;
+            margin-bottom: 2rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .upload-zone::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: radial-gradient(circle at center, rgba(139, 92, 246, 0.05) 0%, transparent 70%);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .upload-zone:hover::before, .upload-zone.dragover::before {
+            opacity: 1;
+        }
+
+        .upload-zone:hover, .upload-zone.dragover {
+            border-color: var(--accent-purple);
+            transform: scale(1.01);
+        }
+
+        .upload-zone .icon {
+            font-size: 5rem;
+            margin-bottom: 1.5rem;
+            filter: grayscale(0.3);
+        }
+
+        .upload-zone h2 {
+            font-size: 1.75rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .upload-zone p {
+            color: var(--text-muted);
+            margin-bottom: 1.5rem;
+        }
+
+        .upload-zone .hint {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            background: rgba(255,255,255,0.03);
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            display: inline-block;
+        }
+
+        .upload-zone .hint code {
+            background: rgba(139, 92, 246, 0.2);
+            padding: 0.1rem 0.4rem;
+            border-radius: 0.25rem;
+            color: var(--accent-purple);
+        }
+
+        .upload-zone input {
+            display: none;
+        }
+
+        .upload-zone.hidden {
+            display: none;
+        }
+
+        /* Player Container */
+        .player-container {
+            display: none;
+        }
+
+        .player-container.active {
+            display: block;
+        }
+
+        /* Session Header */
+        .session-header {
+            background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+            border: 1px solid var(--border);
+            border-radius: 1rem;
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .session-header .title-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .session-header .session-id {
+            font-size: 1.5rem;
+            font-weight: 700;
+            font-family: 'Courier New', monospace;
+            color: var(--accent-purple);
+        }
+
+        .session-header .meta-badges {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .session-header .meta-badge {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--border);
+            padding: 0.4rem 0.8rem;
+            border-radius: 0.5rem;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .session-header .meta-badge strong {
+            color: var(--text-primary);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+        }
+
+        .stat-card {
+            background: rgba(255,255,255,0.02);
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            padding: 1.25rem;
+            text-align: center;
+            transition: all 0.2s;
+        }
+
+        .stat-card:hover {
+            background: rgba(255,255,255,0.04);
+            transform: translateY(-2px);
+        }
+
+        .stat-card .value {
+            font-size: 2rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--text-primary) 0%, var(--text-secondary) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .stat-card .label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-muted);
+            margin-top: 0.25rem;
+        }
+
+        .stat-card.sys .value { color: var(--layer-sys); -webkit-text-fill-color: var(--layer-sys); }
+        .stat-card.tool .value { color: var(--layer-tool); -webkit-text-fill-color: var(--layer-tool); }
+        .stat-card.agent .value { color: var(--layer-agent); -webkit-text-fill-color: var(--layer-agent); }
+
+        /* Resume Box */
+        .resume-box {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0.05) 100%);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: 1rem;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .resume-box h3 {
+            color: var(--accent-green);
+            font-size: 1.1rem;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .resume-box .commands {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1rem;
+        }
+
+        .resume-box .command {
+            background: rgba(0,0,0,0.3);
+            border-radius: 0.5rem;
+            padding: 1rem;
+        }
+
+        .resume-box .command-label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+        }
+
+        .resume-box pre {
+            font-size: 0.85rem;
+            color: var(--accent-green);
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        /* Controls */
+        .controls {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 1rem;
+            padding: 1rem 1.5rem;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .controls button {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 0.6rem 1.2rem;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .controls button:hover {
+            background: rgba(255,255,255,0.1);
+            transform: translateY(-1px);
+        }
+
+        .controls button.primary {
+            background: linear-gradient(135deg, var(--accent-purple) 0%, #7c3aed 100%);
+            border-color: transparent;
+        }
+
+        .controls button.primary:hover {
+            filter: brightness(1.1);
+        }
+
+        .controls .speed {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+
+        .controls .speed select {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.35rem;
+            cursor: pointer;
+        }
+
+        .controls .progress-info {
+            margin-left: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+
+        .controls .progress-info .current {
+            color: var(--accent-purple);
+            font-weight: 600;
+        }
+
+        /* Progress Timeline */
+        .progress-timeline {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 1rem;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .progress-timeline .timeline-labels {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.75rem;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            font-family: 'Courier New', monospace;
+        }
+
+        .progress-bar {
+            height: 12px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 6px;
+            cursor: pointer;
+            position: relative;
+            overflow: visible;
+        }
+
+        .progress-bar .fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent-purple) 0%, var(--accent-blue) 100%);
+            border-radius: 6px;
+            transition: width 0.15s ease;
+            position: relative;
+        }
+
+        .progress-bar .fill::after {
+            content: '';
+            position: absolute;
+            right: 0;
+            top: 50%;
+            transform: translate(50%, -50%);
+            width: 18px;
+            height: 18px;
+            background: var(--text-primary);
+            border-radius: 50%;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+
+        .progress-bar .markers {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+        }
+
+        .progress-bar .marker {
+            position: absolute;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            width: 20px;
+            height: 20px;
+            background: var(--accent-yellow);
+            border-radius: 50%;
+            border: 3px solid var(--bg-primary);
+            cursor: pointer;
+            pointer-events: auto;
+            transition: all 0.2s;
+            z-index: 5;
+        }
+
+        .progress-bar .marker:hover {
+            transform: translate(-50%, -50%) scale(1.2);
+        }
+
+        .progress-bar .marker::before {
+            content: attr(data-id);
+            position: absolute;
+            top: -24px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--accent-yellow);
+            white-space: nowrap;
+        }
+
+        /* Layer Legend */
+        .layer-legend {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border);
+        }
+
+        .layer-legend .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .layer-legend .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        .layer-legend .dot.sys { background: var(--layer-sys); }
+        .layer-legend .dot.tool { background: var(--layer-tool); }
+        .layer-legend .dot.agent { background: var(--layer-agent); }
+
+        /* Filter Tabs */
+        .filter-tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        .filter-tabs button {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            padding: 0.6rem 1.2rem;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .filter-tabs button:hover {
+            background: rgba(255,255,255,0.06);
+            color: var(--text-secondary);
+        }
+
+        .filter-tabs button.active {
+            background: rgba(139, 92, 246, 0.15);
+            border-color: rgba(139, 92, 246, 0.4);
+            color: var(--text-primary);
+        }
+
+        .filter-tabs button.active.sys { background: rgba(245, 158, 11, 0.15); border-color: rgba(245, 158, 11, 0.4); }
+        .filter-tabs button.active.tool { background: rgba(16, 185, 129, 0.15); border-color: rgba(16, 185, 129, 0.4); }
+        .filter-tabs button.active.agent { background: rgba(139, 92, 246, 0.15); border-color: rgba(139, 92, 246, 0.4); }
+
+        /* Main Content Grid */
+        .content-grid {
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 2rem;
+        }
+
+        @media (max-width: 1200px) {
+            .content-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Timeline Panel */
+        .timeline-panel {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 1rem;
+            overflow: hidden;
+        }
+
+        .panel-header {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+            font-weight: 600;
+            font-size: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            position: sticky;
+            top: 0;
+            background: var(--bg-secondary);
+            z-index: 10;
+        }
+
+        .panel-header .count {
+            background: rgba(255,255,255,0.1);
+            padding: 0.2rem 0.6rem;
+            border-radius: 1rem;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .events-list {
+            max-height: 700px;
+            overflow-y: auto;
+        }
+
+        .event {
+            padding: 1rem 1.5rem;
+            border-bottom: 1px solid rgba(255,255,255,0.03);
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        .event:hover {
+            background: rgba(255,255,255,0.02);
+        }
+
+        .event.active {
+            background: rgba(139, 92, 246, 0.1);
+            border-left: 3px solid var(--accent-purple);
+        }
+
+        .event .event-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .event .timestamp {
+            font-family: 'Courier New', monospace;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .event .layer-badge {
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 0.2rem 0.5rem;
+            border-radius: 0.25rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .event .layer-badge.sys { background: rgba(245, 158, 11, 0.2); color: var(--layer-sys); }
+        .event .layer-badge.tool { background: rgba(16, 185, 129, 0.2); color: var(--layer-tool); }
+        .event .layer-badge.agent { background: rgba(139, 92, 246, 0.2); color: var(--layer-agent); }
+
+        .event .event-type {
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 0.9rem;
+        }
+
+        .event .event-data {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            font-family: 'Courier New', monospace;
+            word-break: break-all;
+            max-height: 60px;
+            overflow: hidden;
+            line-height: 1.4;
+        }
+
+        /* Snapshots Panel */
+        .snapshots-panel {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 1rem;
+            overflow: hidden;
+        }
+
+        .snapshots-list {
+            max-height: 700px;
+            overflow-y: auto;
+        }
+
+        .snapshot {
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid rgba(255,255,255,0.03);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .snapshot:hover {
+            background: rgba(255,255,255,0.02);
+        }
+
+        .snapshot.active {
+            background: rgba(245, 158, 11, 0.1);
+            border-left: 3px solid var(--accent-yellow);
+        }
+
+        .snapshot .snap-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
+        }
+
+        .snapshot .snap-id {
+            font-weight: 700;
+            color: var(--accent-yellow);
+            font-size: 1rem;
+        }
+
+        .snapshot .snap-time {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-family: 'Courier New', monospace;
+        }
+
+        .snapshot .snap-stats {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.5rem;
+        }
+
+        .snapshot .snap-stat {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
+        .snapshot .snap-stat .icon {
+            font-size: 0.9rem;
+        }
+
+        .snapshot .snap-stat .value {
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+
+        .snapshot .snap-context {
+            margin-top: 0.75rem;
+            padding-top: 0.75rem;
+            border-top: 1px solid var(--border);
+        }
+
+        .snapshot .snap-query {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            font-style: italic;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .snapshot .snap-query::before {
+            content: '"';
+        }
+
+        .snapshot .snap-query::after {
+            content: '"';
+        }
+
+        .snapshot .resume-btn {
+            margin-top: 0.75rem;
+            background: rgba(16, 185, 129, 0.15);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            color: var(--accent-green);
+            padding: 0.4rem 0.8rem;
+            border-radius: 0.35rem;
+            font-size: 0.75rem;
+            cursor: pointer;
+            width: 100%;
+            transition: all 0.2s;
+        }
+
+        .snapshot .resume-btn:hover {
+            background: rgba(16, 185, 129, 0.25);
+        }
+
+        /* Event Detail Modal */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(8px);
+            z-index: 1000;
+            padding: 2rem;
+            overflow-y: auto;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+            align-items: flex-start;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 1rem;
+            max-width: 900px;
+            width: 100%;
+            margin-top: 2rem;
+            position: relative;
+        }
+
+        .modal-header {
+            padding: 1.5rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        .modal-header h2 {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .modal-header .meta {
+            display: flex;
+            gap: 1rem;
+            margin-top: 0.5rem;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .modal-close {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .modal-close:hover {
+            background: rgba(255,255,255,0.1);
+        }
+
+        .modal-body {
+            padding: 1.5rem;
+        }
+
+        .modal-body pre {
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            overflow-x: auto;
+            font-size: 0.85rem;
+            line-height: 1.5;
+        }
+
+        /* Snapshot Detail in Modal */
+        .snapshot-detail {
+            display: grid;
+            gap: 1.5rem;
+        }
+
+        .snapshot-detail .section {
+            background: rgba(255,255,255,0.02);
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            padding: 1.25rem;
+        }
+
+        .snapshot-detail .section-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .snapshot-detail .messages-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .snapshot-detail .message {
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            margin-bottom: 0.5rem;
+            font-size: 0.85rem;
+        }
+
+        .snapshot-detail .message.user {
+            background: rgba(59, 130, 246, 0.1);
+            border-left: 3px solid var(--accent-blue);
+        }
+
+        .snapshot-detail .message.assistant {
+            background: rgba(139, 92, 246, 0.1);
+            border-left: 3px solid var(--accent-purple);
+        }
+
+        .snapshot-detail .message-role {
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 0.25rem;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 3rem 2rem;
+            border-top: 1px solid var(--border);
+            color: var(--text-muted);
+            margin-top: 3rem;
+        }
+
+        .footer a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .footer a:hover {
+            color: var(--accent-purple);
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.1);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255,255,255,0.2);
+        }
+
+        /* Keyboard shortcuts hint */
+        .keyboard-hints {
+            position: fixed;
+            bottom: 1rem;
+            right: 1rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 0.5rem;
+            padding: 0.75rem 1rem;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            display: flex;
+            gap: 1rem;
+            z-index: 50;
+        }
+
+        .keyboard-hints kbd {
+            background: rgba(255,255,255,0.1);
+            padding: 0.2rem 0.5rem;
+            border-radius: 0.25rem;
+            font-family: 'Courier New', monospace;
+            margin-right: 0.25rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>▶️ Session Player</h1>
+        <p class="subtitle">Time-travel debugger for DevDuck sessions</p>
+        <span class="badge">🎬 Full State Resume Support</span>
+        <nav class="nav">
+            <a href="index.html">💬 Chat</a>
+            <a href="session-recording.html">🎬 Recording</a>
+            <a href="ambient-mode.html">🌙 Ambient</a>
+            <a href="https://github.com/cagataycali/devduck">📦 GitHub</a>
+        </nav>
+    </div>
+
+    <div class="container">
+        <!-- Upload Zone -->
+        <div class="upload-zone" id="uploadZone">
+            <div class="icon">🎬</div>
+            <h2>Load Session Recording</h2>
+            <p>Drop a session ZIP file here or click to browse</p>
+            <div class="hint">
+                Default location: <code>/tmp/devduck/recordings/*.zip</code>
+            </div>
+            <input type="file" id="fileInput" accept=".zip">
+        </div>
+
+        <!-- Player Container -->
+        <div class="player-container" id="playerContainer">
+            <!-- Session Header -->
+            <div class="session-header">
+                <div class="title-row">
+                    <div class="session-id" id="sessionId">session-20260202-231359</div>
+                    <div class="meta-badges">
+                        <span class="meta-badge"><strong id="metaPlatform">-</strong> Platform</span>
+                        <span class="meta-badge"><strong id="metaSerializer">-</strong> Serializer</span>
+                        <span class="meta-badge" id="metaResumable" style="display: none;">
+                            <strong style="color: var(--accent-green);">✓</strong> Resumable
+                        </span>
+                    </div>
+                </div>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="value" id="statDuration">0s</div>
+                        <div class="label">Duration</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="value" id="statEvents">0</div>
+                        <div class="label">Total Events</div>
+                    </div>
+                    <div class="stat-card sys">
+                        <div class="value" id="statSys">0</div>
+                        <div class="label">Sys Events</div>
+                    </div>
+                    <div class="stat-card tool">
+                        <div class="value" id="statTool">0</div>
+                        <div class="label">Tool Calls</div>
+                    </div>
+                    <div class="stat-card agent">
+                        <div class="value" id="statAgent">0</div>
+                        <div class="label">Agent Events</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="value" id="statSnapshots">0</div>
+                        <div class="label">Snapshots</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Resume Box -->
+            <div class="resume-box" id="resumeBox" style="display: none;">
+                <h3>💾 Resume from Snapshot</h3>
+                <div class="commands">
+                    <div class="command">
+                        <div class="command-label">CLI Resume</div>
+                        <pre id="cliCommand">devduck --resume session.zip</pre>
+                    </div>
+                    <div class="command">
+                        <div class="command-label">Python API</div>
+                        <pre id="pythonCommand">from devduck import load_session, resume_session
+
+# Quick resume from latest snapshot
+result = resume_session("session.zip")
+
+# Resume from specific snapshot
+session = load_session("session.zip")
+result = session.resume_from_snapshot(2, agent=devduck.agent)
+
+# Resume and continue with new query
+result = session.resume_and_continue(2, "continue", agent)</pre>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Controls -->
+            <div class="controls">
+                <button id="btnPlay" class="primary">
+                    <span id="playIcon">▶</span> Play
+                </button>
+                <button id="btnReset">⏮ Reset</button>
+                <button id="btnStep">⏭ Step</button>
+                <button id="btnPrev">⏪ Prev</button>
+                
+                <div class="speed">
+                    <span>Speed:</span>
+                    <select id="speedSelect">
+                        <option value="2000">0.5x</option>
+                        <option value="1000" selected>1x</option>
+                        <option value="500">2x</option>
+                        <option value="200">5x</option>
+                        <option value="50">20x</option>
+                    </select>
+                </div>
+
+                <div class="progress-info">
+                    <span class="current" id="currentIndex">0</span> / <span id="totalEvents">0</span>
+                </div>
+
+                <button id="btnNewSession">📁 Load New</button>
+            </div>
+
+            <!-- Progress Timeline -->
+            <div class="progress-timeline">
+                <div class="timeline-labels">
+                    <span id="timeStart">00:00:00.000</span>
+                    <span id="timeEnd">00:00:00.000</span>
+                </div>
+                <div class="progress-bar" id="progressBar">
+                    <div class="fill" id="progressFill" style="width: 0%"></div>
+                    <div class="markers" id="snapshotMarkers"></div>
+                </div>
+                <div class="layer-legend">
+                    <div class="legend-item"><span class="dot sys"></span> System I/O</div>
+                    <div class="legend-item"><span class="dot tool"></span> Tool Calls</div>
+                    <div class="legend-item"><span class="dot agent"></span> Agent Messages</div>
+                </div>
+            </div>
+
+            <!-- Filter Tabs -->
+            <div class="filter-tabs">
+                <button class="active" data-filter="all">All Events</button>
+                <button data-filter="sys">🔸 Sys</button>
+                <button data-filter="tool">🔹 Tool</button>
+                <button data-filter="agent">🔮 Agent</button>
+            </div>
+
+            <!-- Content Grid -->
+            <div class="content-grid">
+                <div class="timeline-panel">
+                    <div class="panel-header">
+                        📜 Event Timeline
+                        <span class="count" id="filteredCount">0</span>
+                    </div>
+                    <div class="events-list" id="eventsList"></div>
+                </div>
+
+                <div class="snapshots-panel">
+                    <div class="panel-header">
+                        📸 State Snapshots
+                        <span class="count" id="snapshotsCount">0</span>
+                    </div>
+                    <div class="snapshots-list" id="snapshotsList"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Event Detail Modal -->
+        <div class="modal-overlay" id="eventModal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <div>
+                        <h2 id="modalTitle">Event Detail</h2>
+                        <div class="meta">
+                            <span id="modalLayer"></span>
+                            <span id="modalTime"></span>
+                        </div>
+                    </div>
+                    <button class="modal-close" onclick="closeModal()">✕ Close</button>
+                </div>
+                <div class="modal-body" id="modalBody"></div>
+            </div>
+        </div>
+
+        <!-- Snapshot Detail Modal -->
+        <div class="modal-overlay" id="snapshotModal">
+            <div class="modal-content" style="max-width: 1000px;">
+                <div class="modal-header">
+                    <div>
+                        <h2 id="snapModalTitle">Snapshot Detail</h2>
+                        <div class="meta" id="snapModalMeta"></div>
+                    </div>
+                    <button class="modal-close" onclick="closeSnapshotModal()">✕ Close</button>
+                </div>
+                <div class="modal-body" id="snapModalBody"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="keyboard-hints">
+        <span><kbd>Space</kbd> Play/Pause</span>
+        <span><kbd>→</kbd> Next</span>
+        <span><kbd>←</kbd> Prev</span>
+        <span><kbd>Esc</kbd> Close</span>
+    </div>
+
+    <div class="footer">
+        <p>🦆 DevDuck Session Player &middot; <a href="https://github.com/cagataycali/devduck">GitHub</a></p>
+    </div>
+
+    <script>
+        // State
+        let events = [];
+        let snapshots = [];
+        let metadata = {};
+        let currentIndex = 0;
+        let isPlaying = false;
+        let playInterval = null;
+        let activeFilter = 'all';
+        let sessionFileName = '';
+
+        // DOM Elements
+        const uploadZone = document.getElementById('uploadZone');
+        const fileInput = document.getElementById('fileInput');
+        const playerContainer = document.getElementById('playerContainer');
+        const eventsList = document.getElementById('eventsList');
+        const snapshotsList = document.getElementById('snapshotsList');
+        const progressFill = document.getElementById('progressFill');
+        const snapshotMarkers = document.getElementById('snapshotMarkers');
+
+        // Upload Handling
+        uploadZone.addEventListener('click', () => fileInput.click());
+        uploadZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadZone.classList.add('dragover');
+        });
+        uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+        uploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadZone.classList.remove('dragover');
+            if (e.dataTransfer.files.length) loadZipFile(e.dataTransfer.files[0]);
+        });
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length) loadZipFile(e.target.files[0]);
+        });
+
+        async function loadZipFile(file) {
+            try {
+                sessionFileName = file.name;
+                const zip = await JSZip.loadAsync(file);
+                
+                // Parse events.jsonl
+                const eventsFile = zip.file('events.jsonl');
+                if (eventsFile) {
+                    const eventsText = await eventsFile.async('string');
+                    events = eventsText.trim().split('\n').filter(l => l).map(line => JSON.parse(line));
+                }
+
+                // Parse snapshots.json
+                const snapshotsFile = zip.file('snapshots.json');
+                if (snapshotsFile) {
+                    const snapshotsText = await snapshotsFile.async('string');
+                    snapshots = JSON.parse(snapshotsText);
+                }
+
+                // Parse metadata.json
+                const metadataFile = zip.file('metadata.json');
+                if (metadataFile) {
+                    const metadataText = await metadataFile.async('string');
+                    metadata = JSON.parse(metadataText);
+                }
+
+                // Check for session.pkl (resumable state)
+                const hasPkl = zip.file('session.pkl') !== null;
+                
+                initializePlayer(hasPkl);
+
+            } catch (error) {
+                console.error('Error loading ZIP:', error);
+                alert('Error loading session: ' + error.message);
+            }
+        }
+
+        function initializePlayer(hasResumableState) {
+            uploadZone.classList.add('hidden');
+            playerContainer.classList.add('active');
+
+            // Update header
+            document.getElementById('sessionId').textContent = metadata.session_id || 'Unknown Session';
+            document.getElementById('metaPlatform').textContent = metadata.platform || 'Unknown';
+            document.getElementById('metaSerializer').textContent = metadata.serializer || 'pickle';
+            
+            if (hasResumableState) {
+                document.getElementById('metaResumable').style.display = 'inline';
+                document.getElementById('resumeBox').style.display = 'block';
+                document.getElementById('cliCommand').textContent = 
+                    `devduck --resume ${sessionFileName}`;
+            }
+
+            // Count events by layer
+            const sysCount = events.filter(e => e.layer === 'sys').length;
+            const toolCount = events.filter(e => e.layer === 'tool').length;
+            const agentCount = events.filter(e => e.layer === 'agent').length;
+
+            // Update stats
+            document.getElementById('statDuration').textContent = 
+                metadata.duration_seconds ? `${metadata.duration_seconds.toFixed(1)}s` : 'N/A';
+            document.getElementById('statEvents').textContent = events.length;
+            document.getElementById('statSys').textContent = sysCount;
+            document.getElementById('statTool').textContent = toolCount;
+            document.getElementById('statAgent').textContent = agentCount;
+            document.getElementById('statSnapshots').textContent = snapshots.length;
+            document.getElementById('totalEvents').textContent = events.length;
+            document.getElementById('snapshotsCount').textContent = snapshots.length;
+
+            // Set timeline labels
+            if (events.length > 0) {
+                const startTime = new Date(events[0].timestamp_ns / 1e6);
+                const endTime = new Date(events[events.length - 1].timestamp_ns / 1e6);
+                document.getElementById('timeStart').textContent = formatTime(startTime);
+                document.getElementById('timeEnd').textContent = formatTime(endTime);
+            }
+
+            renderSnapshots();
+            renderSnapshotMarkers();
+            renderEvents();
+            
+            currentIndex = 0;
+            updateProgress();
+        }
+
+        function formatTime(date) {
+            return date.toISOString().substr(11, 12);
+        }
+
+        function formatTimestamp(ns) {
+            return new Date(ns / 1e6).toISOString().substr(11, 12);
+        }
+
+        function renderSnapshots() {
+            snapshotsList.innerHTML = '';
+            
+            snapshots.forEach((snap, idx) => {
+                const el = document.createElement('div');
+                el.className = 'snapshot';
+                el.dataset.index = idx;
+                
+                const time = new Date(snap.timestamp * 1000).toLocaleTimeString();
+                const messagesCount = snap.agent_messages ? snap.agent_messages.length : snap.agent_messages_count || 0;
+                const hasQuery = snap.last_query && snap.last_query.length > 0;
+                
+                el.innerHTML = `
+                    <div class="snap-header">
+                        <span class="snap-id">📸 Snapshot #${snap.snapshot_id}</span>
+                        <span class="snap-time">${time}</span>
+                    </div>
+                    <div class="snap-stats">
+                        <div class="snap-stat">
+                            <span class="icon">💬</span>
+                            <span class="value">${messagesCount}</span> messages
+                        </div>
+                        <div class="snap-stat">
+                            <span class="icon">🔧</span>
+                            <span class="value">${snap.tools_loaded ? snap.tools_loaded.length : 0}</span> tools
+                        </div>
+                        <div class="snap-stat">
+                            <span class="icon">📁</span>
+                            ${snap.cwd ? snap.cwd.split('/').pop() : '-'}
+                        </div>
+                        <div class="snap-stat">
+                            <span class="icon">🤖</span>
+                            ${snap.model_info ? snap.model_info.type || '-' : '-'}
+                        </div>
+                    </div>
+                    ${hasQuery ? `
+                        <div class="snap-context">
+                            <div class="snap-query">${snap.last_query.substring(0, 80)}${snap.last_query.length > 80 ? '...' : ''}</div>
+                        </div>
+                    ` : ''}
+                    <button class="resume-btn" onclick="event.stopPropagation(); showResumeCommand(${snap.snapshot_id})">
+                        ▶ Resume from here
+                    </button>
+                `;
+
+                el.addEventListener('click', () => showSnapshotDetail(snap, idx));
+                snapshotsList.appendChild(el);
+            });
+        }
+
+        function showSnapshotDetail(snap, idx) {
+            const modal = document.getElementById('snapshotModal');
+            const title = document.getElementById('snapModalTitle');
+            const meta = document.getElementById('snapModalMeta');
+            const body = document.getElementById('snapModalBody');
+            
+            const time = new Date(snap.timestamp * 1000).toLocaleString();
+            const messagesCount = snap.agent_messages ? snap.agent_messages.length : 0;
+            
+            title.textContent = `Snapshot #${snap.snapshot_id}`;
+            meta.innerHTML = `
+                <span>📅 ${time}</span>
+                <span>💬 ${messagesCount} messages captured</span>
+            `;
+            
+            let messagesHtml = '';
+            if (snap.agent_messages && snap.agent_messages.length > 0) {
+                messagesHtml = `
+                    <div class="section">
+                        <div class="section-title">💬 Captured Conversation (${messagesCount} messages)</div>
+                        <div class="messages-list">
+                            ${snap.agent_messages.map(msg => {
+                                const role = msg.role || 'unknown';
+                                const content = typeof msg.content === 'string' 
+                                    ? msg.content.substring(0, 500) 
+                                    : JSON.stringify(msg.content).substring(0, 500);
+                                return `
+                                    <div class="message ${role}">
+                                        <div class="message-role">${role}</div>
+                                        <div>${escapeHtml(content)}${content.length >= 500 ? '...' : ''}</div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            body.innerHTML = `
+                <div class="snapshot-detail">
+                    <div class="section">
+                        <div class="section-title">📊 State Information</div>
+                        <pre><code class="language-json">${JSON.stringify({
+                            snapshot_id: snap.snapshot_id,
+                            timestamp: time,
+                            cwd: snap.cwd,
+                            tools_loaded: snap.tools_loaded,
+                            model_info: snap.model_info,
+                            system_prompt_hash: snap.system_prompt_hash,
+                            events_since_last: snap.events_since_last
+                        }, null, 2)}</code></pre>
+                    </div>
+                    
+                    ${messagesHtml}
+                    
+                    ${snap.last_query ? `
+                        <div class="section">
+                            <div class="section-title">❓ Last Query</div>
+                            <pre>${escapeHtml(snap.last_query)}</pre>
+                        </div>
+                    ` : ''}
+                    
+                    ${snap.last_result ? `
+                        <div class="section">
+                            <div class="section-title">✅ Last Result</div>
+                            <pre>${escapeHtml(snap.last_result.substring(0, 2000))}${snap.last_result.length > 2000 ? '...' : ''}</pre>
+                        </div>
+                    ` : ''}
+                    
+                    <div class="section" style="background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.3);">
+                        <div class="section-title" style="color: var(--accent-green);">▶️ Resume Command</div>
+                        <pre style="color: var(--accent-green);">devduck --resume ${sessionFileName} --snapshot ${snap.snapshot_id}</pre>
+                    </div>
+                </div>
+            `;
+            
+            modal.classList.add('active');
+            hljs.highlightAll();
+            
+            // Highlight snapshot in list
+            document.querySelectorAll('.snapshot').forEach(el => {
+                el.classList.toggle('active', parseInt(el.dataset.index) === idx);
+            });
+        }
+
+        function showResumeCommand(snapshotId) {
+            alert(`Resume command:\n\ndevduck --resume ${sessionFileName} --snapshot ${snapshotId}\n\nOr in Python:\n\nsession.resume_from_snapshot(${snapshotId}, agent=devduck.agent)`);
+        }
+
+        function closeSnapshotModal() {
+            document.getElementById('snapshotModal').classList.remove('active');
+        }
+
+        function renderSnapshotMarkers() {
+            snapshotMarkers.innerHTML = '';
+            if (events.length === 0) return;
+
+            const firstTime = events[0].timestamp_ns;
+            const lastTime = events[events.length - 1].timestamp_ns;
+            const duration = lastTime - firstTime || 1;
+
+            snapshots.forEach(snap => {
+                const snapTime = snap.timestamp * 1e9;
+                const position = ((snapTime - firstTime) / duration) * 100;
+                
+                if (position >= 0 && position <= 100) {
+                    const marker = document.createElement('div');
+                    marker.className = 'marker';
+                    marker.style.left = `${Math.min(98, Math.max(2, position))}%`;
+                    marker.dataset.id = `#${snap.snapshot_id}`;
+                    marker.title = `Snapshot #${snap.snapshot_id}`;
+                    marker.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        jumpToSnapshot(snapshots.indexOf(snap));
+                    });
+                    snapshotMarkers.appendChild(marker);
+                }
+            });
+        }
+
+        function renderEvents() {
+            eventsList.innerHTML = '';
+            
+            const filteredEvents = activeFilter === 'all' 
+                ? events 
+                : events.filter(e => e.layer === activeFilter);
+            
+            document.getElementById('filteredCount').textContent = filteredEvents.length;
+
+            filteredEvents.forEach((event, displayIdx) => {
+                const realIdx = events.indexOf(event);
+                const el = createEventElement(event, realIdx, displayIdx);
+                eventsList.appendChild(el);
+            });
+        }
+
+        function createEventElement(event, realIdx, displayIdx) {
+            const el = document.createElement('div');
+            el.className = 'event';
+            el.dataset.index = realIdx;
+            
+            const time = formatTimestamp(event.timestamp_ns);
+            const dataStr = JSON.stringify(event.data);
+            const preview = dataStr.substring(0, 120);
+
+            el.innerHTML = `
+                <div class="event-header">
+                    <span class="timestamp">${time}</span>
+                    <span class="layer-badge ${event.layer}">${event.layer}</span>
+                    <span class="event-type">${event.event_type}</span>
+                </div>
+                <div class="event-data">${escapeHtml(preview)}${dataStr.length > 120 ? '...' : ''}</div>
+            `;
+
+            el.addEventListener('click', () => showEventDetail(event));
+            return el;
+        }
+
+        function showEventDetail(event) {
+            const modal = document.getElementById('eventModal');
+            const title = document.getElementById('modalTitle');
+            const layer = document.getElementById('modalLayer');
+            const time = document.getElementById('modalTime');
+            const body = document.getElementById('modalBody');
+            
+            title.textContent = event.event_type;
+            layer.innerHTML = `<span class="layer-badge ${event.layer}">${event.layer}</span>`;
+            time.textContent = formatTimestamp(event.timestamp_ns);
+            
+            body.innerHTML = `<pre><code class="language-json">${JSON.stringify(event.data, null, 2)}</code></pre>`;
+            
+            modal.classList.add('active');
+            hljs.highlightAll();
+        }
+
+        function closeModal() {
+            document.getElementById('eventModal').classList.remove('active');
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str.replace(/&/g, '&amp;')
+                      .replace(/</g, '&lt;')
+                      .replace(/>/g, '&gt;')
+                      .replace(/"/g, '&quot;');
+        }
+
+        function updateProgress() {
+            const pct = events.length > 0 ? (currentIndex / events.length) * 100 : 0;
+            progressFill.style.width = `${pct}%`;
+            document.getElementById('currentIndex').textContent = currentIndex;
+
+            // Update active state
+            document.querySelectorAll('.event').forEach(el => {
+                const idx = parseInt(el.dataset.index);
+                el.classList.toggle('active', idx === currentIndex - 1);
+            });
+
+            // Scroll to active
+            const activeEvent = document.querySelector('.event.active');
+            if (activeEvent) {
+                activeEvent.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }
+
+        function jumpToSnapshot(idx) {
+            const snap = snapshots[idx];
+            const snapTime = snap.timestamp * 1e9;
+
+            let closestIdx = 0;
+            let closestDiff = Infinity;
+            events.forEach((event, i) => {
+                const diff = Math.abs(event.timestamp_ns - snapTime);
+                if (diff < closestDiff) {
+                    closestDiff = diff;
+                    closestIdx = i;
+                }
+            });
+
+            currentIndex = closestIdx;
+            updateProgress();
+
+            document.querySelectorAll('.snapshot').forEach(el => {
+                el.classList.toggle('active', parseInt(el.dataset.index) === idx);
+            });
+        }
+
+        // Playback Controls
+        document.getElementById('btnPlay').addEventListener('click', togglePlay);
+        document.getElementById('btnReset').addEventListener('click', () => {
+            currentIndex = 0;
+            stopPlay();
+            updateProgress();
+        });
+        document.getElementById('btnStep').addEventListener('click', () => {
+            if (currentIndex < events.length) {
+                currentIndex++;
+                updateProgress();
+            }
+        });
+        document.getElementById('btnPrev').addEventListener('click', () => {
+            if (currentIndex > 0) {
+                currentIndex--;
+                updateProgress();
+            }
+        });
+        document.getElementById('btnNewSession').addEventListener('click', () => {
+            events = [];
+            snapshots = [];
+            metadata = {};
+            currentIndex = 0;
+            stopPlay();
+            uploadZone.classList.remove('hidden');
+            playerContainer.classList.remove('active');
+        });
+
+        function togglePlay() {
+            isPlaying = !isPlaying;
+            document.getElementById('playIcon').textContent = isPlaying ? '⏸' : '▶';
+
+            if (isPlaying) {
+                const speed = parseInt(document.getElementById('speedSelect').value);
+                playInterval = setInterval(() => {
+                    if (currentIndex < events.length) {
+                        currentIndex++;
+                        updateProgress();
+                    } else {
+                        stopPlay();
+                    }
+                }, speed);
+            } else {
+                clearInterval(playInterval);
+            }
+        }
+
+        function stopPlay() {
+            isPlaying = false;
+            document.getElementById('playIcon').textContent = '▶';
+            clearInterval(playInterval);
+        }
+
+        document.getElementById('speedSelect').addEventListener('change', () => {
+            if (isPlaying) {
+                clearInterval(playInterval);
+                const speed = parseInt(document.getElementById('speedSelect').value);
+                playInterval = setInterval(() => {
+                    if (currentIndex < events.length) {
+                        currentIndex++;
+                        updateProgress();
+                    } else {
+                        stopPlay();
+                    }
+                }, speed);
+            }
+        });
+
+        // Progress bar click
+        document.getElementById('progressBar').addEventListener('click', (e) => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const pct = (e.clientX - rect.left) / rect.width;
+            currentIndex = Math.floor(pct * events.length);
+            updateProgress();
+        });
+
+        // Filter tabs
+        document.querySelectorAll('.filter-tabs button').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.filter-tabs button').forEach(b => {
+                    b.classList.remove('active', 'sys', 'tool', 'agent');
+                });
+                btn.classList.add('active');
+                if (btn.dataset.filter !== 'all') {
+                    btn.classList.add(btn.dataset.filter);
+                }
+                activeFilter = btn.dataset.filter;
+                renderEvents();
+            });
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+            
+            switch(e.code) {
+                case 'Space':
+                    e.preventDefault();
+                    togglePlay();
+                    break;
+                case 'ArrowRight':
+                    if (currentIndex < events.length) {
+                        currentIndex++;
+                        updateProgress();
+                    }
+                    break;
+                case 'ArrowLeft':
+                    if (currentIndex > 0) {
+                        currentIndex--;
+                        updateProgress();
+                    }
+                    break;
+                case 'Escape':
+                    closeModal();
+                    closeSnapshotModal();
+                    break;
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🌙 Ambient Mode - DevDuck Background Intelligence</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-tertiary: #1a1a25;
+            --border: rgba(255, 255, 255, 0.08);
+            --text-primary: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.7);
+            --text-muted: rgba(255, 255, 255, 0.4);
+            --accent-purple: #8b5cf6;
+            --accent-blue: #3b82f6;
+            --accent-green: #10b981;
+            --accent-yellow: #f59e0b;
+            --accent-orange: #f97316;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.7;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+            padding: 3rem 2rem;
+            text-align: center;
+            border-bottom: 1px solid var(--border);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 800px;
+            height: 400px;
+            background: radial-gradient(ellipse, rgba(245, 158, 11, 0.1) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .header h1 {
+            font-size: 2.75rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.7) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            position: relative;
+        }
+
+        .header .subtitle {
+            color: var(--text-secondary);
+            font-size: 1.2rem;
+            margin-bottom: 1rem;
+        }
+
+        .header .badges {
+            display: flex;
+            justify-content: center;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.4rem 1rem;
+            border-radius: 2rem;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .badge.purple { background: rgba(139, 92, 246, 0.2); border: 1px solid rgba(139, 92, 246, 0.4); color: var(--accent-purple); }
+        .badge.yellow { background: rgba(245, 158, 11, 0.2); border: 1px solid rgba(245, 158, 11, 0.4); color: var(--accent-yellow); }
+        .badge.orange { background: rgba(249, 115, 22, 0.2); border: 1px solid rgba(249, 115, 22, 0.4); color: var(--accent-orange); }
+
+        .nav {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-top: 1.5rem;
+            position: relative;
+        }
+
+        .nav a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+            padding: 0.5rem 0;
+            border-bottom: 2px solid transparent;
+        }
+
+        .nav a:hover {
+            color: var(--text-primary);
+            border-color: var(--accent-yellow);
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 4rem 2rem;
+        }
+
+        section {
+            margin-bottom: 5rem;
+        }
+
+        h2 {
+            font-size: 1.85rem;
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        h3 {
+            font-size: 1.3rem;
+            margin: 2.5rem 0 1rem;
+            color: var(--text-primary);
+        }
+
+        p {
+            margin-bottom: 1rem;
+            color: var(--text-secondary);
+        }
+
+        /* Hero */
+        .hero {
+            text-align: center;
+            padding: 4rem 2rem;
+            background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+            border: 1px solid var(--border);
+            border-radius: 1.5rem;
+            margin-bottom: 4rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle at center, rgba(245, 158, 11, 0.05) 0%, transparent 50%);
+            animation: pulse 10s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 0.5; }
+            50% { transform: scale(1.1); opacity: 0.8; }
+        }
+
+        .hero-icon {
+            font-size: 5rem;
+            margin-bottom: 1.5rem;
+            position: relative;
+            animation: glow 3s ease-in-out infinite;
+        }
+
+        @keyframes glow {
+            0%, 100% { filter: drop-shadow(0 0 20px rgba(245, 158, 11, 0.3)); }
+            50% { filter: drop-shadow(0 0 40px rgba(245, 158, 11, 0.6)); }
+        }
+
+        .hero h2 {
+            border: none;
+            font-size: 2.25rem;
+            margin-bottom: 1rem;
+            justify-content: center;
+        }
+
+        .hero p {
+            font-size: 1.15rem;
+            color: var(--text-secondary);
+            max-width: 650px;
+            margin: 0 auto;
+        }
+
+        /* Mode Comparison */
+        .mode-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .mode-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 1rem;
+            padding: 2rem;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s;
+        }
+
+        .mode-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .mode-card.standard {
+            border-top: 4px solid var(--accent-purple);
+        }
+
+        .mode-card.autonomous {
+            border-top: 4px solid var(--accent-orange);
+        }
+
+        .mode-card .mode-badge {
+            position: absolute;
+            top: 1.5rem;
+            right: 1.5rem;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            padding: 0.3rem 0.75rem;
+            border-radius: 2rem;
+        }
+
+        .mode-card.standard .mode-badge {
+            background: rgba(139, 92, 246, 0.2);
+            color: var(--accent-purple);
+        }
+
+        .mode-card.autonomous .mode-badge {
+            background: rgba(249, 115, 22, 0.2);
+            color: var(--accent-orange);
+        }
+
+        .mode-card .icon {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .mode-card h3 {
+            font-size: 1.5rem;
+            margin: 0 0 1rem;
+        }
+
+        .mode-card .desc {
+            color: var(--text-secondary);
+            margin-bottom: 1.5rem;
+        }
+
+        .mode-card .stats {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.75rem;
+        }
+
+        .mode-card .stat {
+            background: rgba(255,255,255,0.03);
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            text-align: center;
+        }
+
+        .mode-card .stat .value {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .mode-card .stat .label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        .mode-card.standard .stat .value { color: var(--accent-purple); }
+        .mode-card.autonomous .stat .value { color: var(--accent-orange); }
+
+        /* Terminal Demo */
+        .terminal {
+            background: #0d0d0d;
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            overflow: hidden;
+            margin: 2rem 0;
+            font-family: 'Courier New', monospace;
+        }
+
+        .terminal-header {
+            background: var(--bg-tertiary);
+            padding: 0.75rem 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .terminal-header .dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+
+        .terminal-header .dot.red { background: #ff5f56; }
+        .terminal-header .dot.yellow { background: #ffbd2e; }
+        .terminal-header .dot.green { background: #27ca40; }
+
+        .terminal-header .title {
+            margin-left: 0.75rem;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .terminal-body {
+            padding: 1.5rem;
+            font-size: 0.9rem;
+            line-height: 1.6;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .terminal-body .line {
+            margin: 0.25rem 0;
+        }
+
+        .terminal-body .prompt { color: var(--accent-green); }
+        .terminal-body .moon { color: var(--accent-yellow); }
+        .terminal-body .dim { color: var(--text-muted); }
+        .terminal-body .divider { color: rgba(255,255,255,0.1); }
+        .terminal-body .success { color: var(--accent-green); }
+        .terminal-body .info { color: var(--accent-blue); }
+
+        /* Config Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.5rem 0;
+            background: var(--bg-secondary);
+            border-radius: 0.75rem;
+            overflow: hidden;
+        }
+
+        th, td {
+            text-align: left;
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        th {
+            font-weight: 600;
+            color: var(--text-primary);
+            background: var(--bg-tertiary);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        td {
+            color: var(--text-secondary);
+        }
+
+        td code {
+            background: rgba(139, 92, 246, 0.15);
+            color: var(--accent-purple);
+            padding: 0.2rem 0.5rem;
+            border-radius: 0.3rem;
+            font-size: 0.85rem;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        /* Completion Signals */
+        .signals-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            margin: 1.5rem 0;
+        }
+
+        .signal {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            color: var(--accent-green);
+            padding: 0.6rem 1.25rem;
+            border-radius: 0.5rem;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        /* Code Blocks */
+        pre {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+
+        code {
+            font-family: 'Courier New', Consolas, monospace;
+            font-size: 0.9rem;
+        }
+
+        .inline-code {
+            background: rgba(139, 92, 246, 0.15);
+            color: var(--accent-purple);
+            padding: 0.2rem 0.5rem;
+            border-radius: 0.3rem;
+            font-size: 0.9rem;
+        }
+
+        /* Use Cases Grid */
+        .usecases-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.25rem;
+            margin: 2rem 0;
+        }
+
+        .usecase {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            transition: all 0.3s;
+        }
+
+        .usecase:hover {
+            background: var(--bg-tertiary);
+            transform: translateY(-3px);
+        }
+
+        .usecase .icon {
+            font-size: 2rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .usecase h4 {
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .usecase p {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            margin: 0;
+        }
+
+        /* Warning Box */
+        .warning {
+            background: rgba(245, 158, 11, 0.1);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            margin: 2rem 0;
+            display: flex;
+            gap: 1rem;
+        }
+
+        .warning .icon {
+            font-size: 1.75rem;
+            flex-shrink: 0;
+        }
+
+        .warning .content h4 {
+            color: var(--accent-yellow);
+            margin-bottom: 0.5rem;
+        }
+
+        .warning .content p {
+            margin: 0;
+            font-size: 0.95rem;
+        }
+
+        /* Architecture Diagram */
+        .architecture {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            padding: 2rem;
+            margin: 2rem 0;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            line-height: 1.4;
+            overflow-x: auto;
+        }
+
+        .architecture .highlight { color: var(--accent-yellow); }
+        .architecture .comment { color: var(--text-muted); }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 3rem 2rem;
+            border-top: 1px solid var(--border);
+            color: var(--text-muted);
+        }
+
+        .footer a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .footer a:hover {
+            color: var(--accent-yellow);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .header h1 { font-size: 2rem; }
+            .hero-icon { font-size: 3.5rem; }
+            .hero h2 { font-size: 1.75rem; }
+            .mode-grid { grid-template-columns: 1fr; }
+            .usecases-grid { grid-template-columns: 1fr; }
+            .nav { flex-wrap: wrap; gap: 1rem; }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-primary); }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🌙 Ambient Mode</h1>
+        <p class="subtitle">Background intelligence while you're away</p>
+        <div class="badges">
+            <span class="badge purple">Standard Mode</span>
+            <span class="badge orange">Autonomous Mode</span>
+            <span class="badge yellow">Proactive AI</span>
+        </div>
+        <nav class="nav">
+            <a href="index.html">🏠 Home</a>
+            <a href="chat.html">💬 Chat</a>
+            <a href="session-recording.html">🎬 Recording</a>
+            <a href="session-player.html">▶️ Player</a>
+            <a href="https://github.com/cagataycali/devduck">📦 GitHub</a>
+        </nav>
+    </div>
+
+    <div class="container">
+        <div class="hero">
+            <div class="hero-icon">🌙</div>
+            <h2>Work While You're Away</h2>
+            <p>DevDuck continues exploring, researching, and building in the background. Like a colleague who keeps working while you grab coffee.</p>
+        </div>
+
+        <!-- Two Modes -->
+        <section>
+            <h2>🔀 Two Operating Modes</h2>
+            
+            <div class="mode-grid">
+                <div class="mode-card standard">
+                    <span class="mode-badge">Standard</span>
+                    <div class="icon">🌙</div>
+                    <h3>Ambient</h3>
+                    <p class="desc">Triggered when you go idle. Light exploration with limited iterations. Perfect for validation and discovering edge cases.</p>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="value">30s</div>
+                            <div class="label">Idle Trigger</div>
+                        </div>
+                        <div class="stat">
+                            <div class="value">3</div>
+                            <div class="label">Max Iterations</div>
+                        </div>
+                        <div class="stat">
+                            <div class="value">60s</div>
+                            <div class="label">Cooldown</div>
+                        </div>
+                        <div class="stat">
+                            <div class="value">Low</div>
+                            <div class="label">API Cost</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="mode-card autonomous">
+                    <span class="mode-badge">Autonomous</span>
+                    <div class="icon">🚀</div>
+                    <h3>Auto</h3>
+                    <p class="desc">Continuous self-directed work until task complete. The agent keeps building, iterating, and solving until it signals done.</p>
+                    <div class="stats">
+                        <div class="stat">
+                            <div class="value">0s</div>
+                            <div class="label">Immediate</div>
+                        </div>
+                        <div class="stat">
+                            <div class="value">50</div>
+                            <div class="label">Max Iterations</div>
+                        </div>
+                        <div class="stat">
+                            <div class="value">10s</div>
+                            <div class="label">Cooldown</div>
+                        </div>
+                        <div class="stat">
+                            <div class="value">High</div>
+                            <div class="label">API Cost</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Quick Start -->
+        <section>
+            <h2>⚡ Quick Start</h2>
+            
+            <h3>Environment Variable</h3>
+            <pre><code class="language-bash"># Start with ambient mode enabled
+DEVDUCK_AMBIENT_MODE=true devduck</code></pre>
+
+            <h3>REPL Commands</h3>
+            <pre><code class="language-bash"># In DevDuck REPL:
+🦆 ambient    # Toggle standard mode (idle-triggered)
+🦆 auto       # Toggle autonomous mode (continuous)</code></pre>
+
+            <h3>Tool API</h3>
+            <pre><code class="language-python"># Start modes
+ambient_mode(action="start")                    # Standard
+ambient_mode(action="start", autonomous=True)   # Autonomous
+
+# Check status
+ambient_mode(action="status")
+
+# Configure at runtime
+ambient_mode(action="configure", idle_threshold=60, max_iterations=5)
+
+# Stop
+ambient_mode(action="stop")</code></pre>
+        </section>
+
+        <!-- How It Works -->
+        <section>
+            <h2>🔄 How It Works</h2>
+            
+            <h3>Standard Mode Flow</h3>
+            <div class="terminal">
+                <div class="terminal-header">
+                    <span class="dot red"></span>
+                    <span class="dot yellow"></span>
+                    <span class="dot green"></span>
+                    <span class="title">devduck — ambient mode</span>
+                </div>
+                <div class="terminal-body">
+                    <div class="line"><span class="prompt">🦆</span> analyze the security of this codebase</div>
+                    <div class="line"><span class="dim">[Agent responds with initial analysis]</span></div>
+                    <div class="line"><span class="dim">[You go idle for 30 seconds...]</span></div>
+                    <div class="line"></div>
+                    <div class="line"><span class="moon">🌙 [ambient]</span> Thinking... (iteration 1/3)</div>
+                    <div class="line"><span class="divider">──────────────────────────────────────────────────</span></div>
+                    <div class="line"><span class="dim">[Agent explores deeper - checks vulnerabilities, reviews deps...]</span></div>
+                    <div class="line"><span class="divider">──────────────────────────────────────────────────</span></div>
+                    <div class="line"><span class="moon">🌙 [ambient]</span> Work stored. Will be injected into next query.</div>
+                    <div class="line"></div>
+                    <div class="line"><span class="prompt">🦆</span> what did you find?</div>
+                    <div class="line"><span class="moon">🌙 [ambient]</span> Injecting background work into context...</div>
+                    <div class="line"><span class="info">[Response includes enriched findings from background work]</span></div>
+                </div>
+            </div>
+
+            <h3>Autonomous Mode Flow</h3>
+            <div class="terminal">
+                <div class="terminal-header">
+                    <span class="dot red"></span>
+                    <span class="dot yellow"></span>
+                    <span class="dot green"></span>
+                    <span class="title">devduck — autonomous mode</span>
+                </div>
+                <div class="terminal-body">
+                    <div class="line"><span class="prompt">🦆</span> auto</div>
+                    <div class="line"><span class="moon">🌙</span> Ambient mode started (AUTONOMOUS - runs until stopped or [AMBIENT_DONE])</div>
+                    <div class="line"></div>
+                    <div class="line"><span class="prompt">🦆</span> build a complete REST API for user management</div>
+                    <div class="line"></div>
+                    <div class="line"><span class="moon">🌙 [AUTONOMOUS]</span> Thinking... (iteration 1/50)</div>
+                    <div class="line"><span class="divider">──────────────────────────────────────────────────</span></div>
+                    <div class="line"><span class="dim">[Creates project structure, sets up dependencies...]</span></div>
+                    <div class="line"><span class="divider">──────────────────────────────────────────────────</span></div>
+                    <div class="line"><span class="moon">🌙 [AUTONOMOUS]</span> Iteration complete. Continuing... (1 stored)</div>
+                    <div class="line"></div>
+                    <div class="line"><span class="moon">🌙 [AUTONOMOUS]</span> Thinking... (iteration 2/50)</div>
+                    <div class="line"><span class="dim">[Implements user model, database schema...]</span></div>
+                    <div class="line"></div>
+                    <div class="line"><span class="dim">... [continues through iterations] ...</span></div>
+                    <div class="line"></div>
+                    <div class="line"><span class="moon">🌙 [AUTONOMOUS]</span> Thinking... (iteration 8/50)</div>
+                    <div class="line">All endpoints implemented. Documentation complete. <span class="success">[AMBIENT_DONE]</span></div>
+                    <div class="line"><span class="divider">──────────────────────────────────────────────────</span></div>
+                    <div class="line"><span class="moon">🌙 [AUTONOMOUS]</span> Agent signaled completion. Stopping.</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Completion Signals -->
+        <section>
+            <h2>✅ Completion Signals</h2>
+            <p>In autonomous mode, the agent can signal task completion by including any of these phrases:</p>
+            
+            <div class="signals-grid">
+                <code class="signal">[AMBIENT_DONE]</code>
+                <code class="signal">[TASK_COMPLETE]</code>
+                <code class="signal">[NOTHING_MORE_TO_DO]</code>
+                <code class="signal">I've completed my exploration</code>
+                <code class="signal">Nothing more to explore</code>
+            </div>
+            
+            <p>When detected, ambient mode automatically stops and all accumulated work is stored for injection into your next query.</p>
+        </section>
+
+        <!-- Configuration -->
+        <section>
+            <h2>⚙️ Configuration</h2>
+            
+            <h3>Standard Mode Settings</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Variable</th>
+                        <th>Default</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>DEVDUCK_AMBIENT_MODE</code></td>
+                        <td>false</td>
+                        <td>Enable ambient mode on startup</td>
+                    </tr>
+                    <tr>
+                        <td><code>DEVDUCK_AMBIENT_IDLE_SECONDS</code></td>
+                        <td>30</td>
+                        <td>Seconds of idle time before triggering</td>
+                    </tr>
+                    <tr>
+                        <td><code>DEVDUCK_AMBIENT_MAX_ITERATIONS</code></td>
+                        <td>3</td>
+                        <td>Maximum background iterations per topic</td>
+                    </tr>
+                    <tr>
+                        <td><code>DEVDUCK_AMBIENT_COOLDOWN</code></td>
+                        <td>60</td>
+                        <td>Seconds between ambient runs</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>Autonomous Mode Settings</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Variable</th>
+                        <th>Default</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>DEVDUCK_AUTONOMOUS_MAX_ITERATIONS</code></td>
+                        <td>50</td>
+                        <td>Maximum iterations before auto-stop</td>
+                    </tr>
+                    <tr>
+                        <td><code>DEVDUCK_AUTONOMOUS_COOLDOWN</code></td>
+                        <td>10</td>
+                        <td>Seconds between iterations (fast!)</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Architecture -->
+        <section>
+            <h2>🏗️ Architecture</h2>
+            
+            <div class="architecture">
+<pre>┌─────────────────────────────────────────────────────────────┐
+│                        DevDuck REPL                         │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│   User Input ──► Agent Execution ──► Response               │
+│        │                                    │               │
+│        ▼                                    ▼               │
+│   ┌─────────┐                        ┌─────────────┐        │
+│   │ <span class="highlight">Record</span>  │                        │   <span class="highlight">Inject</span>    │        │
+│   │  Query  │                        │   Results   │        │
+│   └────┬────┘                        └──────▲──────┘        │
+│        │                                    │               │
+│        ▼                                    │               │
+│   ┌─────────────────────────────────────────┴─────┐         │
+│   │              <span class="highlight">AmbientMode Thread</span>               │         │
+│   │                                               │         │
+│   │   Standard:                                   │         │
+│   │   [Idle 30s] ──► [Prompt] ──► [Run] ──► [Store]        │
+│   │                                               │         │
+│   │   Autonomous:                                 │         │
+│   │   [10s cooldown] ──► [Prompt] ──► [Run] ──► [Store]    │
+│   │         ▲                              │      │         │
+│   │         └──────── <span class="comment">Loop until done</span> ─────┘      │         │
+│   │                                               │         │
+│   └───────────────────────────────────────────────┘         │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘</pre>
+            </div>
+        </section>
+
+        <!-- Use Cases -->
+        <section>
+            <h2>💡 Use Cases</h2>
+            
+            <div class="usecases-grid">
+                <div class="usecase">
+                    <div class="icon">🔍</div>
+                    <h4>Code Review</h4>
+                    <p>Agent continues finding vulnerabilities and issues while you read the code.</p>
+                </div>
+                <div class="usecase">
+                    <div class="icon">🏗️</div>
+                    <h4>Feature Building</h4>
+                    <p>Autonomous mode builds complete features while you're away.</p>
+                </div>
+                <div class="usecase">
+                    <div class="icon">📚</div>
+                    <h4>Research</h4>
+                    <p>Deep exploration of topics with accumulated findings.</p>
+                </div>
+                <div class="usecase">
+                    <div class="icon">✅</div>
+                    <h4>Validation</h4>
+                    <p>Background checking of assumptions and edge cases.</p>
+                </div>
+                <div class="usecase">
+                    <div class="icon">📝</div>
+                    <h4>Documentation</h4>
+                    <p>Generate comprehensive docs across multiple iterations.</p>
+                </div>
+                <div class="usecase">
+                    <div class="icon">🧪</div>
+                    <h4>Test Generation</h4>
+                    <p>Autonomous test creation and execution cycles.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Cost Warning -->
+        <section>
+            <h2>💰 Cost Considerations</h2>
+            
+            <div class="warning">
+                <span class="icon">⚠️</span>
+                <div class="content">
+                    <h4>Ambient mode increases API usage</h4>
+                    <p>Each iteration is a full agent call. Standard mode adds 1-3 calls; autonomous can use 5-50+ calls per task.</p>
+                </div>
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Mode</th>
+                        <th>Typical Calls</th>
+                        <th>Best For</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Standard</td>
+                        <td>1-3 extra</td>
+                        <td>Low-cost exploration & validation</td>
+                    </tr>
+                    <tr>
+                        <td>Autonomous</td>
+                        <td>5-50+ calls</td>
+                        <td>High-value complex tasks</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <h3>Cost Management Tips</h3>
+            <ul style="color: var(--text-secondary); padding-left: 1.5rem; margin-top: 1rem;">
+                <li style="margin: 0.5rem 0;">Use standard mode for exploration</li>
+                <li style="margin: 0.5rem 0;">Reserve autonomous for tasks worth the investment</li>
+                <li style="margin: 0.5rem 0;">Set lower <code class="inline-code">MAX_ITERATIONS</code> if concerned</li>
+                <li style="margin: 0.5rem 0;">Agent can self-terminate with <code class="inline-code">[AMBIENT_DONE]</code></li>
+            </ul>
+        </section>
+
+        <!-- Commands Reference -->
+        <section>
+            <h2>📋 Commands Reference</h2>
+            
+            <table>
+                <thead>
+                    <tr>
+                        <th>Command</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>ambient</code></td>
+                        <td>Toggle standard ambient mode (REPL command)</td>
+                    </tr>
+                    <tr>
+                        <td><code>auto</code> / <code>autonomous</code></td>
+                        <td>Toggle autonomous mode (REPL command)</td>
+                    </tr>
+                    <tr>
+                        <td><code>ambient_mode(action="start")</code></td>
+                        <td>Start standard ambient mode</td>
+                    </tr>
+                    <tr>
+                        <td><code>ambient_mode(action="start", autonomous=True)</code></td>
+                        <td>Start autonomous mode</td>
+                    </tr>
+                    <tr>
+                        <td><code>ambient_mode(action="stop")</code></td>
+                        <td>Stop ambient mode</td>
+                    </tr>
+                    <tr>
+                        <td><code>ambient_mode(action="status")</code></td>
+                        <td>Get current status and stats</td>
+                    </tr>
+                    <tr>
+                        <td><code>ambient_mode(action="configure", ...)</code></td>
+                        <td>Update settings at runtime</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+    </div>
+
+    <div class="footer">
+        <p>🦆 DevDuck Ambient Mode &middot; <a href="index.html">Home</a> &middot; <a href="https://github.com/cagataycali/devduck">GitHub</a></p>
+    </div>
+
+    <script>
+        hljs.highlightAll();
+    </script>
+</body>
+</html>

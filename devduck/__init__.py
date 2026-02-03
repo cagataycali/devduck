@@ -15,12 +15,26 @@ import tempfile
 import time
 import warnings
 import json
+import zipfile
+import builtins
+from collections import deque
+from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, Any
+from typing import Dict, Any, List, Optional, Callable
 from logging.handlers import RotatingFileHandler
 from strands import Agent, tool
 from .callback_handler import callback_handler
+
+# Try to import dill for better serialization, fall back to pickle
+try:
+    import dill as serializer
+
+    SERIALIZER_NAME = "dill"
+except ImportError:
+    import pickle as serializer
+
+    SERIALIZER_NAME = "pickle"
 
 # Import system prompt helper for loading prompts from files
 try:
@@ -63,6 +77,922 @@ logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
 logger.info("DevDuck logging system initialized")
+
+
+# =============================================================================
+# 🎬 SESSION RECORDING - Time-travel debugger for AI agents
+# =============================================================================
+
+RECORDING_DIR = Path(tempfile.gettempdir()) / "devduck" / "recordings"
+RECORDING_DIR.mkdir(parents=True, exist_ok=True)
+
+
+@dataclass
+class RecordedEvent:
+    """A single recorded event in the session timeline."""
+
+    timestamp_ns: int
+    layer: str  # "sys", "tool", "agent"
+    event_type: str
+    data: Dict[str, Any]
+    trace_id: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class SessionSnapshot:
+    """A snapshot of agent state at a point in time."""
+
+    timestamp: float
+    snapshot_id: int
+    agent_messages_count: int
+    tools_loaded: List[str]
+    system_prompt_hash: str
+    env_vars_redacted: Dict[str, str]
+    cwd: str
+    events_since_last: int
+    # NEW: Store actual conversation state for true resume capability
+    agent_messages: List[Dict[str, Any]] = field(default_factory=list)
+    system_prompt: str = ""
+    last_query: str = ""
+    last_result: str = ""
+    model_info: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+class EventBuffer:
+    """Ring buffer for recording events across all layers."""
+
+    def __init__(self, max_events: int = 10000):
+        self.events: deque = deque(maxlen=max_events)
+        self.lock = threading.Lock()
+        self._event_count = 0
+
+    def record(
+        self, layer: str, event_type: str, data: Dict[str, Any], trace_id: str = None
+    ):
+        """Record an event to the buffer."""
+        event = RecordedEvent(
+            timestamp_ns=time.time_ns(),
+            layer=layer,
+            event_type=event_type,
+            data=data,
+            trace_id=trace_id,
+        )
+        with self.lock:
+            self.events.append(event)
+            self._event_count += 1
+
+    def get_recent(self, seconds: float = 5.0) -> List[RecordedEvent]:
+        """Get events from the last N seconds."""
+        cutoff = time.time_ns() - int(seconds * 1e9)
+        with self.lock:
+            return [e for e in self.events if e.timestamp_ns > cutoff]
+
+    def get_recent_context(self, seconds: float = 5.0, max_events: int = 20) -> str:
+        """Get recent events formatted for system prompt injection."""
+        recent = self.get_recent(seconds)[-max_events:]
+        if not recent:
+            return ""
+
+        lines = ["## 🎬 Recent System Events:"]
+        for event in recent:
+            ts = datetime.fromtimestamp(event.timestamp_ns / 1e9).strftime(
+                "%H:%M:%S.%f"
+            )[:-3]
+            lines.append(
+                f"- [{ts}] [{event.layer}] {event.event_type}: {json.dumps(event.data)[:200]}"
+            )
+        return "\n".join(lines)
+
+    def get_all(self) -> List[RecordedEvent]:
+        """Get all events in the buffer."""
+        with self.lock:
+            return list(self.events)
+
+    def clear(self):
+        """Clear the buffer."""
+        with self.lock:
+            self.events.clear()
+            self._event_count = 0
+
+    @property
+    def count(self) -> int:
+        return self._event_count
+
+
+class SessionRecorder:
+    """Records devduck sessions for replay.
+
+    Captures three layers:
+    - sys: OS-level events (file I/O, network)
+    - tool: Agent tool calls and results
+    - agent: Messages, decisions, state changes
+
+    Exports to a ZIP containing:
+    - session.pkl: Serialized snapshots (dill/pickle)
+    - events.jsonl: All events in JSON Lines format
+    - metadata.json: Session info
+    """
+
+    # Keys to redact from environment variables
+    REDACT_PATTERNS = ["KEY", "SECRET", "TOKEN", "PASSWORD", "CREDENTIAL", "AUTH"]
+
+    def __init__(self, session_id: str = None):
+        self.session_id = (
+            session_id or f"session-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        )
+        self.event_buffer = EventBuffer()
+        self.snapshots: List[SessionSnapshot] = []
+        self.recording = False
+        self.start_time: Optional[float] = None
+        self.end_time: Optional[float] = None
+        self._snapshot_counter = 0
+        self._original_open = None
+        self._original_requests_get = None
+        self._hooks_installed = False
+        self.metadata: Dict[str, Any] = {}
+
+    def start(self, install_hooks: bool = True):
+        """Start recording the session."""
+        if self.recording:
+            logger.warning("Session recording already active")
+            return
+
+        self.recording = True
+        self.start_time = time.time()
+        self.metadata = {
+            "session_id": self.session_id,
+            "start_time": datetime.now().isoformat(),
+            "hostname": socket.gethostname(),
+            "platform": platform.system(),
+            "python_version": sys.version,
+            "serializer": SERIALIZER_NAME,
+        }
+
+        logger.info(f"🎬 Session recording started: {self.session_id}")
+        print(f"🎬 Recording session: {self.session_id}")
+
+        # Record start event
+        self.event_buffer.record("agent", "session.start", self.metadata)
+
+        if install_hooks:
+            self._install_hooks()
+
+    def stop(self) -> str:
+        """Stop recording and return session ID."""
+        if not self.recording:
+            logger.warning("No active recording to stop")
+            return self.session_id
+
+        self.recording = False
+        self.end_time = time.time()
+        self.metadata["end_time"] = datetime.now().isoformat()
+        self.metadata["duration_seconds"] = self.end_time - self.start_time
+        self.metadata["total_events"] = self.event_buffer.count
+        self.metadata["total_snapshots"] = len(self.snapshots)
+
+        # Record stop event
+        self.event_buffer.record(
+            "agent",
+            "session.stop",
+            {
+                "duration": self.metadata["duration_seconds"],
+                "events": self.event_buffer.count,
+            },
+        )
+
+        self._uninstall_hooks()
+
+        logger.info(f"🎬 Session recording stopped: {self.session_id}")
+        print(
+            f"🎬 Recording stopped: {self.event_buffer.count} events, {len(self.snapshots)} snapshots"
+        )
+
+        return self.session_id
+
+    def snapshot(
+        self,
+        agent=None,
+        description: str = "",
+        last_query: str = "",
+        last_result: str = "",
+    ):
+        """Create a state snapshot with full conversation state for resume capability.
+
+        Args:
+            agent: The agent instance to capture state from
+            description: Human-readable description of this snapshot
+            last_query: The last user query (for resume context)
+            last_result: The last agent result (for resume context)
+        """
+        if not self.recording:
+            return
+
+        self._snapshot_counter += 1
+
+        # Get agent info if available
+        messages_count = 0
+        tools_loaded = []
+        system_prompt_hash = ""
+        agent_messages = []
+        system_prompt = ""
+        model_info = {}
+
+        if agent:
+            try:
+                # Capture message count
+                if hasattr(agent, "messages"):
+                    messages_count = len(agent.messages) if agent.messages else 0
+                    # NEW: Capture actual messages for resume capability
+                    if agent.messages:
+                        agent_messages = self._serialize_messages(agent.messages)
+
+                # Capture tools
+                if hasattr(agent, "tool_names"):
+                    tools_loaded = list(agent.tool_names)
+
+                # Capture system prompt
+                if hasattr(agent, "system_prompt"):
+                    system_prompt_hash = str(hash(agent.system_prompt))[:16]
+                    system_prompt = agent.system_prompt or ""
+
+                # Capture model info safely
+                if hasattr(agent, "model"):
+                    model = agent.model
+                    model_info = {
+                        "type": type(model).__name__,
+                        "model_id": getattr(model, "model_id", "unknown"),
+                        "provider": getattr(model, "provider", "unknown"),
+                    }
+
+            except Exception as e:
+                logger.debug(f"Could not extract agent state: {e}")
+
+        snapshot = SessionSnapshot(
+            timestamp=time.time(),
+            snapshot_id=self._snapshot_counter,
+            agent_messages_count=messages_count,
+            tools_loaded=tools_loaded,
+            system_prompt_hash=system_prompt_hash,
+            env_vars_redacted=self._redact_env_vars(),
+            cwd=os.getcwd(),
+            events_since_last=self.event_buffer.count,
+            # NEW: Full state for resume
+            agent_messages=agent_messages,
+            system_prompt=system_prompt,
+            last_query=last_query,
+            last_result=last_result,
+            model_info=model_info,
+        )
+
+        self.snapshots.append(snapshot)
+
+        # Record snapshot event
+        self.event_buffer.record(
+            "agent",
+            "snapshot.created",
+            {
+                "snapshot_id": self._snapshot_counter,
+                "description": description,
+                "messages_captured": len(agent_messages),
+                "has_system_prompt": bool(system_prompt),
+            },
+        )
+
+        logger.debug(
+            f"🎬 Snapshot #{self._snapshot_counter} created with {len(agent_messages)} messages"
+        )
+
+    def _serialize_messages(self, messages) -> List[Dict[str, Any]]:
+        """Safely serialize agent messages for storage."""
+        serialized = []
+        for msg in messages:
+            try:
+                if isinstance(msg, dict):
+                    # Already a dict, just copy
+                    serialized.append(dict(msg))
+                elif hasattr(msg, "__dict__"):
+                    # Object with __dict__, convert
+                    serialized.append(dict(msg.__dict__))
+                elif hasattr(msg, "model_dump"):
+                    # Pydantic model
+                    serialized.append(msg.model_dump())
+                else:
+                    # Fallback: convert to string representation
+                    serialized.append({"content": str(msg), "role": "unknown"})
+            except Exception as e:
+                logger.debug(f"Could not serialize message: {e}")
+                serialized.append(
+                    {"content": str(msg)[:1000], "role": "unknown", "_error": str(e)}
+                )
+        return serialized
+
+    def record_tool_call(
+        self, tool_name: str, args: Dict[str, Any], trace_id: str = None
+    ):
+        """Record a tool call event."""
+        if not self.recording:
+            return
+        self.event_buffer.record(
+            "tool",
+            "tool.call",
+            {"name": tool_name, "args": self._truncate_data(args)},
+            trace_id,
+        )
+
+    def record_tool_result(
+        self, tool_name: str, result: Any, duration_ms: float = 0, trace_id: str = None
+    ):
+        """Record a tool result event."""
+        if not self.recording:
+            return
+        self.event_buffer.record(
+            "tool",
+            "tool.result",
+            {
+                "name": tool_name,
+                "result_preview": str(result)[:500],
+                "duration_ms": duration_ms,
+            },
+            trace_id,
+        )
+
+    def record_agent_message(self, role: str, content: str, trace_id: str = None):
+        """Record an agent message event."""
+        if not self.recording:
+            return
+        self.event_buffer.record(
+            "agent",
+            "message",
+            {"role": role, "content_preview": content[:500] if content else ""},
+            trace_id,
+        )
+
+    def record_sys_event(self, event_type: str, data: Dict[str, Any]):
+        """Record a system-level event."""
+        if not self.recording:
+            return
+        self.event_buffer.record("sys", event_type, self._truncate_data(data))
+
+    def export(self, output_path: str = None) -> str:
+        """Export the session to a ZIP file."""
+        if output_path is None:
+            output_path = str(RECORDING_DIR / f"{self.session_id}.zip")
+
+        logger.info(f"🎬 Exporting session to {output_path}")
+
+        with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            # Write events as JSONL
+            events_data = "\n".join(
+                json.dumps(e.to_dict()) for e in self.event_buffer.get_all()
+            )
+            zf.writestr("events.jsonl", events_data)
+
+            # Write snapshots as JSON
+            snapshots_data = json.dumps([s.to_dict() for s in self.snapshots], indent=2)
+            zf.writestr("snapshots.json", snapshots_data)
+
+            # Write metadata
+            self.metadata["export_time"] = datetime.now().isoformat()
+            zf.writestr("metadata.json", json.dumps(self.metadata, indent=2))
+
+            # Try to serialize snapshots with dill/pickle (for potential state replay)
+            try:
+                pkl_data = serializer.dumps(
+                    {"snapshots": self.snapshots, "metadata": self.metadata}
+                )
+                zf.writestr("session.pkl", pkl_data)
+            except Exception as e:
+                logger.warning(f"Could not serialize session state: {e}")
+                zf.writestr("session.pkl.error", str(e))
+
+        logger.info(f"🎬 Session exported: {output_path}")
+        print(f"🎬 Session exported: {output_path}")
+        return output_path
+
+    def _redact_env_vars(self) -> Dict[str, str]:
+        """Get environment variables with sensitive values redacted."""
+        redacted = {}
+        for key, value in os.environ.items():
+            if any(pattern in key.upper() for pattern in self.REDACT_PATTERNS):
+                redacted[key] = "[REDACTED]"
+            else:
+                redacted[key] = value[:100] if len(value) > 100 else value
+        return redacted
+
+    def _truncate_data(self, data: Any, max_len: int = 1000) -> Any:
+        """Truncate data to prevent huge events."""
+        if isinstance(data, str):
+            return data[:max_len] if len(data) > max_len else data
+        elif isinstance(data, dict):
+            return {
+                k: self._truncate_data(v, max_len // 2)
+                for k, v in list(data.items())[:20]
+            }
+        elif isinstance(data, list):
+            return [self._truncate_data(v, max_len // 2) for v in data[:10]]
+        else:
+            return str(data)[:max_len]
+
+    def _install_hooks(self):
+        """Install hooks to capture OS-level events."""
+        if self._hooks_installed:
+            return
+
+        # Hook: builtins.open
+        self._original_open = builtins.open
+        recorder = self
+
+        def traced_open(file, mode="r", *args, **kwargs):
+            if recorder.recording:
+                recorder.record_sys_event(
+                    "file.open", {"path": str(file), "mode": mode}
+                )
+            return recorder._original_open(file, mode, *args, **kwargs)
+
+        builtins.open = traced_open
+
+        # Hook: requests (if available)
+        try:
+            import requests
+
+            self._original_requests_get = requests.get
+
+            def traced_get(url, *args, **kwargs):
+                if recorder.recording:
+                    recorder.record_sys_event("http.get", {"url": str(url)[:200]})
+                return recorder._original_requests_get(url, *args, **kwargs)
+
+            requests.get = traced_get
+        except ImportError:
+            pass
+
+        self._hooks_installed = True
+        logger.info("🎬 Recording hooks installed")
+
+    def _uninstall_hooks(self):
+        """Uninstall recording hooks."""
+        if not self._hooks_installed:
+            return
+
+        if self._original_open:
+            builtins.open = self._original_open
+
+        if self._original_requests_get:
+            try:
+                import requests
+
+                requests.get = self._original_requests_get
+            except ImportError:
+                pass
+
+        self._hooks_installed = False
+        logger.info("🎬 Recording hooks uninstalled")
+
+
+# Global session recorder instance
+_session_recorder: Optional[SessionRecorder] = None
+
+
+def get_session_recorder() -> Optional[SessionRecorder]:
+    """Get the global session recorder if active."""
+    return _session_recorder
+
+
+def start_recording(
+    session_id: str = None, install_hooks: bool = True
+) -> SessionRecorder:
+    """Start a new recording session."""
+    global _session_recorder
+    _session_recorder = SessionRecorder(session_id)
+    _session_recorder.start(install_hooks)
+    return _session_recorder
+
+
+def stop_recording() -> Optional[str]:
+    """Stop the current recording session and return the export path."""
+    global _session_recorder
+    if _session_recorder and _session_recorder.recording:
+        _session_recorder.stop()
+        export_path = _session_recorder.export()
+        return export_path
+    return None
+
+
+class LoadedSession:
+    """A loaded session from a ZIP file for replay and analysis.
+
+    Provides access to recorded events, snapshots, and metadata.
+    Can be used to resume agent state from a specific snapshot.
+
+    Example:
+        session = load_session("session-20260202-224751.zip")
+        print(session.metadata)
+        print(session.events[:10])
+
+        # Resume from snapshot
+        session.resume_from_snapshot(2)
+    """
+
+    def __init__(self, zip_path: str):
+        """Load a session from a ZIP file."""
+        self.zip_path = Path(zip_path)
+        self.events: List[RecordedEvent] = []
+        self.snapshots: List[SessionSnapshot] = []
+        self.metadata: Dict[str, Any] = {}
+        self._pkl_data: Optional[Dict] = None
+
+        self._load()
+
+    def _load(self):
+        """Load and parse the session ZIP file."""
+        if not self.zip_path.exists():
+            raise FileNotFoundError(f"Session file not found: {self.zip_path}")
+
+        with zipfile.ZipFile(self.zip_path, "r") as zf:
+            # Load events.jsonl
+            if "events.jsonl" in zf.namelist():
+                events_text = zf.read("events.jsonl").decode("utf-8")
+                for line in events_text.strip().split("\n"):
+                    if line:
+                        data = json.loads(line)
+                        self.events.append(RecordedEvent(**data))
+
+            # Load snapshots.json
+            if "snapshots.json" in zf.namelist():
+                snapshots_text = zf.read("snapshots.json").decode("utf-8")
+                snapshots_data = json.loads(snapshots_text)
+                for snap_data in snapshots_data:
+                    self.snapshots.append(SessionSnapshot(**snap_data))
+
+            # Load metadata.json
+            if "metadata.json" in zf.namelist():
+                metadata_text = zf.read("metadata.json").decode("utf-8")
+                self.metadata = json.loads(metadata_text)
+
+            # Load session.pkl if available
+            if "session.pkl" in zf.namelist():
+                try:
+                    pkl_data = zf.read("session.pkl")
+                    self._pkl_data = serializer.loads(pkl_data)
+                except Exception as e:
+                    logger.warning(f"Could not load session.pkl: {e}")
+
+    @property
+    def session_id(self) -> str:
+        """Get the session ID."""
+        return self.metadata.get("session_id", "unknown")
+
+    @property
+    def duration(self) -> float:
+        """Get session duration in seconds."""
+        return self.metadata.get("duration_seconds", 0.0)
+
+    @property
+    def has_pkl(self) -> bool:
+        """Check if session has serialized state for resuming."""
+        return self._pkl_data is not None
+
+    def get_events_by_layer(self, layer: str) -> List[RecordedEvent]:
+        """Get events filtered by layer (sys, tool, agent)."""
+        return [e for e in self.events if e.layer == layer]
+
+    def get_events_by_type(self, event_type: str) -> List[RecordedEvent]:
+        """Get events filtered by type."""
+        return [e for e in self.events if e.event_type == event_type]
+
+    def get_events_in_range(self, start_ns: int, end_ns: int) -> List[RecordedEvent]:
+        """Get events within a timestamp range."""
+        return [e for e in self.events if start_ns <= e.timestamp_ns <= end_ns]
+
+    def get_snapshot(self, snapshot_id: int) -> Optional[SessionSnapshot]:
+        """Get a specific snapshot by ID."""
+        for snap in self.snapshots:
+            if snap.snapshot_id == snapshot_id:
+                return snap
+        return None
+
+    def get_events_until_snapshot(self, snapshot_id: int) -> List[RecordedEvent]:
+        """Get all events up to a specific snapshot."""
+        snap = self.get_snapshot(snapshot_id)
+        if not snap:
+            return []
+
+        snap_time_ns = int(snap.timestamp * 1e9)
+        return [e for e in self.events if e.timestamp_ns <= snap_time_ns]
+
+    def resume_from_snapshot(
+        self, snapshot_id: int, agent: Optional[Any] = None
+    ) -> Dict[str, Any]:
+        """Resume agent state from a specific snapshot.
+
+        This reconstructs the agent context based on the snapshot state.
+        If an agent is provided, it will be configured with the snapshot state
+        including restored conversation history.
+
+        Args:
+            snapshot_id: The snapshot ID to resume from
+            agent: Optional agent instance to configure
+
+        Returns:
+            Dict with resume status, snapshot info, and continuation prompt
+        """
+        snap = self.get_snapshot(snapshot_id)
+        if not snap:
+            return {"status": "error", "message": f"Snapshot #{snapshot_id} not found"}
+
+        result = {
+            "status": "success",
+            "snapshot_id": snapshot_id,
+            "timestamp": datetime.fromtimestamp(snap.timestamp).isoformat(),
+            "cwd": snap.cwd,
+            "tools_loaded": snap.tools_loaded,
+            "messages_count": snap.agent_messages_count,
+            "events_before_snapshot": len(self.get_events_until_snapshot(snapshot_id)),
+            "messages_restored": 0,
+            "continuation_prompt": "",
+        }
+
+        # Change to snapshot's working directory
+        if os.path.exists(snap.cwd):
+            os.chdir(snap.cwd)
+            result["cwd_changed"] = True
+        else:
+            result["cwd_changed"] = False
+            result["cwd_warning"] = f"Directory not found: {snap.cwd}"
+
+        # If agent provided, restore full state
+        if agent is not None:
+            try:
+                # Restore conversation history (the key enhancement!)
+                if snap.agent_messages:
+                    agent.messages = snap.agent_messages
+                    result["messages_restored"] = len(snap.agent_messages)
+                    logger.info(
+                        f"Restored {len(snap.agent_messages)} messages to agent"
+                    )
+
+                # Check tool compatibility
+                if hasattr(agent, "tool_registry"):
+                    current_tools = set(agent.tool_registry.registry.keys())
+                    snapshot_tools = set(snap.tools_loaded)
+
+                    result["tools_match"] = current_tools == snapshot_tools
+                    result["missing_tools"] = list(snapshot_tools - current_tools)
+                    result["extra_tools"] = list(current_tools - snapshot_tools)
+
+            except Exception as e:
+                result["agent_restore_error"] = str(e)
+                logger.error(f"Error restoring agent state: {e}")
+
+        # Build continuation prompt (like research_agent_runner pattern)
+        if snap.last_query or snap.last_result:
+            result["continuation_prompt"] = self._build_continuation_prompt(snap)
+
+        # Include model info if available
+        if snap.model_info:
+            result["model_info"] = snap.model_info
+
+        logger.info(
+            f"Resumed from snapshot #{snapshot_id}: {result['messages_restored']} messages restored"
+        )
+        return result
+
+    def _build_continuation_prompt(self, snap: SessionSnapshot) -> str:
+        """Build a continuation prompt from snapshot context.
+
+        This follows the pattern from research_agent_runner.py for
+        seamless conversation continuation.
+        """
+        prompt_parts = []
+
+        prompt_parts.append("=== RESUMED SESSION CONTEXT ===")
+        prompt_parts.append(f"Session: {self.session_id}")
+        prompt_parts.append(
+            f"Snapshot: #{snap.snapshot_id} from {datetime.fromtimestamp(snap.timestamp).strftime('%Y-%m-%d %H:%M:%S')}"
+        )
+        prompt_parts.append(f"Working Directory: {snap.cwd}")
+
+        if snap.last_query:
+            prompt_parts.append(f"\n--- Previous Query ---\n{snap.last_query}")
+
+        if snap.last_result:
+            # Truncate long results
+            result_preview = snap.last_result[:2000]
+            if len(snap.last_result) > 2000:
+                result_preview += "\n... [truncated]"
+            prompt_parts.append(f"\n--- Previous Result ---\n{result_preview}")
+
+        prompt_parts.append("\n=== END RESUMED CONTEXT ===")
+        prompt_parts.append(
+            "\nPlease continue from where we left off. The conversation history has been restored."
+        )
+
+        return "\n".join(prompt_parts)
+
+    def resume_and_continue(
+        self, snapshot_id: int, new_query: str, agent: Any
+    ) -> Dict[str, Any]:
+        """Resume from snapshot and immediately continue with a new query.
+
+        This is a convenience method that:
+        1. Restores agent state from snapshot
+        2. Runs the agent with context-aware continuation prompt
+
+        Args:
+            snapshot_id: The snapshot ID to resume from
+            new_query: The new query to run after resuming
+            agent: The agent instance to use
+
+        Returns:
+            Dict with resume status and agent result
+        """
+        # First, resume the state
+        resume_result = self.resume_from_snapshot(snapshot_id, agent)
+
+        if resume_result["status"] != "success":
+            return resume_result
+
+        # Build the continuation query
+        continuation_prompt = resume_result.get("continuation_prompt", "")
+        if continuation_prompt:
+            full_query = f"{continuation_prompt}\n\n--- New Query ---\n{new_query}"
+        else:
+            full_query = new_query
+
+        # Run the agent
+        try:
+            agent_result = agent(full_query)
+            resume_result["agent_result"] = str(agent_result)
+            resume_result["continuation_successful"] = True
+        except Exception as e:
+            resume_result["agent_result"] = None
+            resume_result["continuation_error"] = str(e)
+            resume_result["continuation_successful"] = False
+
+        return resume_result
+
+    def replay_events(
+        self,
+        start_idx: int = 0,
+        end_idx: Optional[int] = None,
+        callback: Optional[Callable[[RecordedEvent, int], None]] = None,
+    ) -> List[RecordedEvent]:
+        """Replay events with optional callback for each event.
+
+        Args:
+            start_idx: Starting event index
+            end_idx: Ending event index (exclusive), None for all
+            callback: Optional function called for each event (event, index)
+
+        Returns:
+            List of replayed events
+        """
+        end = end_idx if end_idx is not None else len(self.events)
+        replayed = []
+
+        for i in range(start_idx, min(end, len(self.events))):
+            event = self.events[i]
+            replayed.append(event)
+            if callback:
+                callback(event, i)
+
+        return replayed
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert session to dictionary for JSON export."""
+        return {
+            "metadata": self.metadata,
+            "events": [e.to_dict() for e in self.events],
+            "snapshots": [s.to_dict() for s in self.snapshots],
+            "summary": {
+                "total_events": len(self.events),
+                "total_snapshots": len(self.snapshots),
+                "events_by_layer": {
+                    "sys": len(self.get_events_by_layer("sys")),
+                    "tool": len(self.get_events_by_layer("tool")),
+                    "agent": len(self.get_events_by_layer("agent")),
+                },
+                "has_resumable_state": self.has_pkl,
+            },
+        }
+
+    def __repr__(self) -> str:
+        return (
+            f"LoadedSession(id={self.session_id}, "
+            f"events={len(self.events)}, "
+            f"snapshots={len(self.snapshots)}, "
+            f"duration={self.duration:.1f}s)"
+        )
+
+
+def load_session(path: str) -> LoadedSession:
+    """Load a recorded session from a ZIP file.
+
+    Args:
+        path: Path to the session ZIP file
+
+    Returns:
+        LoadedSession object with events, snapshots, and metadata
+
+    Example:
+        session = load_session("~/Desktop/session-20260202-224751.zip")
+        print(session)  # LoadedSession(id=session-20260202-224751, events=12, snapshots=3)
+
+        # Get all tool calls
+        tool_events = session.get_events_by_layer("tool")
+
+        # Resume from a snapshot (restores agent.messages!)
+        result = session.resume_from_snapshot(2, agent=my_agent)
+        print(f"Restored {result['messages_restored']} messages")
+
+        # Resume and continue with new query
+        result = session.resume_and_continue(2, "what was I working on?", agent=my_agent)
+        print(result['agent_result'])
+
+        # Replay with callback
+        def on_event(event, idx):
+            print(f"[{idx}] {event.event_type}: {event.data}")
+        session.replay_events(callback=on_event)
+    """
+    # Expand user path
+    expanded_path = os.path.expanduser(path)
+    return LoadedSession(expanded_path)
+
+
+def resume_session(
+    session_path: str, snapshot_id: int = None, new_query: str = None
+) -> Dict[str, Any]:
+    """Resume a devduck session from a recorded session file.
+
+    This is a convenience function that:
+    1. Loads a session from file
+    2. Resumes from the latest (or specified) snapshot
+    3. Optionally continues with a new query
+
+    Args:
+        session_path: Path to the session ZIP file
+        snapshot_id: Specific snapshot to resume from (default: latest)
+        new_query: Optional new query to run after resuming
+
+    Returns:
+        Dict with resume status and optionally agent result
+
+    Example:
+        # Resume from latest snapshot
+        result = resume_session("~/Desktop/session-20260202-224751.zip")
+
+        # Resume from specific snapshot
+        result = resume_session("session.zip", snapshot_id=2)
+
+        # Resume and continue working
+        result = resume_session("session.zip", new_query="continue where we left off")
+        print(result['agent_result'])
+    """
+    # Load the session
+    session = load_session(session_path)
+
+    if not session.snapshots:
+        return {"status": "error", "message": "No snapshots found in session"}
+
+    # Use latest snapshot if not specified
+    if snapshot_id is None:
+        snapshot_id = session.snapshots[-1].snapshot_id
+
+    # Get the devduck agent
+    if not hasattr(devduck, "agent") or devduck.agent is None:
+        return {"status": "error", "message": "DevDuck agent not initialized"}
+
+    # Resume with or without new query
+    if new_query:
+        return session.resume_and_continue(snapshot_id, new_query, devduck.agent)
+    else:
+        return session.resume_from_snapshot(snapshot_id, devduck.agent)
+
+
+def list_sessions() -> List[Dict[str, Any]]:
+    """List all recorded sessions in the default recording directory.
+
+    Returns:
+        List of session info dicts with path, size, and modified time
+    """
+    sessions = []
+    for zip_file in RECORDING_DIR.glob("*.zip"):
+        stat = zip_file.stat()
+        sessions.append(
+            {
+                "path": str(zip_file),
+                "name": zip_file.name,
+                "size_kb": stat.st_size / 1024,
+                "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+            }
+        )
+    return sorted(sessions, key=lambda x: x["modified"], reverse=True)
 
 
 def get_own_source_code():
@@ -944,6 +1874,9 @@ class DevDuck:
             self._agent_executing = False
             self._reload_pending = False
 
+            # 🎬 Session recording state
+            self._recording = False
+
             # Server configuration
             if servers is None:
                 # Default server config from env vars
@@ -1021,6 +1954,7 @@ class DevDuck:
             # - speech_to_speech: https://github.com/cagataycali/devduck/blob/main/devduck/tools/speech_to_speech.py
             # - state_manager: https://github.com/cagataycali/devduck/blob/main/devduck/tools/state_manager.py
             # - zenoh_peer: https://github.com/cagataycali/devduck/blob/main/devduck/tools/zenoh_peer.py
+            # - ambient_mode: https://github.com/cagataycali/devduck/blob/main/devduck/tools/ambient_mode.py
 
             # 📦 Strands Tools
             # - editor, file_read, file_write, image_reader, load_tool, retrieve
@@ -1046,7 +1980,7 @@ class DevDuck:
             # Append to default tools if any server tools are needed
             if server_tools_needed:
                 server_tools_str = ",".join(server_tools_needed)
-                default_tools = f"devduck.tools:system_prompt,fetch_github_tool,websocket,{server_tools_str};strands_tools:shell"
+                default_tools = f"devduck.tools:system_prompt,fetch_github_tool,websocket,ambient_mode,{server_tools_str};strands_tools:shell"
                 logger.info(f"Auto-added server tools: {server_tools_str}")
             else:
                 default_tools = "devduck.tools:system_prompt,fetch_github_tool,websocket;strands_tools:shell"
@@ -1087,8 +2021,196 @@ class DevDuck:
                 """
                 return manage_tools_func(action, package, tool_names, tool_path)
 
+            # Session recorder tool
+            @tool
+            def session_recorder(
+                action: str,
+                session_id: str = None,
+                output_path: str = None,
+                description: str = "",
+            ) -> Dict[str, Any]:
+                """
+                🎬 Record devduck sessions for replay and debugging.
+
+                Captures three layers of events:
+                - sys: OS-level events (file I/O, network requests)
+                - tool: Agent tool calls and results
+                - agent: Messages, decisions, state changes
+
+                Args:
+                    action: Action to perform:
+                        - "start": Start recording a new session
+                        - "stop": Stop recording and export
+                        - "snapshot": Create a state snapshot
+                        - "status": Show recording status
+                        - "export": Export current session without stopping
+                        - "list": List recorded sessions
+                    session_id: Optional custom session ID (for start)
+                    output_path: Custom export path (for export/stop)
+                    description: Description for snapshot
+
+                Returns:
+                    Dict with status and session info
+
+                Example:
+                    session_recorder(action="start")
+                    # ... do work ...
+                    session_recorder(action="snapshot", description="after API call")
+                    session_recorder(action="stop")
+                """
+                global _session_recorder
+
+                try:
+                    if action == "start":
+                        if _session_recorder and _session_recorder.recording:
+                            return {
+                                "status": "error",
+                                "content": [
+                                    {
+                                        "text": f"Recording already active: {_session_recorder.session_id}"
+                                    }
+                                ],
+                            }
+                        _session_recorder = SessionRecorder(session_id)
+                        _session_recorder.start(install_hooks=True)
+                        return {
+                            "status": "success",
+                            "content": [
+                                {
+                                    "text": f"🎬 Recording started: {_session_recorder.session_id}\nEvents will be captured at sys/tool/agent layers."
+                                }
+                            ],
+                        }
+
+                    elif action == "stop":
+                        if not _session_recorder or not _session_recorder.recording:
+                            return {
+                                "status": "error",
+                                "content": [{"text": "No active recording to stop"}],
+                            }
+                        _session_recorder.stop()
+                        export_file = _session_recorder.export(output_path)
+                        return {
+                            "status": "success",
+                            "content": [
+                                {
+                                    "text": f"🎬 Recording stopped and exported!\n"
+                                    f"Session: {_session_recorder.session_id}\n"
+                                    f"Events: {_session_recorder.event_buffer.count}\n"
+                                    f"Snapshots: {len(_session_recorder.snapshots)}\n"
+                                    f"Export: {export_file}"
+                                }
+                            ],
+                        }
+
+                    elif action == "snapshot":
+                        if not _session_recorder or not _session_recorder.recording:
+                            return {
+                                "status": "error",
+                                "content": [
+                                    {"text": "No active recording. Start one first."}
+                                ],
+                            }
+                        _session_recorder.snapshot(
+                            agent=devduck.agent if hasattr(devduck, "agent") else None,
+                            description=description,
+                        )
+                        return {
+                            "status": "success",
+                            "content": [
+                                {
+                                    "text": f"🎬 Snapshot #{_session_recorder._snapshot_counter} created: {description or 'no description'}"
+                                }
+                            ],
+                        }
+
+                    elif action == "status":
+                        if not _session_recorder:
+                            return {
+                                "status": "success",
+                                "content": [
+                                    {
+                                        "text": "No recording session. Use action='start' to begin."
+                                    }
+                                ],
+                            }
+                        status_info = {
+                            "session_id": _session_recorder.session_id,
+                            "recording": _session_recorder.recording,
+                            "events": _session_recorder.event_buffer.count,
+                            "snapshots": len(_session_recorder.snapshots),
+                            "duration": (
+                                time.time() - _session_recorder.start_time
+                                if _session_recorder.start_time
+                                else 0
+                            ),
+                        }
+                        return {
+                            "status": "success",
+                            "content": [
+                                {
+                                    "text": f"🎬 Recording Status:\n{json.dumps(status_info, indent=2)}"
+                                }
+                            ],
+                        }
+
+                    elif action == "export":
+                        if not _session_recorder:
+                            return {
+                                "status": "error",
+                                "content": [{"text": "No session to export"}],
+                            }
+                        export_file = _session_recorder.export(output_path)
+                        return {
+                            "status": "success",
+                            "content": [
+                                {
+                                    "text": f"🎬 Session exported (still recording): {export_file}"
+                                }
+                            ],
+                        }
+
+                    elif action == "list":
+                        recordings = list(RECORDING_DIR.glob("*.zip"))
+                        if not recordings:
+                            return {
+                                "status": "success",
+                                "content": [
+                                    {"text": f"No recordings found in {RECORDING_DIR}"}
+                                ],
+                            }
+                        recording_list = "\n".join(
+                            f"- {r.name} ({r.stat().st_size / 1024:.1f} KB)"
+                            for r in sorted(recordings)[-20:]
+                        )
+                        return {
+                            "status": "success",
+                            "content": [
+                                {
+                                    "text": f"🎬 Recorded Sessions:\n{recording_list}\n\nDirectory: {RECORDING_DIR}"
+                                }
+                            ],
+                        }
+
+                    else:
+                        return {
+                            "status": "error",
+                            "content": [
+                                {
+                                    "text": f"Unknown action: {action}. Valid: start, stop, snapshot, status, export, list"
+                                }
+                            ],
+                        }
+
+                except Exception as e:
+                    logger.error(f"Session recorder error: {e}")
+                    return {
+                        "status": "error",
+                        "content": [{"text": f"Error: {str(e)}"}],
+                    }
+
             # Add built-in tools to the toolset
-            core_tools.extend([view_logs, manage_tools])
+            core_tools.extend([view_logs, manage_tools, session_recorder])
 
             # Assign tools
             self.tools = core_tools
@@ -1851,6 +2973,12 @@ How it works:
             # Mark agent as executing to prevent hot-reload interruption
             self._agent_executing = True
 
+            # 🎬 Record user query if recording active
+            recorder = get_session_recorder()
+            if recorder and recorder.recording:
+                recorder.record_agent_message("user", query)
+                recorder.snapshot(self.agent, "before_agent_call", last_query=query)
+
             # 🌙 Inject ambient result if available
             original_query = query
             if self.ambient:
@@ -1872,11 +3000,18 @@ How it works:
                 except Exception as e:
                     logger.warning(f"KB retrieval failed: {e}")
 
-            # 🔗 Inject dynamic context (zenoh + ambient)
+            # 🔗 Inject dynamic context (zenoh + ambient + recording events)
             zenoh_context = get_zenoh_peers_context()
             ambient_context = get_ambient_status_context()
 
-            dynamic_context = zenoh_context + ambient_context
+            # 🎬 Inject recent recorded events into context if recording
+            recording_context = ""
+            if recorder and recorder.recording:
+                recording_context = recorder.event_buffer.get_recent_context(
+                    seconds=10.0, max_events=15
+                )
+
+            dynamic_context = zenoh_context + ambient_context + recording_context
             if dynamic_context:
                 query_with_context = (
                     f"[Dynamic Context]{dynamic_context}\n\n[User Query]\n{query}"
@@ -1886,6 +3021,16 @@ How it works:
 
             # Run the agent
             result = self.agent(query_with_context)
+
+            # 🎬 Record agent response if recording active
+            if recorder and recorder.recording:
+                recorder.record_agent_message("assistant", str(result)[:2000])
+                recorder.snapshot(
+                    self.agent,
+                    "after_agent_call",
+                    last_query=original_query,
+                    last_result=str(result)[:5000],
+                )
 
             # 🌙 Record interaction for ambient mode
             if self.ambient:
@@ -1921,6 +3066,12 @@ How it works:
         except Exception as e:
             self._agent_executing = False  # Reset flag on error
             logger.error(f"Agent call failed with error: {e}")
+
+            # 🎬 Record error if recording
+            recorder = get_session_recorder()
+            if recorder and recorder.recording:
+                recorder.record_agent_message("error", str(e))
+
             self._self_heal(e)
             if self.agent:
                 return self.agent(query)
@@ -2083,6 +3234,22 @@ How it works:
         else:
             status_dict["ambient_mode"] = {"enabled": False}
 
+        # 🎬 Session recording status
+        recorder = get_session_recorder()
+        if recorder:
+            status_dict["session_recording"] = {
+                "enabled": recorder.recording,
+                "session_id": recorder.session_id,
+                "events": recorder.event_buffer.count,
+                "snapshots": len(recorder.snapshots),
+                "duration": (
+                    time.time() - recorder.start_time if recorder.start_time else 0
+                ),
+                "recording_dir": str(RECORDING_DIR),
+            }
+        else:
+            status_dict["session_recording"] = {"enabled": False}
+
         return status_dict
 
 
@@ -2202,8 +3369,11 @@ def interactive():
     print(f"📝 Logs: {LOG_DIR}")
     if devduck.ambient:
         print(f"🌙 Ambient mode: ON (idle: {devduck.ambient.idle_threshold}s)")
+    recorder = get_session_recorder()
+    if recorder and recorder.recording:
+        print(f"🎬 Recording: ON ({recorder.session_id})")
     print("Type 'exit', 'quit', or 'q' to quit.")
-    print("Prefix with ! to run shell commands (e.g., ! ls -la)")
+    print("Commands: 'record' (toggle recording), 'ambient' (toggle), '!' (shell)")
     print("\n\n")
     logger.info("Interactive mode started")
 
@@ -2223,6 +3393,7 @@ def interactive():
         "ambient",
         "auto",
         "autonomous",
+        "record",  # 🎬 Session recording toggle
     ]
     history_commands = extract_commands_from_history()
 
@@ -2287,6 +3458,23 @@ def interactive():
                 else:
                     devduck.ambient = AmbientMode(devduck)
                     devduck.ambient.start(autonomous=True)
+                continue
+
+            # 🎬 Handle recording mode toggle
+            if q.lower() == "record":
+                recorder = get_session_recorder()
+                if recorder and recorder.recording:
+                    # Stop and export
+                    export_path = stop_recording()
+                    devduck._recording = False
+                    print(f"🎬 Recording stopped and exported: {export_path}")
+                else:
+                    # Start recording
+                    start_recording()
+                    devduck._recording = True
+                    print(
+                        f"🎬 Recording started. Type 'record' again to stop and export."
+                    )
                 continue
 
             # Handle shell commands with ! prefix
@@ -2367,7 +3555,17 @@ Examples:
   devduck                          # Start interactive mode
   devduck "your query here"        # One-shot query
   devduck --mcp                    # MCP stdio mode (for Claude Desktop)
+  devduck --record                 # Start with session recording enabled
+  devduck --record "do something"  # Record a one-shot query
+  devduck --resume session.zip     # Resume from recorded session
+  devduck --resume session.zip "continue"  # Resume and run query
 
+Session Recording & Resume:
+  devduck --record                 # Auto-records and exports on exit
+  devduck --resume ~/Desktop/session-*.zip  # Resume from session
+  devduck --resume session.zip --snapshot 2 "continue"  # Resume specific snapshot
+  Recordings saved to: /tmp/devduck/recordings/
+  
 Tool Configuration:
   export DEVDUCK_TOOLS="strands_tools:shell,editor:strands_fun_tools:clipboard"
 
@@ -2391,6 +3589,28 @@ Claude Desktop Config:
         "--mcp",
         action="store_true",
         help="Start MCP server in stdio mode (for Claude Desktop integration)",
+    )
+
+    # Session recording flag
+    parser.add_argument(
+        "--record",
+        action="store_true",
+        help="Enable session recording (exports to /tmp/devduck/recordings/)",
+    )
+
+    # Session resume flags
+    parser.add_argument(
+        "--resume",
+        type=str,
+        metavar="SESSION_FILE",
+        help="Resume from a recorded session file (ZIP)",
+    )
+
+    parser.add_argument(
+        "--snapshot",
+        type=int,
+        metavar="ID",
+        help="Specific snapshot ID to resume from (default: latest)",
     )
 
     args = parser.parse_args()
@@ -2422,14 +3642,62 @@ Claude Desktop Config:
             sys.exit(1)
         return
 
-    if args.query:
-        query = " ".join(args.query)
-        logger.info(f"CLI query: {query}")
-        result = ask(query)
-        print(result)
-    else:
-        # No arguments - start interactive mode
-        interactive()
+    # Handle --resume flag
+    if args.resume:
+        logger.info(f"Resuming from session: {args.resume}")
+        print(f"🎬 Resuming from session: {args.resume}")
+
+        query = " ".join(args.query) if args.query else None
+
+        try:
+            result = resume_session(
+                session_path=args.resume, snapshot_id=args.snapshot, new_query=query
+            )
+
+            if result["status"] == "success":
+                print(f"✅ Resumed from snapshot #{result.get('snapshot_id')}")
+                print(f"   Messages restored: {result.get('messages_restored', 0)}")
+                print(f"   Working directory: {result.get('cwd')}")
+
+                if result.get("continuation_successful"):
+                    print(f"\n📝 Result:\n{result.get('agent_result')}")
+                elif query:
+                    print(f"❌ Continuation failed: {result.get('continuation_error')}")
+                else:
+                    print("\n💡 Session state restored. Run with a query to continue:")
+                    print(f'   devduck --resume {args.resume} "your query here"')
+            else:
+                print(f"❌ Resume failed: {result.get('message')}")
+                sys.exit(1)
+
+        except Exception as e:
+            logger.error(f"Resume failed: {e}")
+            print(f"❌ Error: {e}")
+            sys.exit(1)
+        return
+
+    # Handle --record flag
+    recording_session = None
+    if args.record:
+        recording_session = start_recording()
+        # Also set global state for DevDuck instance
+        devduck._recording = True
+
+    try:
+        if args.query:
+            query = " ".join(args.query)
+            logger.info(f"CLI query: {query}")
+            result = ask(query)
+            print(result)
+        else:
+            # No arguments - start interactive mode
+            interactive()
+    finally:
+        # Stop recording on exit if active
+        if recording_session and recording_session.recording:
+            export_path = stop_recording()
+            if export_path:
+                print(f"\n🎬 Session recording saved: {export_path}")
 
 
 # 🦆 Make module directly callable: import devduck; devduck("query")

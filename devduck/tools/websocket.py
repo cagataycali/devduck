@@ -10,7 +10,7 @@ Key Features:
 2. Real-time Streaming: Responses stream to clients as they're generated (non-blocking)
 3. Concurrent Processing: Handle multiple messages simultaneously
 4. Background Processing: Server runs in a background thread
-5. Per-Connection DevDuck: Creates a fresh DevDuck instance for each client connection
+5. Per-Message DevDuck: Creates a fresh DevDuck instance for EACH message to avoid concurrency errors
 6. Callback Handler: Uses Strands callback system for efficient streaming
 7. Browser Compatible: Works with browser WebSocket clients
 
@@ -163,11 +163,14 @@ class WebSocketStreamingCallbackHandler:
                         )
 
 
-async def process_message_async(connection_agent, message, websocket, loop, turn_id):
+async def process_message_async(system_prompt, message, websocket, loop, turn_id):
     """Process a message in a concurrent task.
 
+    Creates a NEW DevDuck instance for each message to avoid concurrent
+    invocation errors (Strands Agent doesn't support concurrent requests).
+
     Args:
-        connection_agent: The agent instance to process the message
+        system_prompt: System prompt for the DevDuck agent
         message: The message to process
         websocket: WebSocket connection
         loop: Event loop
@@ -183,13 +186,49 @@ async def process_message_async(connection_agent, message, websocket, loop, turn
         }
         await websocket.send(json.dumps(turn_start))
 
+        # Create a NEW DevDuck instance for THIS message
+        # This avoids concurrent invocation errors on shared agent instances
+        try:
+            from devduck import DevDuck
+
+            # Create a new DevDuck instance with auto_start_servers=False to avoid recursion
+            message_devduck = DevDuck(auto_start_servers=False)
+
+            # Override system prompt if provided
+            if message_devduck.agent and system_prompt:
+                message_devduck.agent.system_prompt += (
+                    "\nCustom system prompt:" + system_prompt
+                )
+
+            message_agent = message_devduck.agent
+
+        except Exception as e:
+            logger.error(f"Failed to create DevDuck instance: {e}", exc_info=True)
+            # Fallback to basic Agent if DevDuck fails
+            from strands import Agent
+            from strands.models.ollama import OllamaModel
+
+            agent_model = OllamaModel(
+                host=os.getenv("OLLAMA_HOST", "http://localhost:11434"),
+                model_id=os.getenv("OLLAMA_MODEL", "qwen3:1.7b"),
+                temperature=1,
+                keep_alive="5m",
+            )
+
+            message_agent = Agent(
+                model=agent_model,
+                tools=[],
+                system_prompt=system_prompt
+                or "You are a helpful WebSocket server assistant.",
+            )
+
         # Create callback handler for this turn
         streaming_handler = WebSocketStreamingCallbackHandler(websocket, loop, turn_id)
-        connection_agent.callback_handler = streaming_handler
+        message_agent.callback_handler = streaming_handler
 
         # Process message in a thread to avoid blocking the event loop
         with ThreadPoolExecutor() as executor:
-            await loop.run_in_executor(executor, connection_agent, message)
+            await loop.run_in_executor(executor, message_agent, message)
 
         # Send turn end notification
         turn_end = {"type": "turn_end", "turn_id": turn_id, "timestamp": time.time()}
@@ -209,50 +248,18 @@ async def process_message_async(connection_agent, message, websocket, loop, turn
 async def handle_websocket_client(websocket, system_prompt: str):
     """Handle a WebSocket client connection with streaming responses.
 
+    Each message creates a NEW DevDuck instance to avoid concurrent invocation errors.
+    This follows the same pattern as zenoh_peer.py.
+
     Args:
         websocket: WebSocket connection object
-        system_prompt: System prompt for the DevDuck agent
+        system_prompt: System prompt for the DevDuck agent instances
     """
     client_address = websocket.remote_address
     logger.info(f"WebSocket connection established with {client_address}")
 
     # Get the current event loop
     loop = asyncio.get_running_loop()
-
-    # Import DevDuck and create a new instance for this connection
-    try:
-        from devduck import DevDuck
-
-        # Create a new DevDuck instance with auto_start_servers=False to avoid recursion
-        connection_devduck = DevDuck(auto_start_servers=False)
-
-        # Override system prompt if provided
-        if connection_devduck.agent and system_prompt:
-            connection_devduck.agent.system_prompt += (
-                "\nCustom system prompt:" + system_prompt
-            )
-
-        connection_agent = connection_devduck.agent
-
-    except Exception as e:
-        logger.error(f"Failed to create DevDuck instance: {e}", exc_info=True)
-        # Fallback to basic Agent if DevDuck fails
-        from strands import Agent
-        from strands.models.ollama import OllamaModel
-
-        agent_model = OllamaModel(
-            host=os.getenv("OLLAMA_HOST", "http://localhost:11434"),
-            model_id=os.getenv("OLLAMA_MODEL", "qwen3:1.7b"),
-            temperature=1,
-            keep_alive="5m",
-        )
-
-        connection_agent = Agent(
-            model=agent_model,
-            tools=[],
-            system_prompt=system_prompt
-            or "You are a helpful WebSocket server assistant.",
-        )
 
     # Track active tasks for concurrent processing
     active_tasks = set()
@@ -284,10 +291,9 @@ async def handle_websocket_client(websocket, system_prompt: str):
             turn_id = str(uuid.uuid4())
 
             # Launch message processing as concurrent task (don't await)
+            # Each task creates its OWN DevDuck instance to avoid concurrency issues
             task = asyncio.create_task(
-                process_message_async(
-                    connection_agent, message, websocket, loop, turn_id
-                )
+                process_message_async(system_prompt, message, websocket, loop, turn_id)
             )
             active_tasks.add(task)
 
@@ -416,9 +422,7 @@ def websocket(
                 {"text": f"System prompt: {system_prompt}"},
                 {"text": "🌊 Real-time streaming with concurrent message processing"},
                 {"text": "📦 Structured JSON messages with turn_id"},
-                {
-                    "text": "🦆 Server creates a new DevDuck instance for each connection"
-                },
+                {"text": "🦆 Server creates a new DevDuck instance for each message"},
                 {"text": "⚡ Send multiple messages without waiting!"},
                 {"text": f"📝 Test with: ws://localhost:{port}"},
             ],

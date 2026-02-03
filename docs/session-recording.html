@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎬 Session Recording - DevDuck Time Machine</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-tertiary: #1a1a25;
+            --border: rgba(255, 255, 255, 0.08);
+            --text-primary: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.7);
+            --text-muted: rgba(255, 255, 255, 0.4);
+            --accent-purple: #8b5cf6;
+            --accent-blue: #3b82f6;
+            --accent-green: #10b981;
+            --accent-yellow: #f59e0b;
+            --accent-red: #ef4444;
+            --accent-pink: #ec4899;
+            --layer-sys: #f59e0b;
+            --layer-tool: #10b981;
+            --layer-agent: #8b5cf6;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.7;
+        }
+
+        .header {
+            background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+            padding: 3rem 2rem;
+            text-align: center;
+            border-bottom: 1px solid var(--border);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 800px;
+            height: 400px;
+            background: radial-gradient(ellipse, rgba(139, 92, 246, 0.1) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .header h1 {
+            font-size: 2.75rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.7) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            position: relative;
+        }
+
+        .header .subtitle {
+            color: var(--text-secondary);
+            font-size: 1.2rem;
+            margin-bottom: 1rem;
+        }
+
+        .header .badges {
+            display: flex;
+            justify-content: center;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.3rem 0.85rem;
+            border-radius: 2rem;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .badge.purple {
+            background: rgba(139, 92, 246, 0.2);
+            border: 1px solid rgba(139, 92, 246, 0.4);
+            color: var(--accent-purple);
+        }
+
+        .badge.green {
+            background: rgba(16, 185, 129, 0.2);
+            border: 1px solid rgba(16, 185, 129, 0.4);
+            color: var(--accent-green);
+        }
+
+        .badge.yellow {
+            background: rgba(245, 158, 11, 0.2);
+            border: 1px solid rgba(245, 158, 11, 0.4);
+            color: var(--accent-yellow);
+        }
+
+        .nav {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-top: 1.5rem;
+            position: relative;
+        }
+
+        .nav a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+            padding: 0.5rem 0;
+            border-bottom: 2px solid transparent;
+        }
+
+        .nav a:hover {
+            color: var(--text-primary);
+            border-color: var(--accent-purple);
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 4rem 2rem;
+        }
+
+        section {
+            margin-bottom: 5rem;
+        }
+
+        h2 {
+            font-size: 1.85rem;
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        h3 {
+            font-size: 1.3rem;
+            margin: 2.5rem 0 1rem;
+            color: var(--text-primary);
+        }
+
+        h4 {
+            font-size: 1.1rem;
+            margin: 1.5rem 0 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        p {
+            margin-bottom: 1rem;
+            color: var(--text-secondary);
+        }
+
+        /* Hero Section */
+        .hero {
+            text-align: center;
+            padding: 4rem 2rem;
+            background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+            border: 1px solid var(--border);
+            border-radius: 1.5rem;
+            margin-bottom: 4rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle at center, rgba(139, 92, 246, 0.05) 0%, transparent 50%);
+            animation: pulse 8s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 0.5; }
+            50% { transform: scale(1.1); opacity: 0.8; }
+        }
+
+        .hero-icon {
+            font-size: 5rem;
+            margin-bottom: 1.5rem;
+            position: relative;
+        }
+
+        .hero h2 {
+            border: none;
+            font-size: 2.25rem;
+            margin-bottom: 1rem;
+            justify-content: center;
+        }
+
+        .hero p {
+            font-size: 1.15rem;
+            color: var(--text-secondary);
+            max-width: 650px;
+            margin: 0 auto;
+        }
+
+        /* Layer Diagram */
+        .layer-diagram {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            margin: 2rem 0;
+        }
+
+        .layer {
+            display: flex;
+            align-items: center;
+            padding: 1.25rem 1.5rem;
+            border-radius: 0.75rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-left: 4px solid;
+            transition: all 0.2s;
+        }
+
+        .layer:hover {
+            background: var(--bg-tertiary);
+            transform: translateX(4px);
+        }
+
+        .layer.sys { border-left-color: var(--layer-sys); }
+        .layer.tool { border-left-color: var(--layer-tool); }
+        .layer.agent { border-left-color: var(--layer-agent); }
+
+        .layer .icon {
+            font-size: 1.5rem;
+            margin-right: 1rem;
+        }
+
+        .layer .label {
+            font-weight: 700;
+            min-width: 80px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+        }
+
+        .layer.sys .label { color: var(--layer-sys); }
+        .layer.tool .label { color: var(--layer-tool); }
+        .layer.agent .label { color: var(--layer-agent); }
+
+        .layer .desc {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            flex: 1;
+        }
+
+        .layer .examples {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-left: auto;
+            font-family: 'Courier New', monospace;
+        }
+
+        /* Code Blocks */
+        pre {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            overflow-x: auto;
+            margin: 1rem 0;
+            position: relative;
+        }
+
+        pre::before {
+            content: attr(data-lang);
+            position: absolute;
+            top: 0.5rem;
+            right: 0.75rem;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        code {
+            font-family: 'Courier New', Consolas, monospace;
+            font-size: 0.9rem;
+        }
+
+        .inline-code {
+            background: rgba(139, 92, 246, 0.15);
+            color: var(--accent-purple);
+            padding: 0.2rem 0.5rem;
+            border-radius: 0.3rem;
+            font-size: 0.9rem;
+        }
+
+        /* Feature Grid */
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .feature-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 1rem;
+            padding: 1.75rem;
+            transition: all 0.3s;
+        }
+
+        .feature-card:hover {
+            background: var(--bg-tertiary);
+            border-color: rgba(139, 92, 246, 0.3);
+            transform: translateY(-4px);
+        }
+
+        .feature-card .icon {
+            font-size: 2.25rem;
+            margin-bottom: 1rem;
+        }
+
+        .feature-card h4 {
+            font-size: 1.15rem;
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+        }
+
+        .feature-card p {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            margin: 0;
+        }
+
+        /* Table */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.5rem 0;
+            background: var(--bg-secondary);
+            border-radius: 0.75rem;
+            overflow: hidden;
+        }
+
+        th, td {
+            text-align: left;
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        th {
+            font-weight: 600;
+            color: var(--text-primary);
+            background: var(--bg-tertiary);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        td {
+            color: var(--text-secondary);
+        }
+
+        td code {
+            background: rgba(139, 92, 246, 0.15);
+            color: var(--accent-purple);
+            padding: 0.2rem 0.5rem;
+            border-radius: 0.3rem;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        /* File Structure */
+        .file-structure {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            padding: 1.75rem;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9rem;
+        }
+
+        .file-structure .line {
+            padding: 0.3rem 0;
+            display: flex;
+            align-items: center;
+        }
+
+        .file-structure .folder { color: var(--accent-blue); }
+        .file-structure .file { color: var(--accent-green); }
+        .file-structure .desc {
+            color: var(--text-muted);
+            margin-left: 1rem;
+            font-size: 0.8rem;
+        }
+
+        /* Resume Box */
+        .resume-highlight {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0.05) 100%);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: 1rem;
+            padding: 2rem;
+            margin: 2rem 0;
+        }
+
+        .resume-highlight h3 {
+            color: var(--accent-green);
+            margin-top: 0;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .resume-highlight .methods {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+
+        .resume-highlight .method {
+            background: rgba(0,0,0,0.2);
+            border-radius: 0.5rem;
+            padding: 1rem;
+        }
+
+        .resume-highlight .method-name {
+            font-family: 'Courier New', monospace;
+            color: var(--accent-green);
+            font-weight: 600;
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .resume-highlight .method-desc {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        /* Snapshot Detail */
+        .snapshot-fields {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin: 1.5rem 0;
+        }
+
+        .snapshot-field {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 0.5rem;
+            padding: 1rem;
+        }
+
+        .snapshot-field .field-name {
+            font-family: 'Courier New', monospace;
+            font-size: 0.8rem;
+            color: var(--accent-purple);
+            margin-bottom: 0.25rem;
+        }
+
+        .snapshot-field .field-desc {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        /* Timeline */
+        .timeline {
+            position: relative;
+            padding-left: 2.5rem;
+            margin: 2rem 0;
+        }
+
+        .timeline::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: linear-gradient(180deg, var(--accent-purple) 0%, var(--accent-green) 100%);
+            border-radius: 2px;
+        }
+
+        .timeline-item {
+            position: relative;
+            padding-bottom: 2rem;
+        }
+
+        .timeline-item:last-child {
+            padding-bottom: 0;
+        }
+
+        .timeline-item::before {
+            content: attr(data-step);
+            position: absolute;
+            left: -2.5rem;
+            top: 0;
+            width: 24px;
+            height: 24px;
+            background: var(--accent-purple);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            font-weight: 700;
+            transform: translateX(-10px);
+        }
+
+        .timeline-item h4 {
+            font-size: 1.05rem;
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+        }
+
+        .timeline-item p {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            margin: 0;
+        }
+
+        .timeline-item code {
+            background: rgba(139, 92, 246, 0.15);
+            color: var(--accent-purple);
+            padding: 0.15rem 0.4rem;
+            border-radius: 0.25rem;
+            font-size: 0.85rem;
+        }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 3rem 2rem;
+            border-top: 1px solid var(--border);
+            color: var(--text-muted);
+        }
+
+        .footer a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .footer a:hover {
+            color: var(--accent-purple);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .header h1 { font-size: 2rem; }
+            .hero-icon { font-size: 3.5rem; }
+            .hero h2 { font-size: 1.75rem; }
+            .feature-grid { grid-template-columns: 1fr; }
+            .nav { flex-wrap: wrap; gap: 1rem; }
+            .layer { flex-wrap: wrap; }
+            .layer .examples { width: 100%; margin-left: 0; margin-top: 0.5rem; }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.1);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255,255,255,0.2);
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎬 Session Recording</h1>
+        <p class="subtitle">Time-travel debugger with full state resume</p>
+        <div class="badges">
+            <span class="badge purple">3-Layer Capture</span>
+            <span class="badge green">Full State Resume</span>
+            <span class="badge yellow">Conversation Restore</span>
+        </div>
+        <nav class="nav">
+            <a href="index.html">💬 Chat</a>
+            <a href="ambient-mode.html">🌙 Ambient</a>
+            <a href="session-player.html">▶️ Player</a>
+            <a href="https://github.com/cagataycali/devduck">📦 GitHub</a>
+        </nav>
+    </div>
+
+    <div class="container">
+        <div class="hero">
+            <div class="hero-icon">🎬</div>
+            <h2>Capture. Replay. Resume.</h2>
+            <p>Record complete DevDuck sessions with full conversation state. Resume from any snapshot with your entire context restored—like hitting pause and play on your AI agent.</p>
+        </div>
+
+        <!-- Three Layer Architecture -->
+        <section>
+            <h2>🔬 Three-Layer Capture Architecture</h2>
+            <p>Session recording captures events at three distinct layers, giving you complete observability into agent behavior.</p>
+            
+            <div class="layer-diagram">
+                <div class="layer sys">
+                    <span class="icon">💾</span>
+                    <span class="label">sys</span>
+                    <span class="desc">OS-level events: file I/O operations, network requests, environment access</span>
+                    <span class="examples">file.open, http.get</span>
+                </div>
+                <div class="layer tool">
+                    <span class="icon">🔧</span>
+                    <span class="label">tool</span>
+                    <span class="desc">Tool invocations: shell commands, file edits, API calls with timing</span>
+                    <span class="examples">tool.call, tool.result</span>
+                </div>
+                <div class="layer agent">
+                    <span class="icon">🤖</span>
+                    <span class="label">agent</span>
+                    <span class="desc">Agent behavior: messages, state snapshots, session lifecycle</span>
+                    <span class="examples">message, snapshot.created</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Quick Start -->
+        <section>
+            <h2>⚡ Quick Start</h2>
+            
+            <h3>Command Line</h3>
+            <pre data-lang="bash"><code class="language-bash"># Start with recording enabled
+devduck --record
+
+# Record a one-shot query
+devduck --record "create a web scraper"
+
+# Resume from a recorded session
+devduck --resume ~/Desktop/session-20260202-231359.zip
+
+# Resume from specific snapshot
+devduck --resume session.zip --snapshot 2
+
+# Resume and continue with new query
+devduck --resume session.zip --snapshot 2 "continue from here"</code></pre>
+
+            <h3>Interactive REPL</h3>
+            <pre data-lang="bash"><code class="language-bash"># In DevDuck REPL:
+record              # Start recording
+# ... do your work ...
+record              # Stop and export ZIP</code></pre>
+
+            <h3>Tool API</h3>
+            <pre data-lang="python"><code class="language-python"># Start recording
+session_recorder(action="start")
+
+# Create state snapshot with description
+session_recorder(action="snapshot", description="after API setup")
+
+# Check recording status
+session_recorder(action="status")
+
+# Export without stopping
+session_recorder(action="export", output_path="~/Desktop/checkpoint.zip")
+
+# Stop recording and export
+session_recorder(action="stop")</code></pre>
+        </section>
+
+        <!-- Full State Resume -->
+        <section>
+            <h2>💾 Full State Resume</h2>
+            <p>The killer feature: snapshots capture your complete conversation state, allowing you to resume exactly where you left off.</p>
+            
+            <div class="resume-highlight">
+                <h3>🚀 Resume Capabilities</h3>
+                <p>Unlike simple event logs, DevDuck snapshots store the actual <code class="inline-code">agent.messages</code> array, system prompt, and query context—enabling true session continuation.</p>
+                
+                <div class="methods">
+                    <div class="method">
+                        <div class="method-name">resume_from_snapshot(id, agent)</div>
+                        <div class="method-desc">Restore agent state from snapshot. Messages are injected back into agent context.</div>
+                    </div>
+                    <div class="method">
+                        <div class="method-name">resume_and_continue(id, query, agent)</div>
+                        <div class="method-desc">Resume from snapshot AND immediately run a new query with full context.</div>
+                    </div>
+                    <div class="method">
+                        <div class="method-name">replay_events(callback)</div>
+                        <div class="method-desc">Step through recorded events with optional callback for each event.</div>
+                    </div>
+                </div>
+            </div>
+
+            <h3>Python Resume API</h3>
+            <pre data-lang="python"><code class="language-python">from devduck import load_session, resume_session, list_sessions
+
+# List all recorded sessions
+sessions = list_sessions()
+for s in sessions:
+    print(f"{s['name']} - {s['size_kb']:.1f}KB - {s['modified']}")
+
+# Quick resume from latest snapshot
+result = resume_session("~/Desktop/session.zip")
+print(f"Restored {result['messages_restored']} messages")
+
+# Load session for inspection
+session = load_session("session.zip")
+print(session)  # LoadedSession(id=..., events=14, snapshots=3)
+
+# Explore session data
+print(session.metadata)
+print(f"Duration: {session.duration}s")
+print(f"Resumable: {session.has_pkl}")
+
+# Get events by layer
+sys_events = session.get_events_by_layer("sys")
+tool_events = session.get_events_by_layer("tool")
+agent_events = session.get_events_by_layer("agent")
+
+# Resume from specific snapshot with agent
+result = session.resume_from_snapshot(2, agent=devduck.agent)
+print(f"Messages restored: {result['messages_restored']}")
+print(f"Working directory: {result['cwd']}")
+
+# Resume AND continue with new query
+result = session.resume_and_continue(
+    snapshot_id=2,
+    new_query="continue from where we left off",
+    agent=devduck.agent
+)
+print(result['agent_result'])</code></pre>
+        </section>
+
+        <!-- Snapshot Data -->
+        <section>
+            <h2>📸 What Snapshots Capture</h2>
+            <p>Each snapshot is a complete checkpoint of agent state at that moment in time.</p>
+            
+            <div class="snapshot-fields">
+                <div class="snapshot-field">
+                    <div class="field-name">agent_messages</div>
+                    <div class="field-desc">Full conversation history for context restoration</div>
+                </div>
+                <div class="snapshot-field">
+                    <div class="field-name">system_prompt</div>
+                    <div class="field-desc">The exact system prompt at snapshot time</div>
+                </div>
+                <div class="snapshot-field">
+                    <div class="field-name">last_query</div>
+                    <div class="field-desc">Most recent user query for context</div>
+                </div>
+                <div class="snapshot-field">
+                    <div class="field-name">last_result</div>
+                    <div class="field-desc">Agent's last response (truncated)</div>
+                </div>
+                <div class="snapshot-field">
+                    <div class="field-name">model_info</div>
+                    <div class="field-desc">Model type, ID, and provider details</div>
+                </div>
+                <div class="snapshot-field">
+                    <div class="field-name">tools_loaded</div>
+                    <div class="field-desc">List of active tools at snapshot</div>
+                </div>
+                <div class="snapshot-field">
+                    <div class="field-name">cwd</div>
+                    <div class="field-desc">Working directory (auto-restored on resume)</div>
+                </div>
+                <div class="snapshot-field">
+                    <div class="field-name">env_vars_redacted</div>
+                    <div class="field-desc">Environment with sensitive values masked</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Actions Reference -->
+        <section>
+            <h2>📋 Recording Actions</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Action</th>
+                        <th>Description</th>
+                        <th>Parameters</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>start</code></td>
+                        <td>Begin a new recording session</td>
+                        <td><code>session_id</code> (optional)</td>
+                    </tr>
+                    <tr>
+                        <td><code>stop</code></td>
+                        <td>Stop recording and export to ZIP</td>
+                        <td><code>output_path</code> (optional)</td>
+                    </tr>
+                    <tr>
+                        <td><code>snapshot</code></td>
+                        <td>Create state checkpoint with full context</td>
+                        <td><code>description</code> (optional)</td>
+                    </tr>
+                    <tr>
+                        <td><code>status</code></td>
+                        <td>Show recording status and stats</td>
+                        <td>—</td>
+                    </tr>
+                    <tr>
+                        <td><code>export</code></td>
+                        <td>Export current session without stopping</td>
+                        <td><code>output_path</code> (optional)</td>
+                    </tr>
+                    <tr>
+                        <td><code>list</code></td>
+                        <td>List all saved recordings</td>
+                        <td>—</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Export Format -->
+        <section>
+            <h2>📦 Export Format</h2>
+            <p>Sessions are exported as ZIP archives containing structured data for analysis, replay, and resume.</p>
+            
+            <div class="file-structure">
+                <div class="line"><span class="folder">📁</span> session-20260202-231359.zip</div>
+                <div class="line" style="padding-left: 1.5rem;"><span class="file">📄</span> events.jsonl <span class="desc"># All events in JSON Lines format</span></div>
+                <div class="line" style="padding-left: 1.5rem;"><span class="file">📄</span> snapshots.json <span class="desc"># State checkpoints with messages</span></div>
+                <div class="line" style="padding-left: 1.5rem;"><span class="file">📄</span> metadata.json <span class="desc"># Session info, timing, platform</span></div>
+                <div class="line" style="padding-left: 1.5rem;"><span class="file">📄</span> session.pkl <span class="desc"># Serialized state (dill/pickle)</span></div>
+            </div>
+
+            <h3>Event Structure</h3>
+            <pre data-lang="json"><code class="language-json">{
+  "timestamp_ns": 1738539876420000000,
+  "layer": "tool",
+  "event_type": "tool.call",
+  "data": {
+    "name": "shell",
+    "args": {"command": "ls -la"}
+  },
+  "trace_id": null
+}</code></pre>
+
+            <h3>Snapshot Structure</h3>
+            <pre data-lang="json"><code class="language-json">{
+  "timestamp": 1738539876.42,
+  "snapshot_id": 2,
+  "agent_messages_count": 12,
+  "agent_messages": [
+    {"role": "user", "content": "..."},
+    {"role": "assistant", "content": "..."}
+  ],
+  "system_prompt": "🦆 You are DevDuck...",
+  "last_query": "read the file and update it",
+  "last_result": "Done! I've updated...",
+  "model_info": {
+    "type": "BedrockModel",
+    "model_id": "claude-opus-4-5",
+    "provider": "bedrock"
+  },
+  "tools_loaded": ["shell", "editor", "file_read"],
+  "cwd": "/Users/cagatay/project"
+}</code></pre>
+        </section>
+
+        <!-- Features -->
+        <section>
+            <h2>✨ Features</h2>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="icon">💬</div>
+                    <h4>Conversation Restore</h4>
+                    <p>Full <code>agent.messages</code> captured in snapshots. Resume with complete context.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">⚡</div>
+                    <h4>Ring Buffer Design</h4>
+                    <p>10K event capacity with O(1) writes. Minimal performance overhead.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🔒</div>
+                    <h4>Auto Redaction</h4>
+                    <p>API keys, tokens, and secrets automatically masked in exports.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🔌</div>
+                    <h4>Automatic Hooks</h4>
+                    <p>File I/O and network calls instrumented when recording is active.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">📍</div>
+                    <h4>CWD Restoration</h4>
+                    <p>Working directory automatically restored on snapshot resume.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🎯</div>
+                    <h4>Context Injection</h4>
+                    <p>Recent events automatically added to agent context during recording.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Workflow -->
+        <section>
+            <h2>🔄 Example Workflow</h2>
+            <div class="timeline">
+                <div class="timeline-item" data-step="1">
+                    <h4>Start Recording</h4>
+                    <p><code>devduck --record</code> or type <code>record</code> in REPL</p>
+                </div>
+                <div class="timeline-item" data-step="2">
+                    <h4>Work Normally</h4>
+                    <p>All tool calls, messages, and file operations captured automatically</p>
+                </div>
+                <div class="timeline-item" data-step="3">
+                    <h4>Snapshots Auto-Created</h4>
+                    <p>Before/after each agent query with full conversation state</p>
+                </div>
+                <div class="timeline-item" data-step="4">
+                    <h4>Stop & Export</h4>
+                    <p>Type <code>record</code> again or use <code>session_recorder(action="stop")</code></p>
+                </div>
+                <div class="timeline-item" data-step="5">
+                    <h4>Analyze in Player</h4>
+                    <p>Open <a href="session-player.html">Session Player</a> and drop the ZIP file</p>
+                </div>
+                <div class="timeline-item" data-step="6">
+                    <h4>Resume Anytime</h4>
+                    <p><code>devduck --resume session.zip --snapshot 2</code></p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Storage -->
+        <section>
+            <h2>📂 Storage Location</h2>
+            <pre data-lang="bash"><code class="language-bash"># Default recording directory
+/tmp/devduck/recordings/
+├── session-20260202-224751.zip
+├── session-20260202-231359.zip
+└── ...
+
+# List recordings via tool
+session_recorder(action="list")
+
+# Export to custom location
+session_recorder(action="stop", output_path="~/Desktop/my-session.zip")
+
+# Python API
+from devduck import list_sessions
+for s in list_sessions():
+    print(f"{s['name']} - {s['modified']}")</code></pre>
+        </section>
+
+        <!-- Use Cases -->
+        <section>
+            <h2>💡 Use Cases</h2>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="icon">🐛</div>
+                    <h4>Debugging</h4>
+                    <p>Step through exactly what the agent did when something went wrong.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">⏸️</div>
+                    <h4>Pause & Resume</h4>
+                    <p>Stop working mid-task and resume later with full context restored.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">📊</div>
+                    <h4>Analysis</h4>
+                    <p>Study tool usage patterns, timing, and optimize workflows.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🔀</div>
+                    <h4>Branching</h4>
+                    <p>Resume from an earlier snapshot to try a different approach.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">📚</div>
+                    <h4>Documentation</h4>
+                    <p>Create reproducible examples of complex agent interactions.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🧪</div>
+                    <h4>Testing</h4>
+                    <p>Capture sessions for regression testing and comparison.</p>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <div class="footer">
+        <p>🦆 DevDuck Session Recording &middot; <a href="session-player.html">Open Player</a> &middot; <a href="https://github.com/cagataycali/devduck">GitHub</a></p>
+    </div>
+
+    <script>
+        hljs.highlightAll();
+    </script>
+</body>
+</html>

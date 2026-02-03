@@ -23,6 +23,7 @@ from .tray import tray
 from .use_github import use_github
 from .websocket import websocket
 from .zenoh_peer import zenoh_peer
+from .ambient_mode import ambient_mode
 
 # Optional Tools
 try:
@@ -49,6 +50,7 @@ try:
         "use_github",
         "websocket",
         "zenoh_peer",
+        "ambient_mode",
     ]
 except ImportError:
     __all__ = [
@@ -70,4 +72,6 @@ except ImportError:
         "tray",
         "use_github",
         "websocket",
+        "zenoh_peer",
+        "ambient_mode",
     ]
