@@ -1085,13 +1085,13 @@ mkdir -p ~/.config/devduck
                 notes: "Mount ~/.aws for Bedrock access. Pass API keys via -e flags."
             },
             android: {
-                name: "Android (Termux)",
+                name: "Android (Native Linux)",
                 commands: [
-                    { title: "1. Install Termux from F-Droid", cmd: "# Download from https://f-droid.org/packages/com.termux/" },
-                    { title: "2. Setup Python", cmd: "pkg update && pkg install python" },
-                    { title: "3. Install DevDuck", cmd: "pip install devduck" }
+                    { title: "1. Enable Linux on Android", cmd: "# Settings → System → Developer options → Linux terminal (or similar)\n# This is Android's native Linux support, NOT Termux" },
+                    { title: "2. Setup Python", cmd: "sudo apt update && sudo apt install python3 python3-pip" },
+                    { title: "3. Install DevDuck", cmd: "pip3 install devduck" }
                 ],
-                notes: "Works great with Ollama models for local AI on Android!"
+                notes: "Uses Android's native Linux subsystem (Settings → Developer options). Works great with Ollama for local AI!"
             },
             cloud: {
                 name: "Cloud (EC2/GCE/Azure)",
