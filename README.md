@@ -17,6 +17,8 @@ Learn more: https://duck.nyc
 | 🛠️ **Dynamic Tools** | Save `.py` file in `./tools/` → use instantly | [Watch](https://redduck.dev/videos/dynamic-tool-creation.mp4) |
 | 🌊 **TCP Streaming** | Connect via netcat, apps, or other agents | [Watch](https://redduck.dev/videos/tcp.mp4) |
 | 🔗 **Zenoh P2P** | Auto-discover & coordinate multiple DevDucks | Multi-terminal magic ✨ |
+| 🎬 **Session Recording** | Record, replay & resume agent sessions | Time-travel debugging 🕰️ |
+| 🌙 **Ambient Mode** | Background thinking while you're idle | Auto-explores topics 🧠 |
 | 🔌 **IPC & Tray** | macOS menu bar + Unix socket IPC | ![Demo](docs/mac-os-tray.jpg) |
 | 💬 **Ambient Overlay** | Floating AI input with glassmorphism UI | [Watch](https://redduck.dev/videos/floating-input.mp4) |
 
@@ -36,6 +38,13 @@ devduck "create a REST API with FastAPI"
 
 # Python API
 python -c "import devduck; devduck('analyze this code')"
+
+# Session recording (time-travel debugging)
+devduck --record "analyze this codebase"
+# → Exports to /tmp/devduck/recordings/session-*.zip
+
+# Resume from recorded session
+devduck --resume session-20250202-123456.zip "continue where we left off"
 ```
 
 **Requirements:** Python 3.10-3.13, AWS credentials (or Ollama/Anthropic/GitHub/MLX)
@@ -56,7 +65,9 @@ python -c "import devduck; devduck('analyze this code')"
 | 🌊 **Multi-Protocol** | TCP, WebSocket, MCP, IPC servers | Auto-starts on ports 9999, 8080, 8000 |
 | 🔗 **Zenoh P2P** | Auto-discover & coordinate with other DevDucks | `zenoh_peer(action="broadcast", message="...")` |
 | 🔌 **MCP Client** | Connect to external MCP servers | Set `MCP_SERVERS` env var |
+| 🎬 **Session Recording** | Record & replay entire sessions | `devduck --record` or `session_recorder()` |
 | 💾 **State Time-Travel** | Save/restore agent state | `state_manager(action="export")` |
+| 🌙 **Ambient Mode** | Background thinking when idle | `DEVDUCK_AMBIENT_MODE=true` or type `ambient` |
 | 📝 **Self-Improvement** | Updates own system prompt | `system_prompt(action="add_context", ...)` |
 | ☁️ **AWS Deploy** | One-command serverless | `agentcore_config(auto_launch=True)` |
 | 🎤 **Speech-to-Speech** | Real-time voice conversations | `pip install devduck[speech]` |
@@ -466,6 +477,131 @@ zenoh_peer(action="start", listen="tcp/0.0.0.0:7447")
 
 ## Advanced Features
 
+### 🎬 Session Recording (Time-Travel Debugging)
+
+**Record entire sessions** for replay, debugging, and state restoration:
+
+```bash
+# CLI: Start with recording enabled
+devduck --record
+devduck --record "analyze this codebase"
+
+# Resume from recorded session
+devduck --resume ~/Desktop/session-20250202-123456.zip
+devduck --resume session.zip "continue where we left off"
+
+# Resume from specific snapshot
+devduck --resume session.zip --snapshot 2 "what was I working on?"
+```
+
+**Interactive recording:**
+```bash
+🦆 record              # Toggle recording on/off
+🦆 session_recorder(action="start")
+🦆 session_recorder(action="snapshot", description="before refactor")
+🦆 session_recorder(action="stop")  # Exports to /tmp/devduck/recordings/
+```
+
+**Captures three layers:**
+- **sys:** OS-level events (file I/O, HTTP requests)
+- **tool:** All tool calls and results
+- **agent:** Messages, decisions, state changes
+
+**Python API for session analysis:**
+```python
+from devduck import load_session, resume_session, list_sessions
+
+# List all recordings
+sessions = list_sessions()
+# [{'name': 'session-20250202-123456.zip', 'size_kb': 45.2, ...}]
+
+# Load and analyze a session
+session = load_session("~/Desktop/session-20250202-123456.zip")
+print(session)  # LoadedSession(events=156, snapshots=3, duration=342.5s)
+
+# Get events by layer
+tool_calls = session.get_events_by_layer("tool")
+file_ops = session.get_events_by_type("file.open")
+
+# Resume from snapshot (restores conversation history!)
+result = session.resume_from_snapshot(2, agent=devduck.agent)
+print(f"Restored {result['messages_restored']} messages")
+
+# Resume and continue with new query
+result = session.resume_and_continue(2, "what files did we modify?", devduck.agent)
+print(result['agent_result'])
+
+# Replay with callback
+def on_event(event, idx):
+    print(f"[{idx}] {event.layer}/{event.event_type}: {event.data}")
+session.replay_events(callback=on_event)
+```
+
+**Session file structure (ZIP):**
+```
+session-20250202-123456.zip
+├── events.jsonl      # All events in JSON Lines format
+├── snapshots.json    # State snapshots with conversation history
+├── metadata.json     # Session info (duration, hostname, etc.)
+└── session.pkl       # Serialized state for full restore (dill/pickle)
+```
+
+**Recordings saved to:** `/tmp/devduck/recordings/`
+
+---
+
+### 🌙 Ambient Mode (Background Thinking)
+
+**Continue working in the background** while you're idle:
+
+```bash
+# Enable via environment
+export DEVDUCK_AMBIENT_MODE=true
+devduck
+
+# Or toggle in REPL
+🦆 ambient     # Toggle standard ambient mode
+🦆 auto        # Toggle autonomous mode
+```
+
+**Standard Mode:** Runs up to 3 iterations when you go idle (30s)
+```bash
+# Configuration
+export DEVDUCK_AMBIENT_IDLE_SECONDS=30      # Wait before starting
+export DEVDUCK_AMBIENT_MAX_ITERATIONS=3     # Max background iterations
+export DEVDUCK_AMBIENT_COOLDOWN=60          # Seconds between runs
+```
+
+**Autonomous Mode:** Runs continuously until done or stopped
+```bash
+export DEVDUCK_AUTONOMOUS_MAX_ITERATIONS=50  # Higher limit
+export DEVDUCK_AUTONOMOUS_COOLDOWN=10        # Faster cycles
+```
+
+**How it works:**
+1. You go idle (30s default)
+2. DevDuck continues exploring the last topic
+3. Background work streams with 🌙 prefix
+4. When you return, findings are injected into your next query
+5. Agent can signal completion with `[AMBIENT_DONE]`
+
+**Programmatic control:**
+```python
+# Enable standard ambient mode
+devduck.ambient.start()
+
+# Enable autonomous mode
+devduck.ambient.start(autonomous=True)
+
+# Stop ambient mode
+devduck.ambient.stop()
+
+# Check status
+devduck.status()['ambient_mode']
+```
+
+---
+
 ### State Management (Time-Travel)
 
 Save and restore agent state for reproducibility:
@@ -585,17 +721,19 @@ create_subagent(action="list", repository="owner/repo", workflow_id="agent.yml")
 ---
 
 <details>
-<summary><strong>📋 All Built-in Tools (40 total)</strong></summary>
+<summary><strong>📋 All Built-in Tools (42 total)</strong></summary>
 
-### DevDuck Core (19 tools)
+### DevDuck Core (21 tools)
 - `system_prompt` - Update agent's system prompt (GitHub sync support)
 - `store_in_kb` - Store content in Bedrock Knowledge Base
 - `state_manager` - Save/restore agent state (time-travel)
+- `session_recorder` - 🎬 Record sessions for replay and debugging
 - `tcp` - TCP server with real-time streaming
 - `websocket` - WebSocket server with concurrent messaging
 - `ipc` - Unix socket IPC server for local processes
 - `mcp_server` - Expose as MCP server (HTTP/stdio)
 - `zenoh_peer` - Peer-to-peer networking with auto-discovery
+- `ambient_mode` - Control ambient/autonomous background thinking
 - `install_tools` - Install packages and load tools at runtime
 - `create_subagent` - Spawn sub-agents via GitHub Actions
 - `use_github` - GitHub GraphQL API operations
@@ -682,6 +820,39 @@ No restart. No configuration. Just works.
 | **MCP** | `localhost:8000/mcp` | Add to Claude Desktop | MCP clients |
 | **IPC** | `/tmp/devduck_main.sock` | `nc -U /tmp/devduck_main.sock` | Local processes |
 
+### CLI Commands
+
+```bash
+# Interactive REPL
+devduck
+
+# One-shot query
+devduck "your query here"
+
+# MCP stdio mode (for Claude Desktop integration)
+devduck --mcp
+
+# Session recording
+devduck --record                    # Start with recording enabled
+devduck --record "do something"     # Record a one-shot query
+
+# Resume from recorded session
+devduck --resume session.zip        # Resume from latest snapshot
+devduck --resume session.zip "continue"  # Resume and run new query
+devduck --resume session.zip --snapshot 2 "continue"  # Resume from specific snapshot
+```
+
+### REPL Commands
+
+| Command | Description |
+|---------|-------------|
+| `exit` / `quit` / `q` | Exit DevDuck |
+| `ambient` | Toggle standard ambient mode |
+| `auto` / `autonomous` | Toggle autonomous mode |
+| `record` | Toggle session recording |
+| `!<command>` | Execute shell command (e.g., `!ls -la`) |
+| `status` | Check agent status |
+
 **Custom ports:**
 ```bash
 export DEVDUCK_TCP_PORT=9000 DEVDUCK_WS_PORT=8001 DEVDUCK_MCP_PORT=8002
@@ -733,6 +904,13 @@ devduck
 | `DEVDUCK_ENABLE_ZENOH` | `true` | Enable Zenoh peer-to-peer |
 | `ZENOH_CONNECT` | - | Remote Zenoh endpoint(s) to connect to |
 | `ZENOH_LISTEN` | - | Zenoh endpoint(s) to listen on |
+| **Ambient Mode** | | |
+| `DEVDUCK_AMBIENT_MODE` | `false` | Enable ambient mode on startup |
+| `DEVDUCK_AMBIENT_IDLE_SECONDS` | `30` | Seconds idle before ambient starts |
+| `DEVDUCK_AMBIENT_MAX_ITERATIONS` | `3` | Max iterations in standard mode |
+| `DEVDUCK_AMBIENT_COOLDOWN` | `60` | Seconds between ambient runs |
+| `DEVDUCK_AUTONOMOUS_MAX_ITERATIONS` | `50` | Max iterations in autonomous mode |
+| `DEVDUCK_AUTONOMOUS_COOLDOWN` | `10` | Seconds between autonomous runs |
 | **Speech** | | |
 | `BIDI_MODEL_ID` | Provider default | Override bidi model (e.g., `amazon.nova-2-sonic-v1:0`) |
 | **Context** | | |
