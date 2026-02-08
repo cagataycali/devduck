@@ -144,7 +144,7 @@ def _push_zenoh_state_to_browsers(reason: str = "update") -> None:
                 "is_self": True,
                 "tools": self_meta.get("tools", []),
                 "tool_count": self_meta.get("tool_count", 0),
-                "system_prompt_preview": self_meta.get("system_prompt_preview", ""),
+                "system_prompt": self_meta.get("system_prompt", ""),
                 "cwd": self_meta.get("cwd", ""),
                 "platform": self_meta.get("platform", ""),
             }
@@ -160,7 +160,7 @@ def _push_zenoh_state_to_browsers(reason: str = "update") -> None:
                     "last_seen": info.get("last_seen", 0),
                     "tools": info.get("tools", []),
                     "tool_count": info.get("tool_count", 0),
-                    "system_prompt_preview": info.get("system_prompt_preview", ""),
+                    "system_prompt": info.get("system_prompt", ""),
                     "cwd": info.get("cwd", ""),
                     "platform": info.get("platform", ""),
                 }
@@ -297,7 +297,7 @@ def handle_presence(sample) -> None:
                 # Rich metadata from peer
                 "tools": data.get("tools", []),
                 "tool_count": data.get("tool_count", 0),
-                "system_prompt_preview": data.get("system_prompt_preview", ""),
+                "system_prompt": data.get("system_prompt", ""),
                 "cwd": data.get("cwd", ""),
                 "python_version": data.get("python_version", ""),
                 "platform": data.get("platform", ""),
@@ -329,8 +329,8 @@ def handle_presence(sample) -> None:
                             "layer": "local",
                             "name": hostname,
                             "platform": data.get("platform", ""),
-                            "system_prompt_preview": data.get(
-                                "system_prompt_preview", ""
+                            "system_prompt": data.get(
+                                "system_prompt", ""
                             ),
                         },
                     )
@@ -735,7 +735,7 @@ def heartbeat_thread() -> None:
                 # Rich metadata
                 "tools": _rich_meta.get("tools", []),
                 "tool_count": _rich_meta.get("tool_count", 0),
-                "system_prompt_preview": _rich_meta.get("system_prompt_preview", ""),
+                "system_prompt": _rich_meta.get("system_prompt", ""),
                 "cwd": _rich_meta.get("cwd", ""),
                 "python_version": _rich_meta.get("python_version", ""),
                 "platform": _rich_meta.get("platform", ""),
@@ -797,7 +797,7 @@ def _build_rich_presence() -> dict:
         "platform": f"{_platform.system()} {_platform.machine()}",
         "tools": [],
         "tool_count": 0,
-        "system_prompt_preview": "",
+        "system_prompt": "",
     }
 
     agent = ZENOH_STATE.get("agent")
@@ -821,13 +821,8 @@ def _build_rich_presence() -> dict:
             # Extract system prompt preview (first 200 chars, skip boilerplate)
             if hasattr(agent, "system_prompt") and agent.system_prompt:
                 sp = agent.system_prompt
-                # Try to find meaningful part after the boilerplate header
-                for marker in ["You are:", "You are ", "##"]:
-                    idx = sp.find(marker)
-                    if idx > 0 and idx < 500:
-                        sp = sp[idx:]
-                        break
-                meta["system_prompt_preview"] = sp[:200].replace("\n", " ").strip()
+
+                meta["system_prompt"] = sp.strip()
         except Exception as e:
             logger.debug(f"Could not extract system prompt for presence: {e}")
 

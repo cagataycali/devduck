@@ -44,7 +44,7 @@ _GATEWAY_STATE: Dict[str, Any] = {
     "github_token": None,
     "loop": None,
     # Browser peers: browser tabs that registered as mesh participants
-    # {ws_id: {name, model, tools, system_prompt_preview, registered_at, ws}}
+    # {ws_id: {name, model, tools, system_prompt, registered_at, ws}}
     "browser_peers": {},
 }
 
@@ -208,7 +208,7 @@ def get_browser_peers() -> List[Dict[str, Any]]:
                 "status": "active",
                 "tools": info.get("tools", []),
                 "tool_count": info.get("tool_count", 0),
-                "system_prompt_preview": info.get("system_prompt_preview", ""),
+                "system_prompt": info.get("system_prompt", ""),
                 "registered_at": info.get("registered_at", 0),
                 "ws_id": ws_id,
             }
@@ -404,8 +404,8 @@ class MeshGateway:
                                     "is_self": is_self,
                                     "tools": meta.get("tools", []),
                                     "tool_count": meta.get("tool_count", 0),
-                                    "system_prompt_preview": meta.get(
-                                        "system_prompt_preview", ""
+                                    "system_prompt": meta.get(
+                                        "system_prompt", ""
                                     ),
                                     "cwd": meta.get("cwd", ""),
                                     "platform": meta.get("platform", ""),
@@ -490,7 +490,7 @@ class MeshGateway:
                 "model": data.get("model", "browser-agent"),
                 "tools": data.get("tools", []),
                 "tool_count": data.get("tool_count", 0),
-                "system_prompt_preview": data.get("system_prompt_preview", ""),
+                "system_prompt": data.get("system_prompt", ""),
                 "hostname": "browser",
                 "layer": "browser",
                 "ws_id": ws_id,
@@ -546,8 +546,8 @@ class MeshGateway:
                     peer["tools"] = data["tools"]
                 if "tool_count" in data:
                     peer["tool_count"] = data["tool_count"]
-                if "system_prompt_preview" in data:
-                    peer["system_prompt_preview"] = data["system_prompt_preview"]
+                if "system_prompt" in data:
+                    peer["system_prompt"] = data["system_prompt"]
                 self._notify_browser_peers_changed()
                 await ws.send(
                     json.dumps({"type": "browser_peer_updated", "success": True})
@@ -985,8 +985,8 @@ class MeshGateway:
                                 "model": meta.get("model", "unknown"),
                                 "tools": meta.get("tools", []),
                                 "tool_count": meta.get("tool_count", 0),
-                                "system_prompt_preview": meta.get(
-                                    "system_prompt_preview", ""
+                                "system_prompt": meta.get(
+                                    "system_prompt", ""
                                 ),
                                 "cwd": meta.get("cwd", ""),
                                 "platform": meta.get("platform", ""),
