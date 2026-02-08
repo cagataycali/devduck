@@ -1416,7 +1416,13 @@ def get_ambient_status_context():
 def get_zenoh_peers_context():
     """Get current zenoh peers for dynamic context injection."""
     try:
-        from devduck.tools.zenoh_peer import ZENOH_STATE
+        import sys as _sys
+
+        _zp_mod = _sys.modules.get("devduck.tools.zenoh_peer")
+        if _zp_mod:
+            ZENOH_STATE = _zp_mod.ZENOH_STATE
+        else:
+            from devduck.tools.zenoh_peer import ZENOH_STATE
         import time
 
         logger.debug(
@@ -1451,6 +1457,53 @@ def get_zenoh_peers_context():
         return ""
     except Exception as e:
         logger.debug(f"Could not get zenoh peers context: {e}")
+        return ""
+
+
+def get_unified_ring_context():
+    """Get unified ring context from the mesh (includes browser ring + devduck ring).
+
+    This injects ring context from:
+    1. DevDuck unified_mesh ring (all agent interactions)
+    2. Browser ring entries pushed via WebSocket clients
+
+    This ensures CLI devduck has awareness of what browser agents are doing.
+    """
+    try:
+        from devduck.tools.unified_mesh import MESH_STATE, get_ring_context
+
+        ring_entries = get_ring_context(max_entries=15)
+        if not ring_entries:
+            return ""
+
+        context = "\n\n## 🔗 Unified Ring Context (recent agent activity):\n"
+        for entry in ring_entries[-15:]:
+            agent_id = entry.get("agent_id", "unknown")
+            agent_type = entry.get("agent_type", "unknown")
+            text = entry.get("text", "")[:200]
+            ts = entry.get("timestamp", 0)
+            if ts:
+                from datetime import datetime
+
+                time_str = datetime.fromtimestamp(ts).strftime("%H:%M:%S")
+            else:
+                time_str = "?"
+            source = entry.get("metadata", {}).get("source", "")
+            source_tag = f" [{source}]" if source else ""
+            context += (
+                f"- [{time_str}] **{agent_id}** ({agent_type}{source_tag}): {text}\n"
+            )
+
+        # Show connected browser count
+        ws_clients = MESH_STATE.get("ws_clients", {})
+        if ws_clients:
+            context += f"\n*{len(ws_clients)} browser client(s) connected to mesh*\n"
+
+        return context
+    except ImportError:
+        return ""
+    except Exception as e:
+        logger.debug(f"Could not get ring context: {e}")
         return ""
 
 
@@ -1880,19 +1933,28 @@ class DevDuck:
             # Server configuration
             if servers is None:
                 # Default server config from env vars
+                # PORT ALLOCATION (10000+ block):
+                #   10000 - Mesh Relay (mesh.html connects here)
+                #   10001 - WebSocket Server (per-message DevDuck)
+                #   10002 - TCP Server (raw socket)
+                #   10003 - MCP HTTP Server
+                #   10004 - IPC Gateway (reserved)
+                #   10010-10099 - Zenoh (P2P multicast)
+                #   10100-10199 - User custom tools
+                #   10200-10299 - Sub-agents / spawned instances
                 servers = {
                     "tcp": {
-                        "port": int(os.getenv("DEVDUCK_TCP_PORT", "9999")),
+                        "port": int(os.getenv("DEVDUCK_TCP_PORT", "10002")),
                         "enabled": os.getenv("DEVDUCK_ENABLE_TCP", "false").lower()
                         == "true",
                     },
                     "ws": {
-                        "port": int(os.getenv("DEVDUCK_WS_PORT", "8080")),
+                        "port": int(os.getenv("DEVDUCK_WS_PORT", "10001")),
                         "enabled": os.getenv("DEVDUCK_ENABLE_WS", "true").lower()
                         == "true",
                     },
                     "mcp": {
-                        "port": int(os.getenv("DEVDUCK_MCP_PORT", "8000")),
+                        "port": int(os.getenv("DEVDUCK_MCP_PORT", "10003")),
                         "enabled": os.getenv("DEVDUCK_ENABLE_MCP", "false").lower()
                         == "true",
                     },
@@ -1905,6 +1967,13 @@ class DevDuck:
                     },
                     "zenoh_peer": {
                         "enabled": os.getenv("DEVDUCK_ENABLE_ZENOH", "true").lower()
+                        == "true",
+                    },
+                    "agentcore_proxy": {
+                        "port": int(os.getenv("DEVDUCK_AGENTCORE_PROXY_PORT", "10000")),
+                        "enabled": os.getenv(
+                            "DEVDUCK_ENABLE_AGENTCORE_PROXY", "true"
+                        ).lower()
                         == "true",
                     },
                 }
@@ -1976,6 +2045,8 @@ class DevDuck:
                 server_tools_needed.append("ipc")
             if servers.get("zenoh_peer", {}).get("enabled", False):
                 server_tools_needed.append("zenoh_peer")
+            if servers.get("agentcore_proxy", {}).get("enabled", False):
+                server_tools_needed.append("agentcore_proxy")
 
             # Append to default tools if any server tools are needed
             if server_tools_needed:
@@ -2810,10 +2881,9 @@ How it works:
     def _start_servers(self):
         """Auto-start configured servers with port conflict handling"""
         logger.info("Auto-starting servers...")
-        print("🦆 Auto-starting servers...")
 
-        # Start servers in order: IPC, TCP, WS, MCP, Zenoh
-        server_order = ["ipc", "tcp", "ws", "mcp", "zenoh_peer"]
+        # Start servers in order: IPC, TCP, WS, MCP, Zenoh, AgentCore Proxy
+        server_order = ["ipc", "tcp", "ws", "mcp", "zenoh_peer", "agentcore_proxy"]
 
         for server_type in server_order:
             if server_type not in self.servers:
@@ -2956,6 +3026,33 @@ How it works:
                         logger.info(f"✓ Zenoh started as {instance_id}")
                         print(f"🦆 ✓ Zenoh peer: {instance_id}")
 
+                elif server_type == "agentcore_proxy":
+                    port = config.get("port", 10000)
+
+                    # Check port availability BEFORE attempting to start
+                    if not self._is_port_available(port):
+                        alt_port = self._find_available_port(port + 1)
+                        if alt_port:
+                            logger.info(f"Port {port} in use, using {alt_port}")
+                            print(f"🦆 Port {port} in use, using {alt_port}")
+                            port = alt_port
+                        else:
+                            logger.warning(
+                                f"No available ports found for AgentCore proxy"
+                            )
+                            continue
+
+                    result = self.agent.tool.agentcore_proxy(
+                        action="start",
+                        mode="gateway",
+                        port=port,
+                        record_direct_tool_call=False,
+                    )
+
+                    if result.get("status") == "success":
+                        logger.info(f"✓ AgentCore proxy started on port {port}")
+                        print(f"🦆 ✓ AgentCore proxy: ws://localhost:{port}")
+
                 # TODO: support custom file path here so we can trigger foreign python function like another file
             except Exception as e:
                 logger.error(f"Failed to start {server_type} server: {e}")
@@ -3000,8 +3097,9 @@ How it works:
                 except Exception as e:
                     logger.warning(f"KB retrieval failed: {e}")
 
-            # 🔗 Inject dynamic context (zenoh + ambient + recording events)
+            # 🔗 Inject dynamic context (zenoh + ring + ambient + recording events)
             zenoh_context = get_zenoh_peers_context()
+            ring_context = get_unified_ring_context()
             ambient_context = get_ambient_status_context()
 
             # 🎬 Inject recent recorded events into context if recording
@@ -3011,7 +3109,9 @@ How it works:
                     seconds=10.0, max_events=15
                 )
 
-            dynamic_context = zenoh_context + ambient_context + recording_context
+            dynamic_context = (
+                zenoh_context + ring_context + ambient_context + recording_context
+            )
             if dynamic_context:
                 query_with_context = (
                     f"[Dynamic Context]{dynamic_context}\n\n[User Query]\n{query}"
@@ -3035,6 +3135,22 @@ How it works:
             # 🌙 Record interaction for ambient mode
             if self.ambient:
                 self.ambient.record_interaction(original_query, result)
+
+            # 🔗 Push to unified mesh ring (bidirectional sync)
+            try:
+                from devduck.tools.unified_mesh import add_to_ring
+
+                result_preview = str(result)
+                add_to_ring(
+                    "local:devduck",
+                    "local",
+                    f"Q: {original_query} → {result_preview}",
+                    {"source": "cli"},
+                )
+            except ImportError:
+                pass
+            except Exception as e:
+                logger.debug(f"Ring sync failed: {e}")
 
             # 💾 Knowledge Base Storage (AFTER agent runs)
             if knowledge_base_id and hasattr(self.agent, "tool"):
@@ -3125,7 +3241,7 @@ How it works:
                         and current_mtime > self._last_modified
                         and current_time - last_reload_time > debounce_seconds
                     ):
-                        print(f"\n🦆 Detected changes in {self._watch_file.name}!")
+                        # print(f"\n🦆 Detected changes in {self._watch_file.name}!")
                         last_reload_time = current_time
 
                         # Check if agent is currently executing
@@ -3133,9 +3249,9 @@ How it works:
                             logger.info(
                                 "Code change detected but agent is executing - reload pending"
                             )
-                            print(
-                                "\n🦆 Agent is currently executing - reload will trigger after completion"
-                            )
+                            # print(
+                            #     "\n🦆 Agent is currently executing - reload will trigger after completion"
+                            # )
                             self._reload_pending = True
                             # Don't update _last_modified yet - keep detecting the change
                         else:
@@ -3543,6 +3659,417 @@ def interactive():
             continue
 
 
+def _deploy_to_agentcore(
+    name: str = "devduck",
+    tools: str = None,
+    model: str = None,
+    region: str = "us-west-2",
+    auto_launch: bool = False,
+    system_prompt: str = None,
+    idle_timeout: int = 900,
+    max_lifetime: int = 28800,
+    disable_memory: bool = False,
+    disable_otel: bool = False,
+    env_vars: list = None,
+    force_rebuild: bool = False,
+):
+    """
+    Deploy DevDuck to Amazon Bedrock AgentCore.
+
+    This function:
+    1. Creates a deployment directory with handler + requirements
+    2. Configures the agent with agentcore CLI
+    3. Optionally launches the agent
+    4. Returns agent info for proxy integration
+
+    Args:
+        name: Agent name (hyphens converted to underscores)
+        tools: Tool configuration (e.g., 'strands_tools:shell,editor')
+        model: Model ID override
+        region: AWS region
+        auto_launch: Auto-launch after configure
+        system_prompt: Custom system prompt
+        idle_timeout: Idle timeout in seconds (60-28800)
+        max_lifetime: Max lifetime in seconds (60-28800)
+        disable_memory: Disable AgentCore memory (STM)
+        disable_otel: Disable OpenTelemetry observability
+        env_vars: Additional environment variables (list of KEY=VALUE strings)
+        force_rebuild: Force rebuild dependencies
+    """
+    import shutil
+    import re
+
+    print("🦆 Deploying DevDuck to AgentCore...")
+    print("=" * 50)
+
+    # Check for agentcore CLI
+    if not shutil.which("agentcore"):
+        print("❌ agentcore CLI not found.")
+        print("   Install with: pip install bedrock-agentcore")
+        sys.exit(1)
+
+    # Convert hyphens to underscores in name (AgentCore requirement)
+    safe_name = name.replace("-", "_")
+    if not re.match(r"^[a-zA-Z][a-zA-Z0-9_]{0,47}$", safe_name):
+        print(f"❌ Invalid agent name: {name}")
+        print(
+            "   Must start with letter, contain only letters/numbers/underscores, 1-48 chars"
+        )
+        sys.exit(1)
+
+    # Create deployment directory
+    deploy_dir = Path(tempfile.gettempdir()) / "devduck" / "deploy" / safe_name
+    deploy_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"📁 Deployment directory: {deploy_dir}")
+
+    # Copy handler
+    handler_src = Path(__file__).parent / "agentcore_handler.py"
+    if not handler_src.exists():
+        print(f"❌ Handler not found: {handler_src}")
+        sys.exit(1)
+
+    handler_dest = deploy_dir / "agentcore_handler.py"
+    shutil.copy(str(handler_src), str(handler_dest))
+    print(f"📦 Handler: {handler_dest}")
+
+    # Create requirements.txt
+    requirements_path = deploy_dir / "requirements.txt"
+    requirements_content = "devduck\n"
+    with open(requirements_path, "w") as f:
+        f.write(requirements_content)
+    print(f"📋 Requirements: {requirements_path}")
+
+    # Build configure command
+    configure_cmd = [
+        "agentcore",
+        "configure",
+        "-e",
+        str(handler_dest),
+        "-n",
+        safe_name,
+        "-r",
+        region,
+        "-p",
+        "HTTP",
+        "-dt",
+        "direct_code_deploy",
+        "-rt",
+        "PYTHON_3_13",
+        "-rf",
+        str(requirements_path),
+        "--idle-timeout",
+        str(idle_timeout),
+        "--max-lifetime",
+        str(max_lifetime),
+        "-ni",  # Non-interactive mode
+    ]
+
+    # Add optional flags
+    if disable_memory:
+        configure_cmd.append("-dm")
+        print("   Memory: DISABLED")
+
+    if disable_otel:
+        configure_cmd.append("-do")
+        print("   OpenTelemetry: DISABLED")
+
+    print(f"\n🔧 Configuring agent '{safe_name}'...")
+    print(f"   Region: {region}")
+    print(f"   Model: {model or 'global.anthropic.claude-opus-4-6-v1 (default)'}")
+    print(f"   Tools: {tools or 'default'}")
+    print(f"   Memory: {'DISABLED' if disable_memory else 'enabled'}")
+
+    try:
+        process = subprocess.Popen(
+            configure_cmd,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            cwd=str(deploy_dir),
+        )
+
+        stdout, _ = process.communicate(timeout=300)
+
+        if process.returncode != 0:
+            print(f"❌ Configure failed:\n{stdout}")
+            sys.exit(1)
+
+        print(stdout)
+        print(f"✅ Agent '{safe_name}' configured!")
+
+    except subprocess.TimeoutExpired:
+        print("❌ Configure timed out")
+        sys.exit(1)
+    except Exception as e:
+        print(f"❌ Configure error: {e}")
+        sys.exit(1)
+
+    # Launch if requested
+    agent_arn = None
+    agent_id = None
+
+    if auto_launch:
+        print(f"\n🚀 Deploying agent '{safe_name}'...")
+        print("=" * 50)
+
+        # Build deploy command with environment variables
+        deploy_cmd = ["agentcore", "deploy", "-a", safe_name, "-auc"]
+
+        if force_rebuild:
+            deploy_cmd.append("-frd")
+
+        # Build environment variables list
+        env_vars_list = [
+            "DEVDUCK_AUTO_START_SERVERS=false",
+            "MODEL_PROVIDER=bedrock",
+            "BYPASS_TOOL_CONSENT=true",
+        ]
+
+        if tools:
+            env_vars_list.append(f"DEVDUCK_TOOLS={tools}")
+        if model:
+            env_vars_list.append(f"STRANDS_MODEL_ID={model}")
+        if system_prompt:
+            # Escape quotes in system prompt
+            escaped_prompt = system_prompt.replace('"', '\\"')
+            env_vars_list.append(f"SYSTEM_PROMPT={escaped_prompt}")
+
+        # Add custom env vars
+        if env_vars:
+            env_vars_list.extend(env_vars)
+
+        # Add -env flags to deploy command
+        for env_var in env_vars_list:
+            deploy_cmd.extend(["-env", env_var])
+
+        print(f"   Environment variables: {len(env_vars_list)}")
+
+        try:
+            deploy_process = subprocess.Popen(
+                deploy_cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                cwd=str(deploy_dir),
+            )
+
+            # Stream output
+            output_lines = []
+            for line in deploy_process.stdout:
+                print(line, end="", flush=True)
+                output_lines.append(line)
+
+            deploy_process.wait(timeout=600)
+            full_output = "".join(output_lines)
+
+            if deploy_process.returncode == 0:
+                # Extract ARN and ID
+                arn_match = re.search(
+                    r"arn:aws:bedrock-agentcore:[^:]+:[^:]+:runtime/([^\s\n]+)",
+                    full_output,
+                )
+                if arn_match:
+                    agent_arn = arn_match.group(0)
+                    agent_id = arn_match.group(1)
+
+                print("\n" + "=" * 50)
+                print(f"✅ Agent '{safe_name}' deployed!")
+
+                if agent_id:
+                    print(f"\n📋 Agent ARN: {agent_arn}")
+                    print(f"🆔 Agent ID: {agent_id}")
+                    print(f"\n💡 Invoke with:")
+                    print(f"   agentcore invoke {safe_name} 'your query'")
+                    print(f"\n💡 Or via DevDuck:")
+                    print(
+                        f"   devduck.agent.tool.agentcore_invoke(agent_id='{agent_id}', prompt='...')"
+                    )
+                    print(f"\n💡 View in mesh.html via proxy on ws://localhost:10000")
+            else:
+                print(f"\n❌ Deploy failed with code {deploy_process.returncode}")
+
+        except subprocess.TimeoutExpired:
+            print("❌ Deploy timed out")
+        except Exception as e:
+            print(f"❌ Deploy error: {e}")
+    else:
+        print(f"\n💡 To launch the agent, run:")
+        print(f"   agentcore launch -a {safe_name} --auto-update-on-conflict")
+        print(f"\n💡 Or use: devduck deploy --name {name} --launch")
+
+    # Save deployment info
+    info_path = deploy_dir / "deployment_info.json"
+    deployment_info = {
+        "name": safe_name,
+        "region": region,
+        "model": (
+            model or DEFAULT_MODEL if "DEFAULT_MODEL" in dir() else "claude-sonnet-4"
+        ),
+        "tools": tools,
+        "agent_arn": agent_arn,
+        "agent_id": agent_id,
+        "deployed_at": datetime.now().isoformat(),
+        "handler_path": str(handler_dest),
+    }
+
+    with open(info_path, "w") as f:
+        json.dump(deployment_info, f, indent=2)
+
+    print(f"\n📄 Deployment info saved: {info_path}")
+
+    return deployment_info
+
+
+def _list_agentcore_agents(region: str = "us-west-2"):
+    """List all deployed AgentCore agents."""
+    print("🦆 Listing AgentCore agents...")
+    print("=" * 60)
+
+    try:
+        import boto3
+
+        client = boto3.client("bedrock-agentcore-control", region_name=region)
+        response = client.list_agent_runtimes(maxResults=100)
+
+        agents = response.get("agentRuntimes", [])
+
+        if not agents:
+            print("No agents found.")
+            return
+
+        print(f"Found {len(agents)} agent(s):\n")
+
+        for agent in agents:
+            name = agent.get("agentRuntimeName", "unknown")
+            agent_id = agent.get("agentRuntimeId", "unknown")
+            status = agent.get("status", "unknown")
+
+            status_emoji = (
+                "✅"
+                if status == "ACTIVE"
+                else "⏳" if status in ("CREATING", "UPDATING") else "❌"
+            )
+
+            print(f"  {status_emoji} {name}")
+            print(f"     ID: {agent_id}")
+            print(f"     Status: {status}")
+            print()
+
+        print("=" * 60)
+        print("💡 Invoke with: devduck invoke 'your query' --name <agent_name>")
+        print(
+            '💡 Or via proxy: ws://localhost:10000 → {"type": "invoke", "agent_id": "...", "prompt": "..."}'
+        )
+
+    except Exception as e:
+        print(f"❌ Error listing agents: {e}")
+        sys.exit(1)
+
+
+def _check_agent_status(name: str = "devduck", region: str = "us-west-2"):
+    """Check status of a specific agent."""
+    safe_name = name.replace("-", "_")
+
+    print(f"🦆 Checking status of '{safe_name}'...")
+    print("=" * 50)
+
+    try:
+        result = subprocess.run(
+            ["agentcore", "status", "-a", safe_name],
+            capture_output=True,
+            text=True,
+        )
+
+        print(result.stdout)
+        if result.stderr:
+            print(result.stderr)
+
+    except FileNotFoundError:
+        print("❌ agentcore CLI not found.")
+        print("   Install with: pip install bedrock-agentcore")
+        sys.exit(1)
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        sys.exit(1)
+
+
+def _invoke_agentcore_agent(
+    prompt: str,
+    name: str = "devduck",
+    agent_id: str = None,
+    region: str = "us-west-2",
+):
+    """Invoke a deployed AgentCore agent."""
+    safe_name = name.replace("-", "_")
+
+    print(f"🦆 Invoking agent...")
+    print("=" * 50)
+
+    try:
+        if agent_id:
+            # Direct invocation via agent_id
+            import boto3
+            from botocore.config import Config
+
+            sts = boto3.client("sts", region_name=region)
+            account_id = sts.get_caller_identity()["Account"]
+            agent_arn = (
+                f"arn:aws:bedrock-agentcore:{region}:{account_id}:runtime/{agent_id}"
+            )
+
+            print(f"Agent: {agent_id}")
+            print(f"Prompt: {prompt[:50]}...")
+            print()
+
+            boto_config = Config(read_timeout=900, connect_timeout=60)
+            client = boto3.client(
+                "bedrock-agentcore", region_name=region, config=boto_config
+            )
+
+            response = client.invoke_agent_runtime(
+                agentRuntimeArn=agent_arn,
+                qualifier="DEFAULT",
+                runtimeSessionId=f"cli-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+                payload=json.dumps({"prompt": prompt, "mode": "sync"}),
+            )
+
+            # Process response
+            full_response = ""
+            for chunk in response.get("response", []):
+                if isinstance(chunk, bytes):
+                    full_response += chunk.decode("utf-8", errors="ignore")
+                elif isinstance(chunk, str):
+                    full_response += chunk
+
+            print("Response:")
+            print("-" * 50)
+            print(full_response)
+
+        else:
+            # Use agentcore CLI
+            result = subprocess.run(
+                ["agentcore", "invoke", safe_name, prompt],
+                capture_output=True,
+                text=True,
+            )
+
+            print(result.stdout)
+            if result.stderr:
+                print(result.stderr)
+
+    except FileNotFoundError:
+        print("❌ agentcore CLI not found.")
+        print("   Install with: pip install bedrock-agentcore")
+        sys.exit(1)
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        sys.exit(1)
+
+
 def cli():
     """CLI entry point for pip-installed devduck command"""
     import argparse
@@ -3560,12 +4087,38 @@ Examples:
   devduck --resume session.zip     # Resume from recorded session
   devduck --resume session.zip "continue"  # Resume and run query
 
+AgentCore Deployment:
+  devduck deploy                   # Configure agent (no launch)
+  devduck deploy --launch          # Configure AND launch
+  devduck deploy --name my-agent   # Custom agent name
+  devduck deploy --tools "strands_tools:shell,editor"
+  devduck deploy --model "us.anthropic.claude-opus-4-20250514-v1:0"
+  devduck deploy --system-prompt "You are a code reviewer"
+  devduck deploy --idle-timeout 1800 --max-lifetime 43200
+  devduck deploy --no-memory       # Disable AgentCore memory
+  devduck deploy --no-otel         # Disable OpenTelemetry
+  devduck deploy --env "MY_VAR=value" --env "OTHER=123"  # Custom env vars
+  devduck deploy --force-rebuild   # Force rebuild dependencies
+
+AgentCore Full Example:
+  devduck deploy --name code-review-agent \\
+    --tools "strands_tools:shell,editor,file_read" \\
+    --model "us.anthropic.claude-sonnet-4-20250514-v1:0" \\
+    --system-prompt "You are a senior code reviewer" \\
+    --no-memory --launch
+
+Proxy for mesh.html:
+  # DevDuck auto-starts agentcore_proxy on ws://localhost:10000
+  # Open mesh.html to see all deployed AgentCore agents
+  # Send: {"type": "list_agents"} to see available agents
+  # Send: {"type": "invoke", "agent_id": "...", "prompt": "..."} to invoke
+
 Session Recording & Resume:
   devduck --record                 # Auto-records and exports on exit
   devduck --resume ~/Desktop/session-*.zip  # Resume from session
   devduck --resume session.zip --snapshot 2 "continue"  # Resume specific snapshot
   Recordings saved to: /tmp/devduck/recordings/
-  
+
 Tool Configuration:
   export DEVDUCK_TOOLS="strands_tools:shell,editor:strands_fun_tools:clipboard"
 
@@ -3581,7 +4134,99 @@ Claude Desktop Config:
         """,
     )
 
-    # Query argument
+    # Subcommands
+    subparsers = parser.add_subparsers(dest="command", help="Commands")
+
+    # Deploy subcommand
+    deploy_parser = subparsers.add_parser("deploy", help="Deploy DevDuck to AgentCore")
+    deploy_parser.add_argument(
+        "--name", "-n", default="devduck", help="Agent name (default: devduck)"
+    )
+    deploy_parser.add_argument(
+        "--tools",
+        "-t",
+        default=None,
+        help="Tool configuration (e.g., 'strands_tools:shell,editor')",
+    )
+    deploy_parser.add_argument(
+        "--model", "-m", default=None, help="Model ID (default: claude-sonnet-4)"
+    )
+    deploy_parser.add_argument(
+        "--region", "-r", default="us-west-2", help="AWS region (default: us-west-2)"
+    )
+    deploy_parser.add_argument(
+        "--launch", action="store_true", help="Auto-launch after configure"
+    )
+    deploy_parser.add_argument(
+        "--system-prompt", "-s", default=None, help="Custom system prompt for the agent"
+    )
+    deploy_parser.add_argument(
+        "--idle-timeout",
+        type=int,
+        default=900,
+        help="Idle timeout in seconds (default: 900)",
+    )
+    deploy_parser.add_argument(
+        "--max-lifetime",
+        type=int,
+        default=28800,
+        help="Max lifetime in seconds (default: 28800)",
+    )
+    deploy_parser.add_argument(
+        "--no-memory",
+        "--disable-memory",
+        action="store_true",
+        dest="disable_memory",
+        help="Disable AgentCore memory (STM)",
+    )
+    deploy_parser.add_argument(
+        "--no-otel",
+        "--disable-otel",
+        action="store_true",
+        dest="disable_otel",
+        help="Disable OpenTelemetry observability",
+    )
+    deploy_parser.add_argument(
+        "--env",
+        "-e",
+        action="append",
+        dest="env_vars",
+        metavar="KEY=VALUE",
+        help="Additional environment variable (can be repeated)",
+    )
+    deploy_parser.add_argument(
+        "--force-rebuild", "-f", action="store_true", help="Force rebuild dependencies"
+    )
+
+    # List agents subcommand
+    list_parser = subparsers.add_parser("list", help="List deployed AgentCore agents")
+    list_parser.add_argument(
+        "--region", "-r", default="us-west-2", help="AWS region (default: us-west-2)"
+    )
+
+    # Status subcommand
+    status_parser = subparsers.add_parser("status", help="Check agent status")
+    status_parser.add_argument(
+        "--name", "-n", default="devduck", help="Agent name to check"
+    )
+    status_parser.add_argument(
+        "--region", "-r", default="us-west-2", help="AWS region (default: us-west-2)"
+    )
+
+    # Invoke subcommand
+    invoke_parser = subparsers.add_parser("invoke", help="Invoke a deployed agent")
+    invoke_parser.add_argument("prompt", help="Query to send to the agent")
+    invoke_parser.add_argument(
+        "--name", "-n", default="devduck", help="Agent name (default: devduck)"
+    )
+    invoke_parser.add_argument(
+        "--agent-id", "-i", default=None, help="Direct agent ID (bypasses name lookup)"
+    )
+    invoke_parser.add_argument(
+        "--region", "-r", default="us-west-2", help="AWS region (default: us-west-2)"
+    )
+
+    # Query argument (for default mode)
     parser.add_argument("query", nargs="*", help="Query to send to the agent")
 
     # MCP stdio mode flag
@@ -3616,6 +4261,44 @@ Claude Desktop Config:
     args = parser.parse_args()
 
     logger.info("CLI mode started")
+
+    # Handle deploy command
+    if args.command == "deploy":
+        _deploy_to_agentcore(
+            name=args.name,
+            tools=args.tools,
+            model=args.model,
+            region=args.region,
+            auto_launch=args.launch,
+            system_prompt=getattr(args, "system_prompt", None),
+            idle_timeout=getattr(args, "idle_timeout", 900),
+            max_lifetime=getattr(args, "max_lifetime", 28800),
+            disable_memory=getattr(args, "disable_memory", False),
+            disable_otel=getattr(args, "disable_otel", False),
+            env_vars=getattr(args, "env_vars", None),
+            force_rebuild=getattr(args, "force_rebuild", False),
+        )
+        return
+
+    # Handle list command
+    if args.command == "list":
+        _list_agentcore_agents(region=args.region)
+        return
+
+    # Handle status command
+    if args.command == "status":
+        _check_agent_status(name=args.name, region=args.region)
+        return
+
+    # Handle invoke command
+    if args.command == "invoke":
+        _invoke_agentcore_agent(
+            prompt=args.prompt,
+            name=args.name,
+            agent_id=getattr(args, "agent_id", None),
+            region=args.region,
+        )
+        return
 
     # Handle --mcp flag for stdio mode
     if args.mcp:

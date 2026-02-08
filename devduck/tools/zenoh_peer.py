@@ -77,6 +77,7 @@ ZENOH_STATE: dict[str, Any] = {
     "pending_responses": {},  # {turn_id: asyncio.Future or threading.Event}
     "collected_responses": {},  # {turn_id: [responses]}
     "streamed_content": {},  # {turn_id: {responder_id: "accumulated text"}}
+    "peers_version": 0,  # Bumped on every peer change — lets proxy detect changes cheaply
 }
 
 # Heartbeat interval in seconds
@@ -97,8 +98,183 @@ def get_instance_id() -> str:
     return instance_id
 
 
+def _push_zenoh_state_to_browsers(reason: str = "update") -> None:
+    """Push current Zenoh state directly to all connected browser clients.
+
+    This is the SOLE mechanism for Zenoh → Browser updates. Called immediately
+    when peers join, leave, or on first heartbeat. No polling needed.
+
+    Args:
+        reason: Why this push happened (for logging)
+    """
+    try:
+        from devduck.tools.unified_mesh import MESH_STATE
+        from devduck.tools.agentcore_proxy import _GATEWAY_STATE
+        import asyncio
+
+        ws_clients = MESH_STATE.get("ws_clients", {})
+        if not ws_clients:
+            return
+
+        # Get the event loop from agentcore_proxy
+        loop = _GATEWAY_STATE.get("loop")
+        if not loop:
+            return
+
+        my_id = get_instance_id()
+        if not my_id:
+            return
+
+        # Build full peer list (self + remote peers)
+        peer_list = []
+
+        # Self
+        self_meta = {}
+        try:
+            self_meta = _build_rich_presence()
+        except Exception:
+            pass
+
+        peer_list.append(
+            {
+                "id": my_id,
+                "hostname": socket.gethostname(),
+                "model": ZENOH_STATE.get("model", "unknown"),
+                "last_seen": time.time(),
+                "is_self": True,
+                "tools": self_meta.get("tools", []),
+                "tool_count": self_meta.get("tool_count", 0),
+                "system_prompt_preview": self_meta.get("system_prompt_preview", ""),
+                "cwd": self_meta.get("cwd", ""),
+                "platform": self_meta.get("platform", ""),
+            }
+        )
+
+        # Remote peers
+        for pid, info in ZENOH_STATE.get("peers", {}).items():
+            peer_list.append(
+                {
+                    "id": pid,
+                    "hostname": info.get("hostname", "unknown"),
+                    "model": info.get("model", "unknown"),
+                    "last_seen": info.get("last_seen", 0),
+                    "tools": info.get("tools", []),
+                    "tool_count": info.get("tool_count", 0),
+                    "system_prompt_preview": info.get("system_prompt_preview", ""),
+                    "cwd": info.get("cwd", ""),
+                    "platform": info.get("platform", ""),
+                }
+            )
+
+        update_msg = json.dumps(
+            {
+                "type": "zenoh_peers_update",
+                "instance_id": my_id,
+                "peers": peer_list,
+                "timestamp": time.time(),
+            }
+        )
+
+        peer_ids = [p["id"] for p in peer_list]
+        logger.info(f"Zenoh→Browser push ({reason}): {len(peer_list)} peers {peer_ids}")
+
+        for ws_id, websocket in list(ws_clients.items()):
+            try:
+                asyncio.run_coroutine_threadsafe(websocket.send(update_msg), loop)
+            except Exception as e:
+                logger.debug(f"Failed to push zenoh state to browser {ws_id}: {e}")
+
+    except ImportError:
+        pass
+    except Exception as e:
+        logger.debug(f"Zenoh browser push error: {e}")
+
+
+def _forward_zenoh_event_to_browsers(data: dict) -> None:
+    """Forward a Zenoh response event to all connected browser clients.
+
+    This gives browsers real-time visibility into Zenoh agent responses
+    (stream chunks, tool events, turn_end) without going through the proxy poll.
+
+    Args:
+        data: The zenoh response event dict
+    """
+    try:
+        from devduck.tools.unified_mesh import MESH_STATE
+        from devduck.tools.agentcore_proxy import _GATEWAY_STATE
+        import asyncio
+
+        ws_clients = MESH_STATE.get("ws_clients", {})
+        if not ws_clients:
+            return
+
+        loop = _GATEWAY_STATE.get("loop")
+        if not loop:
+            return
+
+        msg_type = data.get("type")
+        responder_id = data.get("responder_id", "")
+        turn_id = data.get("turn_id", "")
+
+        # Map zenoh event types to browser-compatible message types
+        if msg_type == "stream":
+            ws_msg = {
+                "type": "chunk",
+                "turn_id": turn_id,
+                "agent_id": responder_id,
+                "agent_type": "zenoh",
+                "data": data.get("data", ""),
+                "chunk_type": data.get("chunk_type", "text"),
+                "timestamp": data.get("timestamp", time.time()),
+            }
+        elif msg_type == "ack":
+            ws_msg = {
+                "type": "turn_start",
+                "turn_id": turn_id,
+                "agent_id": responder_id,
+                "agent_type": "zenoh",
+                "timestamp": data.get("timestamp", time.time()),
+            }
+        elif msg_type == "turn_end":
+            ws_msg = {
+                "type": "turn_end",
+                "turn_id": turn_id,
+                "agent_id": responder_id,
+                "agent_type": "zenoh",
+                "response": data.get("result", ""),
+                "chunks_sent": data.get("chunks_sent", 0),
+                "timestamp": data.get("timestamp", time.time()),
+            }
+        elif msg_type == "error":
+            ws_msg = {
+                "type": "turn_end",
+                "turn_id": turn_id,
+                "agent_id": responder_id,
+                "agent_type": "zenoh",
+                "response": f"❌ {data.get('error', 'unknown error')}",
+                "timestamp": data.get("timestamp", time.time()),
+            }
+        else:
+            return  # Skip unknown types
+
+        msg_json = json.dumps(ws_msg)
+        for ws_id, websocket in list(ws_clients.items()):
+            try:
+                asyncio.run_coroutine_threadsafe(websocket.send(msg_json), loop)
+            except Exception as e:
+                logger.debug(f"Failed to forward zenoh event to browser {ws_id}: {e}")
+
+    except ImportError:
+        pass
+    except Exception as e:
+        logger.debug(f"Zenoh event forward error: {e}")
+
+
 def handle_presence(sample) -> None:
     """Handle peer presence announcements.
+
+    Updates ZENOH_STATE and pushes directly to browsers on change.
+    No polling — immediate push on new peer or metadata update.
 
     Args:
         sample: Zenoh sample containing peer info
@@ -110,14 +286,66 @@ def handle_presence(sample) -> None:
 
         peer_id = data.get("instance_id")
         if peer_id and peer_id != get_instance_id():
-            # Update peer info
+            is_new = peer_id not in ZENOH_STATE["peers"]
+
+            # Update peer info with all available metadata
             ZENOH_STATE["peers"][peer_id] = {
                 "last_seen": time.time(),
                 "hostname": data.get("hostname", "unknown"),
                 "started": data.get("started"),
                 "model": data.get("model", "unknown"),
+                # Rich metadata from peer
+                "tools": data.get("tools", []),
+                "tool_count": data.get("tool_count", 0),
+                "system_prompt_preview": data.get("system_prompt_preview", ""),
+                "cwd": data.get("cwd", ""),
+                "python_version": data.get("python_version", ""),
+                "platform": data.get("platform", ""),
             }
-            logger.debug(f"Zenoh: Peer discovered/updated: {peer_id}")
+
+            if is_new:
+                ZENOH_STATE["peers_version"] += 1
+                hostname = data.get("hostname", "unknown")
+                model = data.get("model", "unknown")
+                tool_count = data.get("tool_count", 0)
+                cwd = data.get("cwd", "")
+                logger.info(f"Zenoh: NEW peer discovered: {peer_id}")
+                print(
+                    f"\n🔗 New peer joined: {peer_id} ({hostname}) — model: {model}, tools: {tool_count}, cwd: {cwd}"
+                )
+                # Register discovered peer in file-based registry
+                try:
+                    from devduck.tools.mesh_registry import registry
+
+                    registry.register(
+                        peer_id,
+                        "zenoh",
+                        {
+                            "hostname": hostname,
+                            "model": model,
+                            "tools": data.get("tools", []),
+                            "tool_count": tool_count,
+                            "cwd": cwd,
+                            "layer": "local",
+                            "name": hostname,
+                            "platform": data.get("platform", ""),
+                            "system_prompt_preview": data.get(
+                                "system_prompt_preview", ""
+                            ),
+                        },
+                    )
+                except Exception:
+                    pass
+                _push_zenoh_state_to_browsers(f"new_peer:{peer_id}")
+            else:
+                # Update existing peer's timestamp in registry
+                try:
+                    from devduck.tools.mesh_registry import registry
+
+                    registry.heartbeat(peer_id)
+                except Exception:
+                    pass
+                logger.debug(f"Zenoh: Peer heartbeat: {peer_id}")
     except Exception as e:
         logger.error(f"Zenoh: Error handling presence: {e}")
 
@@ -323,6 +551,8 @@ def handle_response(sample) -> None:
     Streams chunks to terminal in real-time and collects final response.
     Waits for explicit 'turn_end' message which indicates all streaming is complete.
 
+    ALSO forwards all stream events to WebSocket clients for browser visibility.
+
     Args:
         sample: Zenoh sample containing response
     """
@@ -335,8 +565,11 @@ def handle_response(sample) -> None:
         responder_id = data.get("responder_id")
         msg_type = data.get("type")
 
+        # Forward ALL zenoh response events to browsers for real-time visibility
+        _forward_zenoh_event_to_browsers(data)
+
         if turn_id in ZENOH_STATE["pending_responses"]:
-            # Handle streaming chunks - print to terminal AND collect for return
+            # Handle streaming chunks - print to terminal AND forward to browser
             if msg_type == "stream":
                 chunk_data = data.get("data", "")
                 chunk_type = data.get("chunk_type", "text")
@@ -365,6 +598,7 @@ def handle_response(sample) -> None:
 
                 sys.stdout.write(f"\n🦆 [{responder_id}] Processing...\n")
                 sys.stdout.flush()
+
                 logger.debug(f"Zenoh: ACK from {responder_id} for turn {turn_id}")
                 return
 
@@ -473,20 +707,59 @@ def publish_message(key_expr: str, data: dict) -> None:
 
 
 def heartbeat_thread() -> None:
-    """Background thread that sends periodic presence announcements."""
+    """Background thread that sends periodic presence announcements.
+
+    Publishes rich presence data including tools, system prompt summary,
+    working directory, and other metadata so peers and the UI can show
+    meaningful info about each DevDuck instance.
+
+    On first heartbeat, pushes self to browsers immediately.
+    On peer timeout, pushes updated state to browsers immediately.
+    """
     instance_id = get_instance_id()
+
+    # Build rich metadata once (these don't change between heartbeats)
+    _rich_meta = _build_rich_presence()
+
+    first_beat = True
 
     while ZENOH_STATE["running"]:
         try:
-            # Publish presence
+            # Publish presence with rich metadata
             presence_data = {
                 "instance_id": instance_id,
                 "hostname": socket.gethostname(),
                 "started": ZENOH_STATE.get("start_time"),
                 "model": ZENOH_STATE.get("model", "unknown"),
                 "timestamp": time.time(),
+                # Rich metadata
+                "tools": _rich_meta.get("tools", []),
+                "tool_count": _rich_meta.get("tool_count", 0),
+                "system_prompt_preview": _rich_meta.get("system_prompt_preview", ""),
+                "cwd": _rich_meta.get("cwd", ""),
+                "python_version": _rich_meta.get("python_version", ""),
+                "platform": _rich_meta.get("platform", ""),
             }
             publish_message(f"devduck/presence/{instance_id}", presence_data)
+
+            # Also heartbeat the file-based registry (visible to proxy, browser, etc.)
+            try:
+                from devduck.tools.mesh_registry import registry
+
+                registry.heartbeat(
+                    instance_id,
+                    {
+                        "peers_count": len(ZENOH_STATE.get("peers", {})),
+                        "cwd": os.getcwd(),
+                    },
+                )
+            except Exception:
+                pass
+
+            # On first heartbeat, push self to browsers immediately
+            if first_beat:
+                first_beat = False
+                _push_zenoh_state_to_browsers("first_heartbeat")
 
             # Clean up stale peers
             current_time = time.time()
@@ -495,14 +768,70 @@ def heartbeat_thread() -> None:
                 for peer_id, info in ZENOH_STATE["peers"].items()
                 if current_time - info["last_seen"] > PEER_TIMEOUT
             ]
-            for peer_id in stale_peers:
-                del ZENOH_STATE["peers"][peer_id]
-                logger.info(f"Zenoh: Peer {peer_id} timed out")
+            if stale_peers:
+                for peer_id in stale_peers:
+                    del ZENOH_STATE["peers"][peer_id]
+                    logger.info(f"Zenoh: Peer {peer_id} timed out")
+                    print(f"\n⚡ Peer left: {peer_id}")
+                ZENOH_STATE["peers_version"] += 1
+                # Push to browsers IMMEDIATELY on peer removal
+                _push_zenoh_state_to_browsers(f"peer_timeout:{','.join(stale_peers)}")
 
         except Exception as e:
             logger.error(f"Zenoh: Heartbeat error: {e}")
 
         time.sleep(HEARTBEAT_INTERVAL)
+
+
+def _build_rich_presence() -> dict:
+    """Extract rich metadata from the current DevDuck agent for presence announcements.
+
+    Called once when heartbeat starts. Returns tools, system prompt preview, etc.
+    """
+    import platform as _platform
+    import sys
+
+    meta = {
+        "cwd": os.getcwd(),
+        "python_version": f"{sys.version_info.major}.{sys.version_info.minor}",
+        "platform": f"{_platform.system()} {_platform.machine()}",
+        "tools": [],
+        "tool_count": 0,
+        "system_prompt_preview": "",
+    }
+
+    agent = ZENOH_STATE.get("agent")
+    if agent:
+        try:
+            # Extract tool names
+            if hasattr(agent, "tool_names"):
+                tool_names = sorted(agent.tool_names)
+                meta["tools"] = tool_names[:50]  # Cap at 50 to keep heartbeat small
+                meta["tool_count"] = len(tool_names)
+            elif hasattr(agent, "tool_registry") and hasattr(
+                agent.tool_registry, "registry"
+            ):
+                tool_names = sorted(agent.tool_registry.registry.keys())
+                meta["tools"] = tool_names[:50]
+                meta["tool_count"] = len(tool_names)
+        except Exception as e:
+            logger.debug(f"Could not extract tools for presence: {e}")
+
+        try:
+            # Extract system prompt preview (first 200 chars, skip boilerplate)
+            if hasattr(agent, "system_prompt") and agent.system_prompt:
+                sp = agent.system_prompt
+                # Try to find meaningful part after the boilerplate header
+                for marker in ["You are:", "You are ", "##"]:
+                    idx = sp.find(marker)
+                    if idx > 0 and idx < 500:
+                        sp = sp[idx:]
+                        break
+                meta["system_prompt_preview"] = sp[:200].replace("\n", " ").strip()
+        except Exception as e:
+            logger.debug(f"Could not extract system prompt for presence: {e}")
+
+    return meta
 
 
 def start_zenoh(
@@ -631,6 +960,27 @@ def start_zenoh(
         heartbeat.start()
         ZENOH_STATE["heartbeat_thread"] = heartbeat
 
+        # Register in file-based mesh registry (visible to ALL processes)
+        try:
+            from devduck.tools.mesh_registry import registry
+
+            _rich_meta = _build_rich_presence()
+            registry.register(
+                instance_id,
+                "zenoh",
+                {
+                    "hostname": socket.gethostname(),
+                    "model": model,
+                    "is_self": True,
+                    "layer": "local",
+                    "name": socket.gethostname(),
+                    **_rich_meta,
+                },
+            )
+            logger.info(f"Zenoh: Registered in mesh registry as {instance_id}")
+        except Exception as e:
+            logger.warning(f"Zenoh: Registry registration failed (non-fatal): {e}")
+
         logger.info(f"Zenoh: Started successfully as {instance_id}")
 
         # Build response content
@@ -711,6 +1061,15 @@ def stop_zenoh() -> dict:
         instance_id = ZENOH_STATE["instance_id"]
         ZENOH_STATE["instance_id"] = None
 
+        # Unregister from file-based registry
+        try:
+            from devduck.tools.mesh_registry import registry
+
+            if instance_id:
+                registry.unregister(instance_id)
+        except Exception:
+            pass
+
         logger.info("Zenoh: Stopped")
 
         return {
@@ -783,12 +1142,24 @@ def list_peers() -> dict:
         }
 
     peers = ZENOH_STATE["peers"]
-    if not peers:
+
+    # Also get browser peers
+    browser_peers = []
+    try:
+        from devduck.tools.agentcore_proxy import get_browser_peers
+
+        browser_peers = get_browser_peers()
+    except:
+        pass
+
+    if not peers and not browser_peers:
         return {
             "status": "success",
             "content": [
                 {"text": "No peers discovered yet"},
-                {"text": "💡 Start another DevDuck instance with Zenoh to see it here"},
+                {
+                    "text": "💡 Start another DevDuck instance with Zenoh, or open one.html to see browser peers"
+                },
             ],
         }
 
@@ -801,14 +1172,27 @@ def list_peers() -> dict:
                 "hostname": info.get("hostname", "unknown"),
                 "model": info.get("model", "unknown"),
                 "last_seen": f"{age:.1f}s ago",
+                "type": "zenoh",
             }
         )
 
-    content = [{"text": f"👥 Discovered Peers ({len(peers)}):"}]
+    for bp in browser_peers:
+        peer_info.append(
+            {
+                "id": bp["id"],
+                "hostname": "browser",
+                "model": bp.get("model", "browser-agent"),
+                "last_seen": "connected",
+                "type": "browser",
+            }
+        )
+
+    content = [{"text": f"👥 Discovered Peers ({len(peer_info)}):"}]
     for p in peer_info:
+        icon = "🦆" if p["type"] == "zenoh" else "🧠"
         content.append(
             {
-                "text": f"\n  🦆 {p['id']}\n     Host: {p['hostname']}\n     Model: {p['model']}\n     Seen: {p['last_seen']}"
+                "text": f"\n  {icon} {p['id']}\n     Host: {p['hostname']}\n     Model: {p['model']}\n     Seen: {p['last_seen']}\n     Type: {p['type']}"
             }
         )
 
@@ -937,13 +1321,75 @@ def send_to_peer(peer_id: str, message: str, wait_time: float = 120.0) -> dict:
             "content": [{"text": "❌ Zenoh not running"}],
         }
 
+    # Check if target is a browser peer (browser:ws_id format)
+    if peer_id.startswith("browser:"):
+        ws_id = peer_id.replace("browser:", "")
+        try:
+            from devduck.tools.agentcore_proxy import send_to_browser_peer
+
+            result = send_to_browser_peer(
+                ws_id=ws_id,
+                prompt=message,
+                zenoh_requester_id=get_instance_id(),
+            )
+            return result
+        except ImportError:
+            return {
+                "status": "error",
+                "content": [
+                    {"text": "agentcore_proxy not available for browser peer routing"}
+                ],
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "content": [{"text": f"Browser peer error: {e}"}],
+            }
+
+    # Check if sending to SELF — process locally instead of via pubsub
+    if peer_id == get_instance_id():
+        try:
+            agent = ZENOH_STATE.get("agent")
+            if agent:
+                result = agent(message)
+                return {
+                    "status": "success",
+                    "content": [{"text": f"\n📥 Response from self:\n{str(result)}"}],
+                }
+            else:
+                return {
+                    "status": "error",
+                    "content": [{"text": "❌ No agent available for self-processing"}],
+                }
+        except Exception as e:
+            return {
+                "status": "error",
+                "content": [{"text": f"❌ Self-processing error: {e}"}],
+            }
+
     if peer_id not in ZENOH_STATE["peers"]:
         available = list(ZENOH_STATE["peers"].keys())
+        # Also check browser peers
+        browser_peers = []
+        try:
+            from devduck.tools.agentcore_proxy import _GATEWAY_STATE
+
+            browser_peers = [
+                f"browser:{ws_id}"
+                for ws_id in _GATEWAY_STATE.get("browser_peers", {}).keys()
+            ]
+        except:
+            pass
         return {
             "status": "error",
             "content": [
                 {"text": f"❌ Peer '{peer_id}' not found"},
-                {"text": f"Available peers: {available}"},
+                {"text": f"Available zenoh peers: {available}"},
+                (
+                    {"text": f"Available browser peers: {browser_peers}"}
+                    if browser_peers
+                    else {"text": "No browser peers"}
+                ),
             ],
         }
 

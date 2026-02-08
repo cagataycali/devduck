@@ -343,49 +343,23 @@ def agentcore_invoke(
                             event = json.loads(event_str)
 
                             # Stream to callback handler if available
+                            # IMPORTANT: Only process ONE event type to avoid duplicate output
+                            # The same content comes in 3 formats - we only want one
                             if (
                                 agent
                                 and hasattr(agent, "callback_handler")
                                 and agent.callback_handler
                             ):
                                 if isinstance(event, dict):
-                                    # Extract text for display from any event type
-                                    text_to_display = None
-
-                                    # Check if this is a wrapped AgentCore event
-                                    if "event" in event and isinstance(
-                                        event["event"], dict
-                                    ):
-                                        inner = event["event"]
-                                        # Extract text from contentBlockDelta
-                                        if "contentBlockDelta" in inner:
-                                            text_to_display = (
-                                                inner["contentBlockDelta"]
-                                                .get("delta", {})
-                                                .get("text", "")
-                                            )
-                                        # Pass the inner event
+                                    # Priority: Only process 'type': 'chunk' events for streaming
+                                    # This avoids triplication from wrapped events, data events, etc.
+                                    if event.get("type") == "chunk" and "data" in event:
+                                        text_to_display = event.get("data", "")
                                         if text_to_display:
                                             agent.callback_handler(
-                                                data=text_to_display, **inner
+                                                data=text_to_display,
+                                                turn_id=event.get("turn_id"),
                                             )
-                                        else:
-                                            agent.callback_handler(**inner)
-                                    # Check if this is a local agent event with 'data' field
-                                    elif "data" in event:
-                                        text_to_display = event.get("data", "")
-                                        # Copy event and remove only non-serializable object references
-                                        filtered = event.copy()
-                                        for key in [
-                                            "agent",
-                                            "event_loop_cycle_trace",
-                                            "event_loop_cycle_span",
-                                        ]:
-                                            filtered.pop(key, None)
-                                        agent.callback_handler(**filtered)
-                                    else:
-                                        # Pass other events as-is
-                                        agent.callback_handler(**event)
 
                             # Collect for response
                             events.append(event)

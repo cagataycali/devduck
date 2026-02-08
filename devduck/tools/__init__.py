@@ -8,6 +8,7 @@ from .agentcore_agents import agentcore_agents
 from .agentcore_config import agentcore_config
 from .agentcore_invoke import agentcore_invoke
 from .agentcore_logs import agentcore_logs
+from .agentcore_proxy import agentcore_proxy
 from .ambient import ambient
 from .create_subagent import create_subagent
 from .fetch_github_tool import fetch_github_tool
@@ -34,6 +35,7 @@ try:
         "agentcore_config",
         "agentcore_invoke",
         "agentcore_logs",
+        "agentcore_proxy",
         "ambient",
         "create_subagent",
         "fetch_github_tool",
@@ -58,6 +60,7 @@ except ImportError:
         "agentcore_config",
         "agentcore_invoke",
         "agentcore_logs",
+        "agentcore_proxy",
         "ambient",
         "create_subagent",
         "fetch_github_tool",

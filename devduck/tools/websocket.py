@@ -245,11 +245,89 @@ async def process_message_async(system_prompt, message, websocket, loop, turn_id
         await websocket.send(json.dumps(error_msg))
 
 
+async def push_zenoh_updates(websocket, loop):
+    """Background task that pushes Zenoh peer updates to the browser.
+
+    This bridges the Zenoh P2P network to WebSocket clients,
+    enabling browsers to see all connected DevDuck terminals.
+
+    Args:
+        websocket: WebSocket connection to push updates to
+        loop: Event loop for async operations
+    """
+    last_peers = set()
+    first_run = True  # Send immediate update on first run
+
+    while True:
+        try:
+            if not first_run:
+                await asyncio.sleep(2)  # Check every 2 seconds after first run
+            first_run = False
+
+            try:
+                from devduck.tools.zenoh_peer import ZENOH_STATE, get_instance_id
+
+                if not ZENOH_STATE.get("running"):
+                    continue
+
+                current_peers = set(ZENOH_STATE.get("peers", {}).keys())
+
+                # Detect changes OR force send on first check with peers
+                new_peers = current_peers - last_peers
+                lost_peers = last_peers - current_peers
+                force_send = (
+                    last_peers == set() and current_peers
+                )  # First time with peers
+
+                if new_peers or lost_peers or force_send:
+                    # Send peer update
+                    update = {
+                        "type": "zenoh_peers_update",
+                        "instance_id": get_instance_id(),
+                        "peers": [
+                            {
+                                "id": pid,
+                                "hostname": ZENOH_STATE["peers"][pid].get(
+                                    "hostname", "unknown"
+                                ),
+                                "model": ZENOH_STATE["peers"][pid].get(
+                                    "model", "unknown"
+                                ),
+                                "last_seen": ZENOH_STATE["peers"][pid].get(
+                                    "last_seen", 0
+                                ),
+                            }
+                            for pid in current_peers
+                        ],
+                        "new_peers": list(new_peers),
+                        "lost_peers": list(lost_peers),
+                        "timestamp": time.time(),
+                    }
+
+                    await websocket.send(json.dumps(update))
+                    logger.debug(
+                        f"Pushed Zenoh update: +{len(new_peers)} -{len(lost_peers)} peers (total: {len(current_peers)})"
+                    )
+
+                    last_peers = current_peers
+
+            except ImportError:
+                pass
+
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.debug(f"Zenoh push error: {e}")
+            await asyncio.sleep(5)
+
+
 async def handle_websocket_client(websocket, system_prompt: str):
     """Handle a WebSocket client connection with streaming responses.
 
     Each message creates a NEW DevDuck instance to avoid concurrent invocation errors.
     This follows the same pattern as zenoh_peer.py.
+
+    Also bridges Zenoh peer updates to browser clients for unified mesh.
 
     Args:
         websocket: WebSocket connection object
@@ -264,14 +342,52 @@ async def handle_websocket_client(websocket, system_prompt: str):
     # Track active tasks for concurrent processing
     active_tasks = set()
 
+    # Register this client for mesh broadcasts
+    ws_id = str(uuid.uuid4())[:8]
     try:
-        # Send welcome message
+        from devduck.tools.unified_mesh import MESH_STATE
+
+        MESH_STATE["ws_clients"][ws_id] = websocket
+    except ImportError:
+        pass
+
+    try:
+        # Send welcome message with mesh info
         welcome = {
             "type": "connected",
             "data": "🦆 Welcome to DevDuck!",
+            "ws_id": ws_id,
             "timestamp": time.time(),
         }
+
+        # Include Zenoh peers in welcome message (full peer objects for mesh.html)
+        try:
+            from devduck.tools.zenoh_peer import ZENOH_STATE, get_instance_id
+
+            if ZENOH_STATE.get("running"):
+                peers_dict = ZENOH_STATE.get("peers", {})
+                welcome["zenoh"] = {
+                    "instance_id": get_instance_id(),
+                    "peers": [
+                        {
+                            "id": pid,
+                            "hostname": peers_dict[pid].get("hostname", "unknown"),
+                            "model": peers_dict[pid].get("model", "unknown"),
+                            "last_seen": peers_dict[pid].get("last_seen", 0),
+                        }
+                        for pid in peers_dict.keys()
+                    ],
+                    "peer_count": len(peers_dict),
+                }
+        except ImportError:
+            pass
+
         await websocket.send(json.dumps(welcome))
+
+        # Start background task to push Zenoh updates
+        zenoh_update_task = asyncio.create_task(push_zenoh_updates(websocket, loop))
+        active_tasks.add(zenoh_update_task)
+        zenoh_update_task.add_done_callback(active_tasks.discard)
 
         async for message in websocket:
             message = message.strip()
@@ -286,6 +402,36 @@ async def handle_websocket_client(websocket, system_prompt: str):
                 await websocket.send(json.dumps(bye))
                 logger.info(f"Client {client_address} requested to exit")
                 break
+
+            # Filter out relay/mesh protocol messages (meant for agentcore_proxy, not raw WS)
+            # These come from mesh.html auto-discovery hitting the wrong port
+            try:
+                parsed = json.loads(message)
+                if isinstance(parsed, dict) and parsed.get("type") in (
+                    "configure",
+                    "list_agents",
+                    "get_ring",
+                    "trigger_github",
+                    "invoke",
+                    "broadcast",
+                    "list_peers",
+                    "get_status",
+                ):
+                    logger.info(
+                        f"Ignoring relay protocol message: {parsed.get('type')}"
+                    )
+                    await websocket.send(
+                        json.dumps(
+                            {
+                                "type": "error",
+                                "data": f"This is a raw DevDuck WebSocket server, not a relay. Message type '{parsed.get('type')}' is not supported here.",
+                                "timestamp": time.time(),
+                            }
+                        )
+                    )
+                    continue
+            except (json.JSONDecodeError, ValueError):
+                pass  # Not JSON - treat as normal text prompt
 
             # Generate unique turn ID for this conversation turn
             turn_id = str(uuid.uuid4())
@@ -310,6 +456,14 @@ async def handle_websocket_client(websocket, system_prompt: str):
             f"Error handling WebSocket client {client_address}: {e}", exc_info=True
         )
     finally:
+        # Unregister from mesh
+        try:
+            from devduck.tools.unified_mesh import MESH_STATE
+
+            if ws_id in MESH_STATE["ws_clients"]:
+                del MESH_STATE["ws_clients"][ws_id]
+        except:
+            pass
         logger.info(f"WebSocket connection with {client_address} closed")
 
 
