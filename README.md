@@ -4,7 +4,7 @@
 
 **Self-modifying AI agent that hot-reloads its own code—builds itself as it runs.**
 
-One Python file that adapts to your environment, fixes itself, and expands capabilities at runtime.
+One Python file that adapts to your environment, fixes itself, and expands capabilities at runtime. Deploy anywhere — terminal, browser, cloud, or all at once in a unified mesh.
 
 Learn more: https://duck.nyc
 
@@ -21,6 +21,10 @@ Learn more: https://duck.nyc
 | 🌙 **Ambient Mode** | Background thinking while you're idle | Auto-explores topics 🧠 |
 | 🔌 **IPC & Tray** | macOS menu bar + Unix socket IPC | ![Demo](docs/mac-os-tray.jpg) |
 | 💬 **Ambient Overlay** | Floating AI input with glassmorphism UI | [Watch](https://redduck.dev/videos/floating-input.mp4) |
+
+| 🌐 **Unified Mesh** | Connect CLI + browser + cloud agents in one mesh | All agents, one network 🕸️ |
+| ☁️ **Deploy CLI** | `devduck deploy --launch` to AgentCore | One-command cloud deploy 🚀 |
+| 🧩 **Browser Peers** | Browser tabs join the mesh as first-class peers | Open mesh.html to join 🌍 |
 
 ---
 
@@ -45,6 +49,10 @@ devduck --record "analyze this codebase"
 
 # Resume from recorded session
 devduck --resume session-20250202-123456.zip "continue where we left off"
+
+# Deploy to AWS AgentCore
+devduck deploy --launch
+devduck deploy --name my-agent --tools "strands_tools:shell,editor" --launch
 ```
 
 **Requirements:** Python 3.10-3.13, AWS credentials (or Ollama/Anthropic/GitHub/MLX)
@@ -62,14 +70,16 @@ devduck --resume session-20250202-123456.zip "continue where we left off"
 | 🛠️ **Runtime Tools** | Add/remove tools without restart | `manage_tools(action="add", ...)` |
 | 📦 **Dynamic Loading** | Install packages and load tools on-the-fly | `install_tools(action="install_and_load", package="...")` |
 | 🧠 **Auto-RAG** | Remembers conversations via Knowledge Base | Set `DEVDUCK_KNOWLEDGE_BASE_ID` |
-| 🌊 **Multi-Protocol** | TCP, WebSocket, MCP, IPC servers | Auto-starts on ports 9999, 8080, 8000 |
+| 🌊 **Multi-Protocol** | TCP, WebSocket, MCP, IPC servers | Auto-starts on ports 10001, 10002, 10003 |
 | 🔗 **Zenoh P2P** | Auto-discover & coordinate with other DevDucks | `zenoh_peer(action="broadcast", message="...")` |
+| 🌐 **Unified Mesh** | Connect CLI + browser + cloud agents | Auto-starts relay on port 10000 |
+| ☁️ **Deploy CLI** | One-command AgentCore deployment | `devduck deploy --launch` |
 | 🔌 **MCP Client** | Connect to external MCP servers | Set `MCP_SERVERS` env var |
 | 🎬 **Session Recording** | Record & replay entire sessions | `devduck --record` or `session_recorder()` |
 | 💾 **State Time-Travel** | Save/restore agent state | `state_manager(action="export")` |
 | 🌙 **Ambient Mode** | Background thinking when idle | `DEVDUCK_AMBIENT_MODE=true` or type `ambient` |
 | 📝 **Self-Improvement** | Updates own system prompt | `system_prompt(action="add_context", ...)` |
-| ☁️ **AWS Deploy** | One-command serverless | `agentcore_config(auto_launch=True)` |
+| ☁️ **AWS Deploy** | One-command serverless | `devduck deploy --launch` |
 | 🎤 **Speech-to-Speech** | Real-time voice conversations | `pip install devduck[speech]` |
 
 ---
@@ -111,6 +121,9 @@ graph TB
     K -.->|Expand| D
     B <-->|Zenoh P2P| L[Other DevDucks]
     L -.->|Auto-discover| B
+    B <-->|Unified Mesh| M[Browser Peers + AgentCore]
+    M -.->|Ring Context| B
+    B -->|Deploy| N[devduck deploy → AgentCore]
     B -->|Response| J[User Output]
     J -.->|Store Memory| C
     
@@ -119,6 +132,7 @@ graph TB
     style I fill:#fff3cd
     style K fill:#ffe6cc
     style L fill:#f0e6ff
+    style M fill:#ffe6f0
 ```
 
 **Self-adapting loop:** Query → RAG → Tools → Response → Memory → Hot-reload/Runtime-load → Repeat
@@ -475,6 +489,183 @@ zenoh_peer(action="start", listen="tcp/0.0.0.0:7447")
 
 ---
 
+## Unified Mesh (CLI + Browser + Cloud)
+
+**Connect ALL agent types** — terminal DevDucks, browser tabs, and cloud-deployed agents — into a single unified network with shared context.
+
+### How It Works
+
+1. **Mesh Relay** auto-starts on port 10000 (WebSocket)
+2. **File-based Registry** (`/tmp/devduck/mesh_registry.json`) tracks all agents
+3. **Browser peers** connect via `mesh.html` and register as first-class mesh participants
+4. **Ring context** is shared bidirectionally: CLI writes → browser sees it, browser writes → CLI sees it
+5. **AgentCore agents** (deployed to AWS) appear alongside local agents
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────┐
+│                 Unified Mesh                     │
+│                                                  │
+│  ┌──────────┐  ┌──────────┐  ┌──────────────┐  │
+│  │ Terminal  │  │ Browser  │  │  AgentCore   │  │
+│  │ DevDuck  │  │  Tab(s)  │  │  (Cloud)     │  │
+│  │ (Zenoh)  │  │ (WS)     │  │  (AWS)       │  │
+│  └────┬─────┘  └────┬─────┘  └──────┬───────┘  │
+│       │              │               │           │
+│       └──────────────┼───────────────┘           │
+│                      │                           │
+│           ┌──────────┴──────────┐                │
+│           │  mesh_registry.json │                │
+│           │  (file-based, TTL)  │                │
+│           └─────────────────────┘                │
+│                                                  │
+│           Ring Context (shared memory)           │
+└─────────────────────────────────────────────────┘
+```
+
+### Port Allocation
+
+| Port | Service | Description |
+|------|---------|-------------|
+| **10000** | Mesh Relay | AgentCore proxy + browser gateway |
+| **10001** | WebSocket | Per-message DevDuck server |
+| **10002** | TCP | Raw socket server |
+| **10003** | MCP HTTP | Model Context Protocol |
+| **10004** | IPC | Reserved for Unix socket gateway |
+
+### Quick Start
+
+```bash
+# Terminal: Start DevDuck (mesh auto-starts)
+devduck
+# 🦆 ✓ AgentCore proxy: ws://localhost:10000
+# 🦆 ✓ Zenoh peer: hostname-abc123
+
+# Browser: Open mesh.html → auto-connects to ws://localhost:10000
+# Browser agents appear in zenoh peer list!
+
+# See all agents in the mesh
+🦆 unified_mesh(action="list_all")
+
+# Route to any agent type
+🦆 unified_mesh(action="route", target="browser:abc123", message="hello")
+🦆 unified_mesh(action="route", target="hostname-def456", message="git status")
+```
+
+### Mesh Registry
+
+The file-based registry provides **crash-safe agent discovery** with zero race conditions:
+
+```python
+from devduck.tools.mesh_registry import registry
+
+# All reads are lock-free (read whatever's on disk)
+agents = registry.get_all()              # All live agents
+zenoh = registry.get_by_type("zenoh")    # Filter by type
+agent = registry.get_agent("my-id")      # Single lookup
+
+# Writes use fcntl.flock() + atomic rename
+registry.register("my-agent", "local", {"name": "test"})
+registry.heartbeat("my-agent")           # Update last_seen
+registry.unregister("my-agent")          # Graceful shutdown
+
+# Stale entries auto-expire (30s TTL) — crash-safe
+print(registry.summary())
+```
+
+### Ring Context
+
+Shared memory across all agents:
+
+```python
+# Add to ring (auto-broadcasts to browsers)
+unified_mesh(action="add_ring", agent_id="devduck", text="Working on file analysis")
+
+# Get recent ring entries
+unified_mesh(action="get_ring", max_entries=20)
+
+# Ring is injected into every agent query as dynamic context
+```
+
+---
+
+## AgentCore Deployment (Deploy CLI)
+
+**One-command deployment** of DevDuck to Amazon Bedrock AgentCore:
+
+### Quick Deploy
+
+```bash
+# Configure and deploy with defaults
+devduck deploy --launch
+
+# Custom agent
+devduck deploy --name code-reviewer \
+  --tools "strands_tools:shell,editor,file_read" \
+  --model "us.anthropic.claude-sonnet-4-20250514-v1:0" \
+  --system-prompt "You are a senior code reviewer" \
+  --launch
+
+# Configure only (don't launch yet)
+devduck deploy --name my-agent
+
+# Launch separately
+agentcore launch -a my_agent --auto-update-on-conflict
+```
+
+### Deploy Options
+
+```bash
+devduck deploy [OPTIONS]
+
+Options:
+  --name, -n          Agent name (default: devduck)
+  --tools, -t         Tool config (e.g., "strands_tools:shell,editor")
+  --model, -m         Model ID override
+  --region, -r        AWS region (default: us-west-2)
+  --launch            Auto-launch after configure
+  --system-prompt, -s Custom system prompt
+  --idle-timeout      Idle timeout seconds (default: 900)
+  --max-lifetime      Max lifetime seconds (default: 28800)
+  --no-memory         Disable AgentCore memory (STM)
+  --no-otel           Disable OpenTelemetry
+  --env KEY=VALUE     Additional env vars (repeatable)
+  --force-rebuild     Force rebuild dependencies
+```
+
+### Manage Deployed Agents
+
+```bash
+# List all deployed agents
+devduck list
+
+# Check agent status
+devduck status --name my-agent
+
+# Invoke a deployed agent
+devduck invoke "analyze this code" --name my-agent
+
+# Invoke by agent ID directly
+devduck invoke "hello" --agent-id abc123-def456
+```
+
+### Proxy Integration
+
+Deployed agents automatically appear in the unified mesh:
+
+```bash
+# DevDuck auto-starts proxy on ws://localhost:10000
+# Open mesh.html to see ALL agents (local + cloud)
+
+# WebSocket protocol:
+# {"type": "list_agents"}                              → See all agents
+# {"type": "invoke", "agent_id": "...", "prompt": "..."} → Invoke any agent
+# {"type": "get_ring"}                                  → Get ring context
+```
+
+---
+
 ## Advanced Features
 
 ### 🎬 Session Recording (Time-Travel Debugging)
@@ -721,9 +912,9 @@ create_subagent(action="list", repository="owner/repo", workflow_id="agent.yml")
 ---
 
 <details>
-<summary><strong>📋 All Built-in Tools (42 total)</strong></summary>
+<summary><strong>📋 All Built-in Tools (46 total)</strong></summary>
 
-### DevDuck Core (21 tools)
+### DevDuck Core (25 tools)
 - `system_prompt` - Update agent's system prompt (GitHub sync support)
 - `store_in_kb` - Store content in Bedrock Knowledge Base
 - `state_manager` - Save/restore agent state (time-travel)
@@ -733,6 +924,9 @@ create_subagent(action="list", repository="owner/repo", workflow_id="agent.yml")
 - `ipc` - Unix socket IPC server for local processes
 - `mcp_server` - Expose as MCP server (HTTP/stdio)
 - `zenoh_peer` - Peer-to-peer networking with auto-discovery
+- `agentcore_proxy` - 🌐 Unified mesh relay (Zenoh + AgentCore + browser peers)
+- `unified_mesh` - Single source of truth for all agent types + ring context
+- `mesh_registry` - File-based agent discovery with fcntl locking and TTL
 - `ambient_mode` - Control ambient/autonomous background thinking
 - `install_tools` - Install packages and load tools at runtime
 - `create_subagent` - Spawn sub-agents via GitHub Actions
@@ -815,9 +1009,10 @@ No restart. No configuration. Just works.
 |----------|----------|--------------|----------|
 | **CLI** | Terminal | `devduck "query"` | Interactive/one-shot |
 | **Python** | Import | `import devduck; devduck("query")` | Script integration |
-| **TCP** | `localhost:9999` | `nc localhost 9999` | Network clients |
-| **WebSocket** | `localhost:8080` | `wscat -c ws://localhost:8080` | Browser/async apps |
-| **MCP** | `localhost:8000/mcp` | Add to Claude Desktop | MCP clients |
+| **Mesh Relay** | `localhost:10000` | Open `mesh.html` | Unified mesh (browser + all agents) |
+| **WebSocket** | `localhost:10001` | `wscat -c ws://localhost:10001` | Browser/async apps |
+| **TCP** | `localhost:10002` | `nc localhost 10002` | Network clients |
+| **MCP** | `localhost:10003/mcp` | Add to Claude Desktop | MCP clients |
 | **IPC** | `/tmp/devduck_main.sock` | `nc -U /tmp/devduck_main.sock` | Local processes |
 
 ### CLI Commands
@@ -831,6 +1026,15 @@ devduck "your query here"
 
 # MCP stdio mode (for Claude Desktop integration)
 devduck --mcp
+
+# Deploy to AgentCore
+devduck deploy --launch
+devduck deploy --name my-agent --tools "strands_tools:shell,editor" --launch
+
+# Manage deployed agents
+devduck list                              # List all agents
+devduck status --name my-agent            # Check status
+devduck invoke "hello" --name my-agent    # Invoke agent
 
 # Session recording
 devduck --record                    # Start with recording enabled
@@ -855,7 +1059,7 @@ devduck --resume session.zip --snapshot 2 "continue"  # Resume from specific sna
 
 **Custom ports:**
 ```bash
-export DEVDUCK_TCP_PORT=9000 DEVDUCK_WS_PORT=8001 DEVDUCK_MCP_PORT=8002
+export DEVDUCK_TCP_PORT=10002 DEVDUCK_WS_PORT=10001 DEVDUCK_MCP_PORT=10003 DEVDUCK_AGENTCORE_PROXY_PORT=10000
 devduck
 ```
 
@@ -893,15 +1097,17 @@ devduck
 | **MCP** | | |
 | `MCP_SERVERS` | - | JSON config for external MCP servers |
 | **Servers** | | |
-| `DEVDUCK_TCP_PORT` | `9999` | TCP server port |
-| `DEVDUCK_WS_PORT` | `8080` | WebSocket server port |
-| `DEVDUCK_MCP_PORT` | `8000` | MCP server port |
+| `DEVDUCK_TCP_PORT` | `10002` | TCP server port |
+| `DEVDUCK_WS_PORT` | `10001` | WebSocket server port |
+| `DEVDUCK_MCP_PORT` | `10003` | MCP server port |
+| `DEVDUCK_AGENTCORE_PROXY_PORT` | `10000` | Mesh relay / AgentCore proxy port |
 | `DEVDUCK_IPC_SOCKET` | `/tmp/devduck_main.sock` | IPC socket path |
-| `DEVDUCK_ENABLE_TCP` | `true` | Enable TCP server |
+| `DEVDUCK_ENABLE_TCP` | `false` | Enable TCP server |
 | `DEVDUCK_ENABLE_WS` | `true` | Enable WebSocket server |
-| `DEVDUCK_ENABLE_MCP` | `true` | Enable MCP server |
-| `DEVDUCK_ENABLE_IPC` | `true` | Enable IPC server |
+| `DEVDUCK_ENABLE_MCP` | `false` | Enable MCP server |
+| `DEVDUCK_ENABLE_IPC` | `false` | Enable IPC server |
 | `DEVDUCK_ENABLE_ZENOH` | `true` | Enable Zenoh peer-to-peer |
+| `DEVDUCK_ENABLE_AGENTCORE_PROXY` | `true` | Enable unified mesh relay |
 | `ZENOH_CONNECT` | - | Remote Zenoh endpoint(s) to connect to |
 | `ZENOH_LISTEN` | - | Zenoh endpoint(s) to listen on |
 | **Ambient Mode** | | |
@@ -929,9 +1135,10 @@ ollama pull qwen3:1.7b
 
 **Port already in use:**
 ```bash
-# Change ports
-export DEVDUCK_TCP_PORT=9000
-export DEVDUCK_WS_PORT=8001
+# Change ports (10000+ block)
+export DEVDUCK_AGENTCORE_PROXY_PORT=10010
+export DEVDUCK_WS_PORT=10011
+export DEVDUCK_TCP_PORT=10012
 devduck
 ```
 
@@ -1038,7 +1245,7 @@ devduck("Create a sub-agent to analyze test coverage")
 ```bibtex
 @software{devduck2025,
   author = {Cagatay Cali},
-  title = {DevDuck: Self-Modifying AI Agent with Hot-Reload and Multi-Protocol Servers},
+  title = {DevDuck: Self-Modifying AI Agent with Unified Mesh, Hot-Reload, and Multi-Protocol Servers},
   year = {2025},
   url = {https://github.com/cagataycali/devduck}
 }
