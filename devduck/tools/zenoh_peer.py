@@ -329,9 +329,7 @@ def handle_presence(sample) -> None:
                             "layer": "local",
                             "name": hostname,
                             "platform": data.get("platform", ""),
-                            "system_prompt": data.get(
-                                "system_prompt", ""
-                            ),
+                            "system_prompt": data.get("system_prompt", ""),
                         },
                     )
                 except Exception:

@@ -48,10 +48,6 @@ dependencies = [
     "strands-mlx; sys_platform == 'darwin'",
     "eclipse-zenoh",
     "halo",
-]
-
-[project.optional-dependencies]
-speech = [
     "strands-agents[bidi-all]",
 ]
 

@@ -404,9 +404,7 @@ class MeshGateway:
                                     "is_self": is_self,
                                     "tools": meta.get("tools", []),
                                     "tool_count": meta.get("tool_count", 0),
-                                    "system_prompt": meta.get(
-                                        "system_prompt", ""
-                                    ),
+                                    "system_prompt": meta.get("system_prompt", ""),
                                     "cwd": meta.get("cwd", ""),
                                     "platform": meta.get("platform", ""),
                                     "name": meta.get("name")
@@ -985,9 +983,7 @@ class MeshGateway:
                                 "model": meta.get("model", "unknown"),
                                 "tools": meta.get("tools", []),
                                 "tool_count": meta.get("tool_count", 0),
-                                "system_prompt": meta.get(
-                                    "system_prompt", ""
-                                ),
+                                "system_prompt": meta.get("system_prompt", ""),
                                 "cwd": meta.get("cwd", ""),
                                 "platform": meta.get("platform", ""),
                             }

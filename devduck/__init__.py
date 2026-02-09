@@ -2943,7 +2943,10 @@ How it works:
                             continue
 
                     result = self.agent.tool.websocket(
-                        action="start_server", port=port, record_direct_tool_call=False
+                        action="start_server",
+                        port=port,
+                        agent=self.agent,
+                        record_direct_tool_call=False,
                     )
 
                     if result.get("status") == "success":
@@ -3882,9 +3885,6 @@ def _deploy_to_agentcore(
                 if agent_id:
                     print(f"\n📋 Agent ARN: {agent_arn}")
                     print(f"🆔 Agent ID: {agent_id}")
-                    print(f"\n💡 Invoke with:")
-                    print(f"   agentcore invoke {safe_name} 'your query'")
-                    print(f"\n💡 Or via DevDuck:")
                     print(
                         f"   devduck.agent.tool.agentcore_invoke(agent_id='{agent_id}', prompt='...')"
                     )
