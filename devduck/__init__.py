@@ -2233,12 +2233,23 @@ class DevDuck:
                 os.getenv("DEVDUCK_LOAD_TOOLS_FROM_DIR", "true").lower() == "true"
             )
 
+            # LSP auto-diagnostics hook (opt-in)
+            hooks = []
+            if os.getenv("DEVDUCK_LSP_AUTO_DIAGNOSTICS", "").lower() in ("true", "1", "yes"):
+                try:
+                    from devduck.tools.lsp import LSPDiagnosticsHook
+                    hooks.append(LSPDiagnosticsHook())
+                    logger.info("LSP auto-diagnostics hook enabled")
+                except Exception as e:
+                    logger.warning(f"Failed to load LSP diagnostics hook: {e}")
+
             self.agent = Agent(
                 model=self.agent_model,
                 tools=self.tools,
                 system_prompt=self._build_system_prompt(),
                 load_tools_from_directory=load_from_dir,
                 callback_handler=callback_handler,
+                hooks=hooks if hooks else None,
                 trace_attributes={
                     "session.id": self.session_id,
                     "user.id": self.env_info["hostname"],
