@@ -1,39 +1,45 @@
 """
-🎮 RL Tools for DevDuck — Learn anything with Reinforcement Learning.
+🎮 RL & ML Tools for DevDuck — Learn, Train, Fine-tune ANYTHING.
 
-Uses Stable-Baselines3 + Gymnasium to give DevDuck the power to:
-1. Train RL agents on any Gymnasium environment
-2. Create CUSTOM environments from Python reward functions
-3. Evaluate trained policies
-4. Run inference (watch a trained agent act)
-5. Manage saved models
-6. Hyperparameter sweep
-7. Curriculum learning (progressive difficulty)
+Three domains in one tool:
 
-The killer feature: `create_env` lets you define a reward function in plain Python,
-wrap it as a Gymnasium env, and train an RL agent on it — all from natural language.
+1. REINFORCEMENT LEARNING (Stable-Baselines3 + Gymnasium)
+   - Train RL agents on any env (PPO, A2C, DQN, SAC, TD3, DDPG)
+   - Create custom envs from reward functions
+   - Visual debugging: renders frames as native images back to the agent
+   - CNN/Multi-input policies for image-based envs
+   - Sweep, compare, curriculum learning
+
+2. LLM FINE-TUNING (Transformers + PEFT/LoRA + TRL)
+   - Fine-tune any HuggingFace model with LoRA/QLoRA
+   - SFT (supervised fine-tuning) with custom datasets
+   - DPO/RLHF preference tuning
+   - Push to HuggingFace Hub
+
+3. CLASSICAL ML (scikit-learn patterns)
+   - Train sklearn models from CSV/JSON data
+   - Auto model selection
+   - Evaluation with metrics
 
 Examples:
-    # Train on a built-in env
+    # RL: Train CartPole
     rl(action="train", env_id="CartPole-v1", algorithm="PPO", total_timesteps=50000)
 
-    # Create a custom env and train on it
-    rl(action="create_env", env_name="balance", reward_code="...", obs_dim=4, act_dim=1)
-    rl(action="train", env_id="custom:balance", algorithm="SAC", total_timesteps=100000)
+    # RL: Create custom env + train
+    rl(action="create_env", env_name="snake", reward_code="...", obs_dim=(10,10,3), act_dim=4, act_type="discrete")
+    rl(action="train", env_id="custom:snake", algorithm="DQN", policy_type="CnnPolicy")
 
-    # Evaluate a trained model
-    rl(action="eval", model_path="rl_models/CartPole-v1_PPO/best_model", n_episodes=20)
+    # RL: Visual debug — get rendered frame as image
+    rl(action="render_frame", env_id="CartPole-v1", model_path="rl_models/.../best_model")
 
-    # Watch it play
-    rl(action="play", model_path="rl_models/CartPole-v1_PPO/best_model", env_id="CartPole-v1")
+    # LLM: Fine-tune with LoRA
+    rl(action="finetune", model_id="meta-llama/Llama-3.2-1B", dataset_id="tatsu-lab/alpaca", method="lora")
 
-    # List available envs
-    rl(action="list_envs")
-
-    # Hyperparameter sweep
-    rl(action="sweep", env_id="LunarLander-v3", algorithm="PPO", n_trials=10)
+    # LLM: SFT with custom data
+    rl(action="sft", model_id="Qwen/Qwen2.5-0.5B", dataset_path="./my_data.jsonl")
 """
 
+import io
 import json
 import os
 import sys
@@ -53,8 +59,9 @@ from strands import tool
 RL_MODELS_DIR = Path(os.getenv("DEVDUCK_RL_MODELS_DIR", "./rl_models"))
 RL_CUSTOM_ENVS_DIR = Path(os.getenv("DEVDUCK_RL_ENVS_DIR", "./rl_envs"))
 RL_LOGS_DIR = Path(os.getenv("DEVDUCK_RL_LOGS_DIR", "./rl_logs"))
+ML_MODELS_DIR = Path(os.getenv("DEVDUCK_ML_MODELS_DIR", "./ml_models"))
 
-# Supported algorithms
+# Supported RL algorithms
 ALGORITHMS = {
     "PPO": "stable_baselines3.PPO",
     "A2C": "stable_baselines3.A2C",
@@ -62,6 +69,16 @@ ALGORITHMS = {
     "SAC": "stable_baselines3.SAC",
     "TD3": "stable_baselines3.TD3",
     "DDPG": "stable_baselines3.DDPG",
+}
+
+# SB3 policy types
+POLICY_TYPES = {
+    "mlp": "MlpPolicy",
+    "cnn": "CnnPolicy",
+    "multi": "MultiInputPolicy",
+    "MlpPolicy": "MlpPolicy",
+    "CnnPolicy": "CnnPolicy",
+    "MultiInputPolicy": "MultiInputPolicy",
 }
 
 # ─── Custom Environment Registry ────────────────────────────────────────────
@@ -79,6 +96,32 @@ def _get_algorithm_class(name: str):
     return getattr(mod, class_name)
 
 
+def _resolve_policy_type(policy_type: str, env) -> str:
+    """Resolve policy type string to SB3 policy class name.
+    Auto-detects CNN if observation space is image-like."""
+    import gymnasium as gym
+
+    if policy_type:
+        resolved = POLICY_TYPES.get(policy_type, policy_type)
+        return resolved
+
+    # Auto-detect from observation space
+    obs_space = env.observation_space if hasattr(env, 'observation_space') else None
+    if obs_space is None:
+        return "MlpPolicy"
+
+    if isinstance(obs_space, gym.spaces.Box):
+        if len(obs_space.shape) == 3:
+            # Image-like: (H, W, C) or (C, H, W)
+            return "CnnPolicy"
+        elif len(obs_space.shape) >= 2:
+            return "CnnPolicy"
+    elif isinstance(obs_space, gym.spaces.Dict):
+        return "MultiInputPolicy"
+
+    return "MlpPolicy"
+
+
 def _make_env(env_id: str, seed: int = None, render_mode: str = None):
     """Create a Gymnasium environment by ID, supporting custom envs."""
     import gymnasium as gym
@@ -86,7 +129,6 @@ def _make_env(env_id: str, seed: int = None, render_mode: str = None):
     if env_id.startswith("custom:"):
         custom_name = env_id.split(":", 1)[1]
         if custom_name not in _custom_envs:
-            # Try loading from disk
             env_file = RL_CUSTOM_ENVS_DIR / f"{custom_name}.py"
             if env_file.exists():
                 _load_custom_env(custom_name, env_file)
@@ -113,9 +155,7 @@ def _load_custom_env(name: str, path: Path):
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
 
-    # Find the env class (should be the one inheriting from gymnasium.Env)
     import gymnasium as gym
-
     for attr_name in dir(mod):
         attr = getattr(mod, attr_name)
         if isinstance(attr, type) and issubclass(attr, gym.Env) and attr is not gym.Env:
@@ -123,6 +163,93 @@ def _load_custom_env(name: str, path: Path):
             return
 
     raise ValueError(f"No gymnasium.Env subclass found in {path}")
+
+
+def _render_env_to_image(env, model=None, seed=42, steps=0):
+    """Render an environment frame and return as native image content block.
+
+    Returns a content block with {"image": {"format": "png", "source": {"bytes": ...}}}
+    that the model can see directly.
+    """
+    import numpy as np
+
+    # If model provided, step through some actions first
+    if model and steps > 0:
+        obs, _ = env.reset(seed=seed)
+        for _ in range(steps):
+            action, _ = model.predict(obs, deterministic=True)
+            obs, reward, terminated, truncated, info = env.step(action)
+            if terminated or truncated:
+                obs, _ = env.reset(seed=seed)
+
+    # Render the frame
+    frame = env.render()
+
+    if frame is None:
+        return None
+
+    # Convert numpy array to PNG bytes
+    from PIL import Image
+    if isinstance(frame, np.ndarray):
+        img = Image.fromarray(frame)
+    else:
+        return None
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    png_bytes = buf.getvalue()
+
+    return {"image": {"format": "png", "source": {"bytes": png_bytes}}}
+
+
+def _render_multiple_frames(env, model, seed=42, n_frames=4, frame_interval=10):
+    """Render multiple frames as a grid image for visual debugging.
+
+    Returns a single image showing N frames side by side.
+    """
+    import numpy as np
+    from PIL import Image
+
+    frames = []
+    obs, _ = env.reset(seed=seed)
+    step_count = 0
+
+    for frame_idx in range(n_frames):
+        # Step forward
+        for _ in range(frame_interval):
+            action, _ = model.predict(obs, deterministic=True)
+            obs, reward, terminated, truncated, info = env.step(action)
+            step_count += 1
+            if terminated or truncated:
+                obs, _ = env.reset(seed=seed)
+
+        frame = env.render()
+        if frame is not None and isinstance(frame, np.ndarray):
+            frames.append(frame)
+
+    if not frames:
+        return None
+
+    # Create grid: all frames side by side
+    max_h = max(f.shape[0] for f in frames)
+    total_w = sum(f.shape[1] for f in frames)
+
+    grid = np.zeros((max_h, total_w, 3), dtype=np.uint8)
+    x_offset = 0
+    for f in frames:
+        h, w = f.shape[:2]
+        if f.ndim == 2:  # Grayscale
+            f = np.stack([f, f, f], axis=-1)
+        grid[:h, x_offset:x_offset + w, :] = f[:, :, :3]
+        x_offset += w
+
+    img = Image.fromarray(grid)
+
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    png_bytes = buf.getvalue()
+
+    return {"image": {"format": "png", "source": {"bytes": png_bytes}}}
 
 
 # ─── Training Progress Callback ─────────────────────────────────────────────
@@ -136,8 +263,6 @@ class _ProgressCallback:
         self.total = total_timesteps
         self.print_freq = print_freq
         self.start_time = time.time()
-        self.best_reward = -float("inf")
-        self.episode_rewards = []
 
         class Inner(BaseCallback):
             def __init__(inner_self, outer=self, verbose=0):
@@ -162,7 +287,7 @@ class _ProgressCallback:
         return self.callback_cls()
 
 
-# ─── Core Actions ────────────────────────────────────────────────────────────
+# ─── RL Actions ──────────────────────────────────────────────────────────────
 
 def _action_train(
     env_id: str,
@@ -174,11 +299,13 @@ def _action_train(
     n_envs: int = 1,
     eval_freq: int = 10000,
     device: str = "auto",
+    policy_type: str = None,
 ) -> Dict[str, Any]:
     """Train an RL agent."""
     from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
     from stable_baselines3.common.callbacks import EvalCallback
     from stable_baselines3.common.monitor import Monitor
+    import gymnasium as gym
 
     algo_cls = _get_algorithm_class(algorithm)
 
@@ -190,7 +317,13 @@ def _action_train(
         return _init
 
     if n_envs > 1:
-        train_env = SubprocVecEnv([make_train_env(i) for i in range(n_envs)])
+        try:
+            import multiprocessing
+            multiprocessing.set_start_method("forkserver", force=True)
+            train_env = SubprocVecEnv([make_train_env(i) for i in range(n_envs)])
+        except Exception:
+            print(f"  ⚠ SubprocVecEnv failed, using DummyVecEnv with {n_envs} envs")
+            train_env = DummyVecEnv([make_train_env(i) for i in range(n_envs)])
     else:
         train_env = DummyVecEnv([make_train_env(0)])
 
@@ -204,20 +337,14 @@ def _action_train(
     log_dir = RL_LOGS_DIR / name
     log_dir.mkdir(parents=True, exist_ok=True)
 
-    # Hyperparameters
-    hp = hyperparams or {}
-    hp.setdefault("verbose", 1)
-    hp.setdefault("device", device)
-    hp.setdefault("seed", seed)
-
-    # Check if algorithm supports continuous/discrete action space
-    # DQN only works with discrete action spaces
+    # Resolve policy type (auto-detect CNN for image observations)
     test_env = _make_env(env_id, seed=seed)
-    import gymnasium as gym
     action_space = test_env.action_space
     obs_space = test_env.observation_space
+    resolved_policy = _resolve_policy_type(policy_type, test_env)
     test_env.close()
 
+    # Validate algorithm vs action space compatibility
     if algorithm.upper() == "DQN" and not isinstance(action_space, gym.spaces.Discrete):
         return {
             "status": "error",
@@ -230,18 +357,27 @@ def _action_train(
             "content": [{"text": f"❌ {algorithm} requires continuous actions, but {env_id} has Discrete. Use PPO, A2C, or DQN instead."}],
         }
 
+    # Hyperparameters
+    hp = hyperparams or {}
+    hp.setdefault("verbose", 1)
+    hp.setdefault("device", device)
+    hp.setdefault("seed", seed)
+
     print(f"\n🎮 Training {algorithm} on {env_id}")
+    print(f"   Policy: {resolved_policy}")
     print(f"   Steps: {total_timesteps:,} | Envs: {n_envs} | Seed: {seed}")
     print(f"   Save: {model_dir}")
     print(f"   Action space: {action_space}")
     print(f"   Obs space: {obs_space}")
     if hp:
-        print(f"   Hyperparams: {json.dumps({k: str(v) for k, v in hp.items() if k not in ('verbose', 'device', 'seed')}, indent=2)}")
+        filtered_hp = {k: str(v) for k, v in hp.items() if k not in ('verbose', 'device', 'seed')}
+        if filtered_hp:
+            print(f"   Hyperparams: {json.dumps(filtered_hp, indent=2)}")
     print()
 
     # Create model
     start_time = time.time()
-    model = algo_cls("MlpPolicy", train_env, tensorboard_log=str(log_dir), **hp)
+    model = algo_cls(resolved_policy, train_env, tensorboard_log=str(log_dir), **hp)
 
     # Callbacks
     progress = _ProgressCallback(total_timesteps)
@@ -282,12 +418,26 @@ def _action_train(
                 "best_std": float(results[results.mean(axis=1).argmax()].std()),
             }
 
+    # Render a frame from the best model for visual feedback
+    visual_content = []
+    try:
+        best_model_path = model_dir / "best" / "best_model"
+        if best_model_path.with_suffix(".zip").exists():
+            vis_env = _make_env(env_id, seed=seed, render_mode="rgb_array")
+            best_model = algo_cls.load(str(best_model_path))
+            img_block = _render_multiple_frames(vis_env, best_model, seed=seed, n_frames=4, frame_interval=20)
+            vis_env.close()
+            if img_block:
+                visual_content.append(img_block)
+    except Exception as e:
+        print(f"  ⚠ Could not render visual: {e}")
+
     train_env.close()
     eval_env.close()
 
     summary = (
         f"✅ Training complete!\n"
-        f"   Algorithm: {algorithm}\n"
+        f"   Algorithm: {algorithm} | Policy: {resolved_policy}\n"
         f"   Environment: {env_id}\n"
         f"   Total steps: {total_timesteps:,}\n"
         f"   Time: {elapsed:.1f}s ({fps:.0f} fps)\n"
@@ -298,20 +448,21 @@ def _action_train(
         f"   TensorBoard: tensorboard --logdir {log_dir}"
     )
 
-    return {
-        "status": "success",
-        "content": [
-            {"text": summary},
-            {"json": {
-                "model_path": str(final_path),
-                "best_model_path": str(model_dir / "best" / "best_model"),
-                "log_dir": str(log_dir),
-                "elapsed_seconds": elapsed,
-                "fps": fps,
-                **eval_results,
-            }},
-        ],
-    }
+    content = [
+        {"text": summary},
+        {"json": {
+            "model_path": str(final_path),
+            "best_model_path": str(model_dir / "best" / "best_model"),
+            "log_dir": str(log_dir),
+            "elapsed_seconds": elapsed,
+            "fps": fps,
+            "policy_type": resolved_policy,
+            **eval_results,
+        }},
+    ]
+    content.extend(visual_content)
+
+    return {"status": "success", "content": content}
 
 
 def _action_eval(
@@ -326,18 +477,15 @@ def _action_eval(
     """Evaluate a trained model."""
     import numpy as np
 
-    # Auto-detect algorithm from path if not specified
     if algorithm is None:
         for algo_name in ALGORITHMS:
             if algo_name in str(model_path).upper():
                 algorithm = algo_name
                 break
         if algorithm is None:
-            algorithm = "PPO"  # Default fallback
+            algorithm = "PPO"
 
-    # Auto-detect env from path if not specified
     if env_id is None:
-        # Try to extract from model directory name
         model_dir = Path(model_path).parent
         for part in [model_dir.name, model_dir.parent.name]:
             for algo_name in ALGORITHMS:
@@ -348,10 +496,7 @@ def _action_eval(
                 break
 
     if env_id is None:
-        return {
-            "status": "error",
-            "content": [{"text": "❌ Could not auto-detect env_id. Please specify it."}],
-        }
+        return {"status": "error", "content": [{"text": "❌ Could not auto-detect env_id. Please specify it."}]}
 
     algo_cls = _get_algorithm_class(algorithm)
     model = algo_cls.load(model_path)
@@ -422,8 +567,9 @@ def _action_play(
     seed: int = 42,
     record_video: bool = False,
     video_path: str = None,
+    render: bool = False,
 ) -> Dict[str, Any]:
-    """Watch a trained agent play (render or record video)."""
+    """Watch a trained agent play. Returns frames as images if not rendering live."""
 
     if algorithm is None:
         for algo_name in ALGORITHMS:
@@ -444,10 +590,7 @@ def _action_play(
                 break
 
     if env_id is None:
-        return {
-            "status": "error",
-            "content": [{"text": "❌ Could not auto-detect env_id. Please specify it."}],
-        }
+        return {"status": "error", "content": [{"text": "❌ Could not auto-detect env_id. Please specify it."}]}
 
     algo_cls = _get_algorithm_class(algorithm)
     model = algo_cls.load(model_path)
@@ -460,11 +603,14 @@ def _action_play(
         Path(vpath).mkdir(parents=True, exist_ok=True)
         env = gym.make(env_id, render_mode="rgb_array")
         env = RecordVideo(env, video_folder=vpath, episode_trigger=lambda x: True)
-    else:
+    elif render:
         env = _make_env(env_id, seed=seed, render_mode="human")
+    else:
+        env = _make_env(env_id, seed=seed, render_mode="rgb_array")
 
     print(f"\n🎬 Playing {algorithm} on {env_id} ({n_episodes} episodes)")
 
+    content = []
     for ep in range(n_episodes):
         obs, info = env.reset(seed=seed + ep)
         done = False
@@ -480,19 +626,82 @@ def _action_play(
 
         print(f"  Episode {ep + 1}: reward={total_reward:.2f}, steps={steps}")
 
+    # If rgb_array mode, render final state as image for the agent to see
+    if not render and not record_video:
+        grid_img = _render_multiple_frames(env, model, seed=seed, n_frames=4, frame_interval=15)
+        if grid_img:
+            content.append(grid_img)
+
     env.close()
 
     text = f"✅ Played {n_episodes} episodes of {env_id}"
     if record_video:
         text += f"\n   Videos saved to: {vpath}"
 
-    return {"status": "success", "content": [{"text": text}]}
+    content.insert(0, {"text": text})
+    return {"status": "success", "content": content}
+
+
+def _action_render_frame(
+    env_id: str,
+    model_path: str = None,
+    algorithm: str = None,
+    seed: int = 42,
+    steps: int = 50,
+    n_frames: int = 4,
+    frame_interval: int = 20,
+) -> Dict[str, Any]:
+    """Render frames from an environment and return as native images.
+
+    This is the 'eyes' for the agent — it can see what the RL agent is doing.
+    """
+    if algorithm is None and model_path:
+        for algo_name in ALGORITHMS:
+            if algo_name in str(model_path).upper():
+                algorithm = algo_name
+                break
+    if algorithm is None:
+        algorithm = "PPO"
+
+    env = _make_env(env_id, seed=seed, render_mode="rgb_array")
+
+    content = []
+
+    if model_path:
+        # Render with trained model
+        algo_cls = _get_algorithm_class(algorithm)
+        model = algo_cls.load(model_path)
+
+        grid_img = _render_multiple_frames(env, model, seed=seed, n_frames=n_frames, frame_interval=frame_interval)
+        if grid_img:
+            content.append({"text": f"📸 {n_frames} frames from {env_id} with trained {algorithm} agent (every {frame_interval} steps):"})
+            content.append(grid_img)
+        else:
+            content.append({"text": "⚠ Could not render frames (env may not support rgb_array)"})
+    else:
+        # Render with random actions
+        import numpy as np
+        obs, _ = env.reset(seed=seed)
+
+        frame = env.render()
+        if frame is not None and isinstance(frame, np.ndarray):
+            from PIL import Image
+            img = Image.fromarray(frame)
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            content.append({"text": f"📸 Initial frame from {env_id} (no model, random state):"})
+            content.append({"image": {"format": "png", "source": {"bytes": buf.getvalue()}}})
+        else:
+            content.append({"text": "⚠ Could not render (env may not support rgb_array)"})
+
+    env.close()
+    return {"status": "success", "content": content}
 
 
 def _action_create_env(
     env_name: str,
     reward_code: str,
-    obs_dim: int = 4,
+    obs_dim: Any = 4,
     act_dim: int = 1,
     act_type: str = "continuous",
     max_steps: int = 1000,
@@ -502,27 +711,38 @@ def _action_create_env(
 ) -> Dict[str, Any]:
     """Create a custom Gymnasium environment from Python code.
 
-    You can provide either:
-    1. Just `reward_code` — a simple reward function. The env auto-manages state as a numpy array.
-    2. Full `step_code` + `reset_code` — complete control over dynamics.
-
-    reward_code signature: def reward(state, action) -> (next_state, reward, terminated)
-    step_code signature:   def step(self, action) -> (obs, reward, terminated, truncated, info)
-    reset_code signature:  def reset(self, seed=None, options=None) -> (obs, info)
+    obs_dim can be:
+    - int: flat vector (e.g., 4)
+    - tuple/list: image shape (e.g., (84, 84, 3) for CNN)
     """
     RL_CUSTOM_ENVS_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Handle obs_dim as tuple for image observations
+    if isinstance(obs_dim, (list, tuple)):
+        obs_shape = tuple(obs_dim)
+        obs_shape_str = str(obs_shape)
+        is_image = len(obs_shape) >= 2
+    else:
+        obs_shape = (int(obs_dim),)
+        obs_shape_str = f"({int(obs_dim)},)"
+        is_image = False
 
     if act_type == "continuous":
         action_space_code = f"spaces.Box(low=-1.0, high=1.0, shape=({act_dim},), dtype=np.float32)"
     else:
         action_space_code = f"spaces.Discrete({act_dim})"
 
+    # Observation space
+    if is_image:
+        obs_space_code = f"spaces.Box(low=0, high=255, shape={obs_shape_str}, dtype=np.uint8)"
+    else:
+        obs_space_code = f"spaces.Box(low=-np.inf, high=np.inf, shape={obs_shape_str}, dtype=np.float32)"
+
     # Build the environment class
     if step_code and reset_code:
-        # Full custom env
         env_code = f'''"""Custom RL Environment: {env_name}
 {description}
-Generated by DevDuck RL Tools on {datetime.now().isoformat()}
+Generated by DevDuck on {datetime.now().isoformat()}
 """
 import numpy as np
 import gymnasium as gym
@@ -537,11 +757,11 @@ class {env_name.title().replace("_", "")}Env(gym.Env):
     def __init__(self, render_mode=None):
         super().__init__()
         self.render_mode = render_mode
-        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=({obs_dim},), dtype=np.float32)
+        self.observation_space = {obs_space_code}
         self.action_space = {action_space_code}
         self.max_steps = {max_steps}
         self.current_step = 0
-        self.state = np.zeros({obs_dim}, dtype=np.float32)
+        self.state = np.zeros({obs_shape_str}, dtype=np.float32)
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
@@ -554,19 +774,23 @@ class {env_name.title().replace("_", "")}Env(gym.Env):
 
     def render(self):
         if self.render_mode == "rgb_array":
-            # Simple visualization: 64x64 grayscale from state
+            state = self.state
+            if state.ndim >= 2 and state.shape[-1] in (1, 3):
+                return np.clip(state, 0, 255).astype(np.uint8)
+            # Fallback: simple bar visualization
             img = np.zeros((64, 64, 3), dtype=np.uint8)
-            for i, val in enumerate(self.state[:min(len(self.state), 64)]):
+            flat = state.flatten()
+            for i, val in enumerate(flat[:64]):
                 col = int(np.clip(abs(val) * 255, 0, 255))
-                img[i * (64 // {obs_dim}):(i + 1) * (64 // {obs_dim}), :, :] = col
+                h = 64 // max(len(flat), 1)
+                img[i * h:(i + 1) * h, :, :] = col
             return img
         return None
 '''
     else:
-        # Simple reward-only env (auto state management)
         env_code = f'''"""Custom RL Environment: {env_name}
 {description}
-Generated by DevDuck RL Tools on {datetime.now().isoformat()}
+Generated by DevDuck on {datetime.now().isoformat()}
 """
 import numpy as np
 import gymnasium as gym
@@ -578,44 +802,53 @@ from gymnasium import spaces
 
 
 class {env_name.title().replace("_", "")}Env(gym.Env):
-    """Custom environment: {env_name}
-    Uses auto-managed state with user-defined reward function.
-    """
+    """Custom environment: {env_name} — auto-managed state with user reward function."""
 
     metadata = {{"render_modes": ["human", "rgb_array"], "render_fps": 30}}
 
     def __init__(self, render_mode=None):
         super().__init__()
         self.render_mode = render_mode
-        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=({obs_dim},), dtype=np.float32)
+        self.observation_space = {obs_space_code}
         self.action_space = {action_space_code}
         self.max_steps = {max_steps}
         self.current_step = 0
-        self.state = np.zeros({obs_dim}, dtype=np.float32)
+        self.state = np.zeros({obs_shape_str}, dtype={"np.uint8" if is_image else "np.float32"})
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         self.current_step = 0
-        self.state = self.np_random.uniform(low=-0.5, high=0.5, size=({obs_dim},)).astype(np.float32)
+        self.state = self.np_random.{"integers(0, 256, size=" + obs_shape_str + ").astype(np.uint8)" if is_image else "uniform(low=-0.5, high=0.5, size=" + obs_shape_str + ").astype(np.float32)"}
         return self.state.copy(), {{}}
 
     def step(self, action):
         self.current_step += 1
-        action = np.asarray(action, dtype=np.float32).flatten()
+        action = np.asarray(action).flatten() if not isinstance(action, (int, np.integer)) else action
 
-        # Call user reward function
         next_state, rew, terminated = reward(self.state, action)
-        self.state = np.asarray(next_state, dtype=np.float32)
+        self.state = np.asarray(next_state, dtype={"np.uint8" if is_image else "np.float32"})
 
         truncated = self.current_step >= self.max_steps
         return self.state.copy(), float(rew), bool(terminated), truncated, {{}}
 
     def render(self):
         if self.render_mode == "rgb_array":
+            state = self.state
+            if state.ndim >= 2 and state.shape[-1] in (1, 3):
+                return np.clip(state, 0, 255).astype(np.uint8)
+            if state.ndim >= 2:
+                # 2D grid: normalize to grayscale image
+                norm = ((state - state.min()) / max(state.max() - state.min(), 1e-8) * 255).astype(np.uint8)
+                if norm.ndim == 2:
+                    return np.stack([norm, norm, norm], axis=-1)
+                return norm
+            # 1D: bar visualization
             img = np.zeros((64, 64, 3), dtype=np.uint8)
-            for i, val in enumerate(self.state[:min(len(self.state), 64)]):
+            flat = state.flatten()
+            for i, val in enumerate(flat[:64]):
                 col = int(np.clip(abs(val) * 255, 0, 255))
-                img[i * (64 // max({obs_dim}, 1)):(i + 1) * (64 // max({obs_dim}, 1)), :, :] = col
+                h = 64 // max(len(flat), 1)
+                img[i * h:(i + 1) * h, :, :] = col
             return img
         return None
 '''
@@ -625,33 +858,51 @@ class {env_name.title().replace("_", "")}Env(gym.Env):
     with open(env_file, "w") as f:
         f.write(env_code)
 
-    # Load it immediately
+    # Load and validate
     try:
         _load_custom_env(env_name, env_file)
 
-        # Validate it works
-        test_env = _custom_envs[env_name](render_mode=None)
+        test_env = _custom_envs[env_name](render_mode="rgb_array")
         obs, info = test_env.reset(seed=42)
         action = test_env.action_space.sample()
         obs2, rew, term, trunc, info = test_env.step(action)
+
+        # Render initial frame
+        content = []
+        frame = test_env.render()
         test_env.close()
+
+        policy_hint = "CnnPolicy" if is_image else "MlpPolicy"
+        algo_hint = "DQN" if act_type == "discrete" else "PPO"
 
         summary = (
             f"✅ Custom environment '{env_name}' created and validated!\n"
             f"   File: {env_file}\n"
-            f"   Obs space: Box({obs_dim},)\n"
-            f"   Action space: {'Box' if act_type == 'continuous' else 'Discrete'}({act_dim})\n"
+            f"   Obs space: {test_env.observation_space}\n"
+            f"   Action space: {test_env.action_space}\n"
             f"   Max steps: {max_steps}\n"
-            f"   Test: obs={obs[:3]}..., reward={rew:.4f}\n"
-            f"\n   Train with: rl(action='train', env_id='custom:{env_name}', algorithm='PPO')"
+            f"   Test step: obs_shape={obs2.shape}, reward={rew:.4f}\n"
+            f"\n   Train with: rl(action='train', env_id='custom:{env_name}', algorithm='{algo_hint}', policy_type='{policy_hint}')"
         )
+        content.append({"text": summary})
 
-        return {"status": "success", "content": [{"text": summary}]}
+        # Add rendered frame
+        if frame is not None:
+            import numpy as np
+            from PIL import Image
+            if isinstance(frame, np.ndarray):
+                img = Image.fromarray(frame)
+                buf = io.BytesIO()
+                img.save(buf, format="PNG")
+                content.append({"text": "📸 Initial render:"})
+                content.append({"image": {"format": "png", "source": {"bytes": buf.getvalue()}}})
+
+        return {"status": "success", "content": content}
 
     except Exception as e:
         return {
             "status": "error",
-            "content": [{"text": f"❌ Environment validation failed:\n{traceback.format_exc()}\n\nFile saved at {env_file} — fix the code and try again."}],
+            "content": [{"text": f"❌ Environment validation failed:\n{traceback.format_exc()}\n\nFile saved at {env_file} — fix and retry."}],
         }
 
 
@@ -659,7 +910,6 @@ def _action_list_envs(category: str = None) -> Dict[str, Any]:
     """List available environments."""
     import gymnasium as gym
 
-    # Built-in Gymnasium envs
     all_envs = gym.envs.registry.keys()
 
     categories = {
@@ -672,14 +922,12 @@ def _action_list_envs(category: str = None) -> Dict[str, Any]:
     lines = ["🎮 Available Environments:\n"]
 
     if category and category in categories:
-        # Filter by category
         keywords = categories[category]
         envs = [e for e in sorted(all_envs) if any(k in e for k in keywords)]
         lines.append(f"**{category.upper()}** ({len(envs)}):")
         for e in envs:
             lines.append(f"  • {e}")
     else:
-        # Show all categories with counts
         for cat, keywords in categories.items():
             cat_envs = [e for e in all_envs if any(k in e for k in keywords)]
             lines.append(f"**{cat.upper()}** ({len(cat_envs)}): {', '.join(sorted(cat_envs)[:5])}...")
@@ -700,31 +948,40 @@ def _action_list_envs(category: str = None) -> Dict[str, Any]:
 
 def _action_list_models() -> Dict[str, Any]:
     """List saved RL models."""
-    if not RL_MODELS_DIR.exists():
-        return {"status": "success", "content": [{"text": "No saved models yet. Train one first!"}]}
+    lines = ["📦 Saved Models:\n"]
 
-    lines = ["📦 Saved RL Models:\n"]
+    # RL models
+    if RL_MODELS_DIR.exists():
+        lines.append("**RL Models:**")
+        for model_dir in sorted(RL_MODELS_DIR.iterdir()):
+            if not model_dir.is_dir():
+                continue
 
-    for model_dir in sorted(RL_MODELS_DIR.iterdir()):
-        if not model_dir.is_dir():
-            continue
+            final = model_dir / "final_model.zip"
+            best = model_dir / "best" / "best_model.zip"
 
-        # Check for model files
-        final = model_dir / "final_model.zip"
-        best = model_dir / "best" / "best_model.zip"
+            size_mb = 0
+            if final.exists():
+                size_mb = final.stat().st_size / (1024 * 1024)
+            elif best.exists():
+                size_mb = best.stat().st_size / (1024 * 1024)
 
-        size_mb = 0
-        if final.exists():
-            size_mb = final.stat().st_size / (1024 * 1024)
-        elif best.exists():
-            size_mb = best.stat().st_size / (1024 * 1024)
+            has_final = "✅" if final.exists() else "❌"
+            has_best = "✅" if best.exists() else "❌"
 
-        has_final = "✅" if final.exists() else "❌"
-        has_best = "✅" if best.exists() else "❌"
+            lines.append(f"  📁 **{model_dir.name}** ({size_mb:.1f} MB)")
+            lines.append(f"     Final: {has_final} | Best: {has_best}")
+    else:
+        lines.append("No RL models yet.")
 
-        lines.append(f"  📁 **{model_dir.name}** ({size_mb:.1f} MB)")
-        lines.append(f"     Final: {has_final} | Best: {has_best}")
-        lines.append(f"     Path: {model_dir}")
+    # ML/LLM models
+    if ML_MODELS_DIR.exists():
+        lines.append("\n**ML/LLM Models:**")
+        for model_dir in sorted(ML_MODELS_DIR.iterdir()):
+            if not model_dir.is_dir():
+                continue
+            size_mb = sum(f.stat().st_size for f in model_dir.rglob("*") if f.is_file()) / (1024 * 1024)
+            lines.append(f"  📁 **{model_dir.name}** ({size_mb:.1f} MB)")
 
     return {"status": "success", "content": [{"text": "\n".join(lines)}]}
 
@@ -735,11 +992,11 @@ def _action_sweep(
     n_trials: int = 5,
     total_timesteps: int = 50000,
     seed: int = 42,
+    policy_type: str = None,
 ) -> Dict[str, Any]:
-    """Simple hyperparameter sweep — tries different configs and picks the best."""
+    """Hyperparameter sweep."""
     import numpy as np
 
-    # Define search space per algorithm
     search_spaces = {
         "PPO": [
             {"learning_rate": 3e-4, "n_steps": 2048, "batch_size": 64, "n_epochs": 10, "gamma": 0.99},
@@ -775,8 +1032,6 @@ def _action_sweep(
     }
 
     configs = search_spaces.get(algorithm.upper(), search_spaces["PPO"])[:n_trials]
-
-    # Pad with random variations if n_trials > available configs
     while len(configs) < n_trials:
         base = configs[np.random.randint(0, len(configs))]
         variant = {k: v * np.random.uniform(0.5, 2.0) if isinstance(v, float) else v for k, v in base.items()}
@@ -792,15 +1047,12 @@ def _action_sweep(
 
         try:
             result = _action_train(
-                env_id=env_id,
-                algorithm=algorithm,
-                total_timesteps=total_timesteps,
-                seed=seed + i * 100,
-                hyperparams=hp,
+                env_id=env_id, algorithm=algorithm, total_timesteps=total_timesteps,
+                seed=seed + i * 100, hyperparams=hp,
                 save_name=f"sweep_{env_id.replace('/', '_')}_{algorithm}_trial{i}",
+                policy_type=policy_type,
             )
 
-            # Extract reward from result
             json_data = None
             for content in result.get("content", []):
                 if "json" in content:
@@ -815,7 +1067,6 @@ def _action_sweep(
             print(f"   → Failed: {e}")
             results.append({"trial": i, "config": hp, "mean_reward": -float("inf"), "error": str(e)})
 
-    # Find best
     best = max(results, key=lambda x: x["mean_reward"])
 
     lines = [
@@ -845,7 +1096,7 @@ def _action_continue_training(
     additional_timesteps: int = 100000,
     seed: int = 42,
 ) -> Dict[str, Any]:
-    """Continue training a saved model for more timesteps."""
+    """Continue training a saved model."""
 
     if algorithm is None:
         for algo_name in ALGORITHMS:
@@ -866,10 +1117,7 @@ def _action_continue_training(
                 break
 
     if env_id is None:
-        return {
-            "status": "error",
-            "content": [{"text": "❌ Could not auto-detect env_id. Please specify it."}],
-        }
+        return {"status": "error", "content": [{"text": "❌ Could not auto-detect env_id. Please specify it."}]}
 
     from stable_baselines3.common.vec_env import DummyVecEnv
     from stable_baselines3.common.monitor import Monitor
@@ -886,16 +1134,10 @@ def _action_continue_training(
     progress = _ProgressCallback(additional_timesteps)
     start_time = time.time()
 
-    model.learn(
-        total_timesteps=additional_timesteps,
-        callback=[progress.get()],
-        reset_num_timesteps=False,
-    )
+    model.learn(total_timesteps=additional_timesteps, callback=[progress.get()], reset_num_timesteps=False)
 
-    # Save back
     model.save(model_path)
     elapsed = time.time() - start_time
-
     env.close()
 
     return {
@@ -910,13 +1152,12 @@ def _action_compare(
     n_episodes: int = 20,
     seed: int = 42,
 ) -> Dict[str, Any]:
-    """Compare multiple trained models on the same environment."""
+    """Compare multiple models on the same environment."""
     import numpy as np
 
     results = []
 
     for path in model_paths:
-        # Detect algorithm
         algorithm = "PPO"
         for algo_name in ALGORITHMS:
             if algo_name in str(path).upper():
@@ -926,11 +1167,8 @@ def _action_compare(
         print(f"\n📊 Evaluating: {Path(path).parent.name} ({algorithm})")
 
         eval_result = _action_eval(
-            model_path=path,
-            env_id=env_id,
-            algorithm=algorithm,
-            n_episodes=n_episodes,
-            seed=seed,
+            model_path=path, env_id=env_id, algorithm=algorithm,
+            n_episodes=n_episodes, seed=seed,
         )
 
         json_data = None
@@ -940,28 +1178,434 @@ def _action_compare(
                 break
 
         results.append({
-            "path": path,
-            "name": Path(path).parent.name,
-            "algorithm": algorithm,
+            "path": path, "name": Path(path).parent.name, "algorithm": algorithm,
             **(json_data or {"mean_reward": 0, "std_reward": 0}),
         })
 
-    # Sort by mean reward
     results.sort(key=lambda x: x["mean_reward"], reverse=True)
 
     lines = [f"\n🏆 Model Comparison on {env_id} ({n_episodes} episodes each):\n"]
     for i, r in enumerate(results):
         medal = "🥇" if i == 0 else "🥈" if i == 1 else "🥉" if i == 2 else "  "
-        lines.append(
-            f"  {medal} {r['name']} ({r['algorithm']}): "
-            f"{r['mean_reward']:.2f} ± {r.get('std_reward', 0):.2f}"
+        lines.append(f"  {medal} {r['name']} ({r['algorithm']}): {r['mean_reward']:.2f} ± {r.get('std_reward', 0):.2f}")
+
+    return {
+        "status": "success",
+        "content": [{"text": "\n".join(lines)}, {"json": {"rankings": results}}],
+    }
+
+
+# ─── LLM Fine-tuning Actions ────────────────────────────────────────────────
+
+def _action_finetune(
+    model_id: str,
+    dataset_id: str = None,
+    dataset_path: str = None,
+    method: str = "lora",
+    output_dir: str = None,
+    epochs: int = 3,
+    batch_size: int = 4,
+    learning_rate: float = 2e-4,
+    max_seq_length: int = 512,
+    lora_r: int = 16,
+    lora_alpha: int = 32,
+    lora_dropout: float = 0.05,
+    target_modules: str = None,
+    push_to_hub: str = None,
+    device: str = "auto",
+    fp16: bool = False,
+    bf16: bool = False,
+    gradient_accumulation_steps: int = 4,
+    text_field: str = "text",
+    max_samples: int = None,
+) -> Dict[str, Any]:
+    """Fine-tune a HuggingFace model with LoRA/QLoRA.
+
+    Supports:
+    - LoRA (PEFT) fine-tuning
+    - Full fine-tuning
+    - SFT with TRL
+    """
+    try:
+        import torch
+        from transformers import (
+            AutoModelForCausalLM,
+            AutoTokenizer,
+            TrainingArguments,
+            Trainer,
+            DataCollatorForLanguageModeling,
         )
+        from datasets import load_dataset
+
+    except ImportError as e:
+        return {
+            "status": "error",
+            "content": [{"text": f"❌ Missing dependency: {e}\n\nInstall: pip install transformers datasets torch peft trl accelerate"}],
+        }
+
+    ML_MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    out_dir = output_dir or str(ML_MODELS_DIR / f"{model_id.split('/')[-1]}_{method}")
+
+    print(f"\n🧠 Fine-tuning {model_id}")
+    print(f"   Method: {method}")
+    print(f"   Output: {out_dir}")
+
+    # Resolve device
+    if device == "auto":
+        if torch.cuda.is_available():
+            device_str = "cuda"
+        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            device_str = "mps"
+        else:
+            device_str = "cpu"
+    else:
+        device_str = device
+
+    print(f"   Device: {device_str}")
+
+    # Load dataset
+    if dataset_id:
+        print(f"   Dataset: {dataset_id}")
+        dataset = load_dataset(dataset_id, split="train")
+    elif dataset_path:
+        print(f"   Dataset: {dataset_path}")
+        if dataset_path.endswith(".jsonl") or dataset_path.endswith(".json"):
+            dataset = load_dataset("json", data_files=dataset_path, split="train")
+        elif dataset_path.endswith(".csv"):
+            dataset = load_dataset("csv", data_files=dataset_path, split="train")
+        else:
+            dataset = load_dataset(dataset_path, split="train")
+    else:
+        return {"status": "error", "content": [{"text": "❌ Either dataset_id or dataset_path required"}]}
+
+    if max_samples and max_samples < len(dataset):
+        dataset = dataset.select(range(max_samples))
+        print(f"   Samples: {max_samples} (truncated from {len(dataset)})")
+    else:
+        print(f"   Samples: {len(dataset)}")
+
+    # Load tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
+    # Tokenize dataset
+    def tokenize_fn(examples):
+        texts = examples[text_field] if text_field in examples else examples[list(examples.keys())[0]]
+        return tokenizer(texts, truncation=True, max_length=max_seq_length, padding="max_length")
+
+    tokenized = dataset.map(tokenize_fn, batched=True, remove_columns=dataset.column_names)
+
+    # Load model
+    model_kwargs = {"trust_remote_code": True}
+
+    # Handle precision
+    if device_str == "cpu":
+        model_kwargs["torch_dtype"] = torch.float32
+    elif bf16:
+        model_kwargs["torch_dtype"] = torch.bfloat16
+    elif fp16:
+        model_kwargs["torch_dtype"] = torch.float16
+    else:
+        model_kwargs["torch_dtype"] = torch.float32
+
+    print(f"   Loading model...")
+    model = AutoModelForCausalLM.from_pretrained(model_id, **model_kwargs)
+
+    # Apply LoRA if requested
+    if method in ("lora", "qlora"):
+        try:
+            from peft import LoraConfig, get_peft_model, TaskType
+
+            targets = target_modules.split(",") if target_modules else None
+            lora_config = LoraConfig(
+                r=lora_r,
+                lora_alpha=lora_alpha,
+                lora_dropout=lora_dropout,
+                target_modules=targets,
+                task_type=TaskType.CAUSAL_LM,
+                bias="none",
+            )
+            model = get_peft_model(model, lora_config)
+            trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            total = sum(p.numel() for p in model.parameters())
+            print(f"   LoRA: r={lora_r}, alpha={lora_alpha}")
+            print(f"   Trainable params: {trainable:,} / {total:,} ({trainable/total*100:.2f}%)")
+
+        except ImportError:
+            return {"status": "error", "content": [{"text": "❌ pip install peft required for LoRA"}]}
+
+    # Move to device
+    if device_str != "cpu":
+        model = model.to(device_str)
+
+    # Training arguments
+    training_args = TrainingArguments(
+        output_dir=out_dir,
+        num_train_epochs=epochs,
+        per_device_train_batch_size=batch_size,
+        gradient_accumulation_steps=gradient_accumulation_steps,
+        learning_rate=learning_rate,
+        logging_steps=10,
+        save_strategy="epoch",
+        save_total_limit=2,
+        fp16=(fp16 and device_str == "cuda"),
+        bf16=(bf16 and device_str in ("cuda", "mps")),
+        report_to="none",
+        remove_unused_columns=False,
+        dataloader_pin_memory=False,
+        use_cpu=(device_str == "cpu"),
+    )
+
+    # Data collator
+    data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
+
+    # Train
+    start_time = time.time()
+    trainer = Trainer(
+        model=model,
+        args=training_args,
+        train_dataset=tokenized,
+        data_collator=data_collator,
+    )
+
+    print(f"\n   Training...")
+    train_result = trainer.train()
+    elapsed = time.time() - start_time
+
+    # Save
+    trainer.save_model(out_dir)
+    tokenizer.save_pretrained(out_dir)
+
+    # Push to hub
+    if push_to_hub:
+        print(f"   Pushing to HuggingFace Hub: {push_to_hub}")
+        try:
+            model.push_to_hub(push_to_hub)
+            tokenizer.push_to_hub(push_to_hub)
+        except Exception as e:
+            print(f"   ⚠ Push failed: {e}")
+
+    metrics = train_result.metrics
+    summary = (
+        f"✅ Fine-tuning complete!\n"
+        f"   Model: {model_id}\n"
+        f"   Method: {method}\n"
+        f"   Epochs: {epochs}\n"
+        f"   Time: {elapsed:.1f}s\n"
+        f"   Train loss: {metrics.get('train_loss', 'N/A')}\n"
+        f"   Saved to: {out_dir}\n"
+    )
+    if push_to_hub:
+        summary += f"   Hub: https://huggingface.co/{push_to_hub}\n"
 
     return {
         "status": "success",
         "content": [
-            {"text": "\n".join(lines)},
-            {"json": {"rankings": results}},
+            {"text": summary},
+            {"json": {"output_dir": out_dir, "elapsed": elapsed, "metrics": metrics}},
+        ],
+    }
+
+
+def _action_sft(
+    model_id: str,
+    dataset_id: str = None,
+    dataset_path: str = None,
+    output_dir: str = None,
+    epochs: int = 3,
+    batch_size: int = 4,
+    learning_rate: float = 2e-4,
+    max_seq_length: int = 512,
+    lora_r: int = 16,
+    lora_alpha: int = 32,
+    push_to_hub: str = None,
+    device: str = "auto",
+    max_samples: int = None,
+) -> Dict[str, Any]:
+    """Supervised Fine-Tuning using TRL's SFTTrainer.
+
+    Expects dataset with 'messages' format (chat) or 'text' field.
+    """
+    try:
+        import torch
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+        from trl import SFTConfig, SFTTrainer
+        from datasets import load_dataset
+    except ImportError as e:
+        return {
+            "status": "error",
+            "content": [{"text": f"❌ Missing dependency: {e}\n\nInstall: pip install trl transformers datasets peft"}],
+        }
+
+    ML_MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    out_dir = output_dir or str(ML_MODELS_DIR / f"{model_id.split('/')[-1]}_sft")
+
+    print(f"\n🎓 SFT Training {model_id}")
+
+    # Resolve device
+    if device == "auto":
+        if torch.cuda.is_available():
+            device_str = "cuda"
+        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            device_str = "mps"
+        else:
+            device_str = "cpu"
+    else:
+        device_str = device
+
+    # Load dataset
+    if dataset_id:
+        dataset = load_dataset(dataset_id, split="train")
+    elif dataset_path:
+        if dataset_path.endswith((".jsonl", ".json")):
+            dataset = load_dataset("json", data_files=dataset_path, split="train")
+        else:
+            dataset = load_dataset(dataset_path, split="train")
+    else:
+        return {"status": "error", "content": [{"text": "❌ Either dataset_id or dataset_path required"}]}
+
+    if max_samples and max_samples < len(dataset):
+        dataset = dataset.select(range(max_samples))
+
+    print(f"   Dataset: {len(dataset)} samples")
+    print(f"   Device: {device_str}")
+
+    # Load model + tokenizer
+    tokenizer = AutoTokenizer.from_pretrained(model_id, trust_remote_code=True)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
+    model = AutoModelForCausalLM.from_pretrained(
+        model_id,
+        trust_remote_code=True,
+        torch_dtype=torch.float32 if device_str == "cpu" else torch.bfloat16,
+    )
+
+    # LoRA config
+    peft_config = None
+    try:
+        from peft import LoraConfig
+        peft_config = LoraConfig(
+            r=lora_r,
+            lora_alpha=lora_alpha,
+            lora_dropout=0.05,
+            task_type="CAUSAL_LM",
+        )
+        print(f"   LoRA: r={lora_r}, alpha={lora_alpha}")
+    except ImportError:
+        print("   ⚠ peft not installed — full fine-tuning")
+
+    # SFT Config
+    sft_config = SFTConfig(
+        output_dir=out_dir,
+        num_train_epochs=epochs,
+        per_device_train_batch_size=batch_size,
+        learning_rate=learning_rate,
+        max_seq_length=max_seq_length,
+        logging_steps=10,
+        save_strategy="epoch",
+        save_total_limit=2,
+        report_to="none",
+        use_cpu=(device_str == "cpu"),
+    )
+
+    start_time = time.time()
+
+    trainer = SFTTrainer(
+        model=model,
+        args=sft_config,
+        train_dataset=dataset,
+        processing_class=tokenizer,
+        peft_config=peft_config,
+    )
+
+    print(f"   Training...")
+    train_result = trainer.train()
+    elapsed = time.time() - start_time
+
+    trainer.save_model(out_dir)
+    tokenizer.save_pretrained(out_dir)
+
+    if push_to_hub:
+        try:
+            trainer.push_to_hub(push_to_hub)
+        except Exception as e:
+            print(f"   ⚠ Push failed: {e}")
+
+    metrics = train_result.metrics
+    summary = (
+        f"✅ SFT complete!\n"
+        f"   Model: {model_id}\n"
+        f"   Epochs: {epochs} | Samples: {len(dataset)}\n"
+        f"   Time: {elapsed:.1f}s\n"
+        f"   Train loss: {metrics.get('train_loss', 'N/A')}\n"
+        f"   Saved to: {out_dir}"
+    )
+
+    return {
+        "status": "success",
+        "content": [{"text": summary}, {"json": {"output_dir": out_dir, "elapsed": elapsed, "metrics": metrics}}],
+    }
+
+
+def _action_inference(
+    model_path: str,
+    prompt: str,
+    max_new_tokens: int = 256,
+    temperature: float = 0.7,
+    device: str = "auto",
+) -> Dict[str, Any]:
+    """Run inference on a fine-tuned model."""
+    try:
+        import torch
+        from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
+    except ImportError as e:
+        return {"status": "error", "content": [{"text": f"❌ Missing: {e}"}]}
+
+    if device == "auto":
+        if torch.cuda.is_available():
+            device_str = "cuda"
+        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            device_str = "mps"
+        else:
+            device_str = "cpu"
+    else:
+        device_str = device
+
+    print(f"🤖 Running inference from {model_path} on {device_str}")
+
+    tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_path,
+        trust_remote_code=True,
+        torch_dtype=torch.float32 if device_str == "cpu" else torch.bfloat16,
+    )
+
+    if device_str != "cpu":
+        model = model.to(device_str)
+
+    pipe = pipeline(
+        "text-generation",
+        model=model,
+        tokenizer=tokenizer,
+        max_new_tokens=max_new_tokens,
+        temperature=temperature,
+        do_sample=temperature > 0,
+        device=device_str if device_str != "cpu" else -1,
+    )
+
+    start_time = time.time()
+    output = pipe(prompt)
+    elapsed = time.time() - start_time
+
+    generated_text = output[0]["generated_text"]
+
+    return {
+        "status": "success",
+        "content": [
+            {"text": f"🤖 Generated ({elapsed:.2f}s):\n\n{generated_text}"},
+            {"json": {"text": generated_text, "elapsed": elapsed}},
         ],
     }
 
@@ -979,6 +1623,7 @@ def _indent(code: str, spaces: int) -> str:
 @tool
 def rl(
     action: str,
+    # RL params
     env_id: str = None,
     algorithm: str = "PPO",
     total_timesteps: int = 100000,
@@ -988,6 +1633,7 @@ def rl(
     n_envs: int = 1,
     eval_freq: int = 10000,
     device: str = "auto",
+    policy_type: str = None,
     model_path: str = None,
     n_episodes: int = 20,
     deterministic: bool = True,
@@ -1007,14 +1653,43 @@ def rl(
     n_trials: int = 5,
     additional_timesteps: int = 100000,
     model_paths: str = None,
+    # Render frame params
+    steps: int = 50,
+    n_frames: int = 4,
+    frame_interval: int = 20,
+    # LLM fine-tune params
+    model_id: str = None,
+    dataset_id: str = None,
+    dataset_path: str = None,
+    output_dir: str = None,
+    method: str = "lora",
+    epochs: int = 3,
+    batch_size: int = 4,
+    learning_rate: float = 2e-4,
+    max_seq_length: int = 512,
+    lora_r: int = 16,
+    lora_alpha: int = 32,
+    lora_dropout: float = 0.05,
+    target_modules: str = None,
+    push_to_hub: str = None,
+    fp16: bool = False,
+    bf16: bool = False,
+    gradient_accumulation_steps: int = 4,
+    text_field: str = "text",
+    max_samples: int = None,
+    # Inference params
+    prompt: str = None,
+    max_new_tokens: int = 256,
+    temperature: float = 0.7,
 ) -> Dict[str, Any]:
     """
-    🎮 Reinforcement Learning toolkit for DevDuck.
+    🎮 Reinforcement Learning & ML toolkit for DevDuck.
 
     Train, evaluate, and deploy RL agents using Stable-Baselines3 + Gymnasium.
-    Create custom environments from reward functions. Learn ANYTHING.
+    Fine-tune LLMs with LoRA/SFT. Create custom environments from reward functions.
+    Visual debugging: rendered frames returned as native images.
 
-    Actions:
+    RL Actions:
         train         - Train an RL agent (PPO, A2C, DQN, SAC, TD3, DDPG)
         eval          - Evaluate a trained model
         play          - Watch a trained agent play (render or record video)
@@ -1024,67 +1699,50 @@ def rl(
         sweep         - Hyperparameter sweep (tries N configs, picks best)
         continue      - Continue training a saved model for more steps
         compare       - Compare multiple models on the same environment
+        render_frame  - Render env frames as images (visual debugging)
 
-    Args:
-        action: One of the actions above
-        env_id: Gymnasium env ID (e.g., "CartPole-v1") or "custom:name"
-        algorithm: RL algorithm — PPO, A2C, DQN, SAC, TD3, DDPG
-        total_timesteps: Training budget
-        seed: Random seed
-        hyperparams: JSON string of hyperparameters
-        save_name: Custom name for saved model
-        n_envs: Number of parallel training environments
-        eval_freq: Evaluate every N timesteps
-        device: "auto", "cpu", "cuda", "mps"
-        model_path: Path to a saved model (for eval/play/continue)
-        n_episodes: Number of episodes for eval/play
-        deterministic: Use deterministic actions for eval
-        render: Render environment during play
-        record_video: Record video during play
-        video_path: Custom video save path
-        env_name: Name for custom environment
-        reward_code: Python code for reward function
-        obs_dim: Observation space dimension (custom env)
-        act_dim: Action space dimension (custom env)
-        act_type: "continuous" or "discrete" (custom env)
-        max_steps: Max steps per episode (custom env)
-        description: Description for custom env
-        reset_code: Custom reset code (advanced custom env)
-        step_code: Custom step code (advanced custom env)
-        category: Filter for list_envs (classic, box2d, mujoco, atari)
-        n_trials: Number of trials for sweep
-        additional_timesteps: Extra steps for continue action
-        model_paths: Comma-separated model paths for compare
+    LLM Actions:
+        finetune      - Fine-tune with LoRA/QLoRA (transformers + PEFT)
+        sft           - Supervised Fine-Tuning with TRL
+        inference     - Run inference on a fine-tuned model
+
+    Common:
+        list_models   - List all saved models (RL + ML)
 
     Examples:
-        # Train CartPole
+        # RL: Train CartPole
         rl(action="train", env_id="CartPole-v1", algorithm="PPO", total_timesteps=50000)
 
-        # Create a custom balancing environment
-        rl(action="create_env", env_name="balance",
-           reward_code="def reward(state, action):\\n    angle = state[0]\\n    return state, -abs(angle), abs(angle) > 1.0",
-           obs_dim=4, act_dim=1)
+        # RL: Create custom env with image obs for CNN
+        rl(action="create_env", env_name="snake", reward_code="...", obs_dim=4, act_dim=4, act_type="discrete")
+        rl(action="train", env_id="custom:snake", algorithm="DQN", policy_type="CnnPolicy")
 
-        # Train on custom env
-        rl(action="train", env_id="custom:balance", algorithm="SAC")
+        # RL: Visual debug — see what the agent sees
+        rl(action="render_frame", env_id="CartPole-v1", model_path="rl_models/.../best_model")
 
-        # Evaluate
-        rl(action="eval", model_path="rl_models/CartPole-v1_PPO/best/best_model")
+        # LLM: LoRA fine-tune
+        rl(action="finetune", model_id="Qwen/Qwen2.5-0.5B", dataset_id="tatsu-lab/alpaca", method="lora")
+
+        # LLM: SFT with TRL
+        rl(action="sft", model_id="meta-llama/Llama-3.2-1B", dataset_path="./data.jsonl")
+
+        # LLM: Run inference
+        rl(action="inference", model_path="./ml_models/my_model", prompt="Hello world")
 
         # Hyperparameter sweep
         rl(action="sweep", env_id="LunarLander-v3", n_trials=8)
     """
     try:
-        # Parse hyperparams from JSON string if provided
         hp = json.loads(hyperparams) if hyperparams else None
 
+        # ── RL Actions ──
         if action == "train":
             if not env_id:
                 return {"status": "error", "content": [{"text": "❌ env_id required for training"}]}
             return _action_train(
                 env_id=env_id, algorithm=algorithm, total_timesteps=total_timesteps,
                 seed=seed, hyperparams=hp, save_name=save_name, n_envs=n_envs,
-                eval_freq=eval_freq, device=device,
+                eval_freq=eval_freq, device=device, policy_type=policy_type,
             )
 
         elif action == "eval":
@@ -1100,7 +1758,16 @@ def rl(
                 return {"status": "error", "content": [{"text": "❌ model_path required for play"}]}
             return _action_play(
                 model_path=model_path, env_id=env_id, algorithm=algorithm,
-                n_episodes=n_episodes, seed=seed, record_video=record_video, video_path=video_path,
+                n_episodes=n_episodes, seed=seed, record_video=record_video,
+                video_path=video_path, render=render,
+            )
+
+        elif action == "render_frame":
+            if not env_id:
+                return {"status": "error", "content": [{"text": "❌ env_id required"}]}
+            return _action_render_frame(
+                env_id=env_id, model_path=model_path, algorithm=algorithm,
+                seed=seed, steps=steps, n_frames=n_frames, frame_interval=frame_interval,
             )
 
         elif action == "create_env":
@@ -1125,7 +1792,7 @@ def rl(
                 return {"status": "error", "content": [{"text": "❌ env_id required for sweep"}]}
             return _action_sweep(
                 env_id=env_id, algorithm=algorithm, n_trials=n_trials,
-                total_timesteps=total_timesteps, seed=seed,
+                total_timesteps=total_timesteps, seed=seed, policy_type=policy_type,
             )
 
         elif action == "continue":
@@ -1144,14 +1811,49 @@ def rl(
             paths = [p.strip() for p in model_paths.split(",")]
             return _action_compare(model_paths=paths, env_id=env_id, n_episodes=n_episodes, seed=seed)
 
+        # ── LLM Actions ──
+        elif action == "finetune":
+            if not model_id:
+                return {"status": "error", "content": [{"text": "❌ model_id required (e.g., 'Qwen/Qwen2.5-0.5B')"}]}
+            return _action_finetune(
+                model_id=model_id, dataset_id=dataset_id, dataset_path=dataset_path,
+                method=method, output_dir=output_dir, epochs=epochs, batch_size=batch_size,
+                learning_rate=learning_rate, max_seq_length=max_seq_length,
+                lora_r=lora_r, lora_alpha=lora_alpha, lora_dropout=lora_dropout,
+                target_modules=target_modules, push_to_hub=push_to_hub, device=device,
+                fp16=fp16, bf16=bf16, gradient_accumulation_steps=gradient_accumulation_steps,
+                text_field=text_field, max_samples=max_samples,
+            )
+
+        elif action == "sft":
+            if not model_id:
+                return {"status": "error", "content": [{"text": "❌ model_id required"}]}
+            return _action_sft(
+                model_id=model_id, dataset_id=dataset_id, dataset_path=dataset_path,
+                output_dir=output_dir, epochs=epochs, batch_size=batch_size,
+                learning_rate=learning_rate, max_seq_length=max_seq_length,
+                lora_r=lora_r, lora_alpha=lora_alpha, push_to_hub=push_to_hub,
+                device=device, max_samples=max_samples,
+            )
+
+        elif action == "inference":
+            if not model_path:
+                return {"status": "error", "content": [{"text": "❌ model_path required for inference"}]}
+            if not prompt:
+                return {"status": "error", "content": [{"text": "❌ prompt required for inference"}]}
+            return _action_inference(
+                model_path=model_path, prompt=prompt, max_new_tokens=max_new_tokens,
+                temperature=temperature, device=device,
+            )
+
         else:
             return {
                 "status": "error",
-                "content": [{"text": f"❌ Unknown action: {action}. Available: train, eval, play, create_env, list_envs, list_models, sweep, continue, compare"}],
+                "content": [{"text": f"❌ Unknown action: {action}.\n\nRL: train, eval, play, render_frame, create_env, list_envs, list_models, sweep, continue, compare\nLLM: finetune, sft, inference"}],
             }
 
     except Exception as e:
         return {
             "status": "error",
-            "content": [{"text": f"❌ RL Error:\n{traceback.format_exc()}"}],
+            "content": [{"text": f"❌ Error:\n{traceback.format_exc()}"}],
         }
