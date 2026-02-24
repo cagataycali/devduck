@@ -56,6 +56,14 @@ from strands import tool
 
 # ─── Constants ───────────────────────────────────────────────────────────────
 
+# CRITICAL: Prevent pygame/SDL2 from initializing display on non-main threads.
+# On macOS, pygame.display.init() MUST run on the main thread (AppKit requirement).
+# Since SB3 callbacks and our tool calls run on background threads, we force SDL
+# to use a dummy video driver. This avoids the NSInternalInconsistencyException
+# crash: "API misuse: setting the main menu on a non-main thread."
+# We exclusively use rgb_array + PIL for rendering — no pygame window needed.
+os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+
 RL_MODELS_DIR = Path(os.getenv("DEVDUCK_RL_MODELS_DIR", "./rl_models"))
 RL_CUSTOM_ENVS_DIR = Path(os.getenv("DEVDUCK_RL_ENVS_DIR", "./rl_envs"))
 RL_LOGS_DIR = Path(os.getenv("DEVDUCK_RL_LOGS_DIR", "./rl_logs"))
@@ -501,7 +509,8 @@ def _action_eval(
     algo_cls = _get_algorithm_class(algorithm)
     model = algo_cls.load(model_path)
 
-    render_mode = "human" if render else None
+    # Always use rgb_array — never "human" mode (pygame crashes on macOS non-main threads)
+    render_mode = "rgb_array" if render else None
     env = _make_env(env_id, seed=seed, render_mode=render_mode)
 
     print(f"\n🎯 Evaluating {algorithm} on {env_id} ({n_episodes} episodes)")
@@ -542,20 +551,33 @@ def _action_eval(
         f"   Success rate (reward > 0): {(rewards > 0).mean() * 100:.1f}%"
     )
 
+    content = [
+        {"text": summary},
+        {"json": {
+            "mean_reward": float(rewards.mean()),
+            "std_reward": float(rewards.std()),
+            "min_reward": float(rewards.min()),
+            "max_reward": float(rewards.max()),
+            "mean_length": float(lengths.mean()),
+            "success_rate": float((rewards > 0).mean()),
+            "all_rewards": [float(r) for r in rewards],
+        }},
+    ]
+
+    # If render requested, return visual frames as images
+    if render and render_mode == "rgb_array":
+        try:
+            vis_env = _make_env(env_id, seed=seed, render_mode="rgb_array")
+            grid_img = _render_multiple_frames(vis_env, model, seed=seed, n_frames=4, frame_interval=20)
+            vis_env.close()
+            if grid_img:
+                content.append(grid_img)
+        except Exception:
+            pass
+
     return {
         "status": "success",
-        "content": [
-            {"text": summary},
-            {"json": {
-                "mean_reward": float(rewards.mean()),
-                "std_reward": float(rewards.std()),
-                "min_reward": float(rewards.min()),
-                "max_reward": float(rewards.max()),
-                "mean_length": float(lengths.mean()),
-                "success_rate": float((rewards > 0).mean()),
-                "all_rewards": [float(r) for r in rewards],
-            }},
-        ],
+        "content": content,
     }
 
 
@@ -569,7 +591,12 @@ def _action_play(
     video_path: str = None,
     render: bool = False,
 ) -> Dict[str, Any]:
-    """Watch a trained agent play. Returns frames as images if not rendering live."""
+    """Watch a trained agent play. Always returns frames as images (rgb_array).
+
+    NOTE: render=True is ignored on macOS because pygame.display.init() crashes
+    when called from non-main threads (AppKit requires main thread for UI).
+    We always use rgb_array + PIL to avoid SDL2/pygame entirely.
+    """
 
     if algorithm is None:
         for algo_name in ALGORITHMS:
@@ -603,9 +630,8 @@ def _action_play(
         Path(vpath).mkdir(parents=True, exist_ok=True)
         env = gym.make(env_id, render_mode="rgb_array")
         env = RecordVideo(env, video_folder=vpath, episode_trigger=lambda x: True)
-    elif render:
-        env = _make_env(env_id, seed=seed, render_mode="human")
     else:
+        # Always use rgb_array — never pygame "human" mode (crashes on macOS threads)
         env = _make_env(env_id, seed=seed, render_mode="rgb_array")
 
     print(f"\n🎬 Playing {algorithm} on {env_id} ({n_episodes} episodes)")
@@ -626,8 +652,8 @@ def _action_play(
 
         print(f"  Episode {ep + 1}: reward={total_reward:.2f}, steps={steps}")
 
-    # If rgb_array mode, render final state as image for the agent to see
-    if not render and not record_video:
+    # Render frames as images for the agent to see
+    if not record_video:
         grid_img = _render_multiple_frames(env, model, seed=seed, n_frames=4, frame_interval=15)
         if grid_img:
             content.append(grid_img)
@@ -637,6 +663,8 @@ def _action_play(
     text = f"✅ Played {n_episodes} episodes of {env_id}"
     if record_video:
         text += f"\n   Videos saved to: {vpath}"
+    if render:
+        text += f"\n   ℹ️ Live rendering skipped (macOS thread safety). Returning image frames instead."
 
     content.insert(0, {"text": text})
     return {"status": "success", "content": content}
