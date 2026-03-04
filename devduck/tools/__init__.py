@@ -31,6 +31,10 @@ from .use_computer import use_computer
 from .dialog import dialog
 from .sqlite_memory import sqlite_memory
 from .scheduler import scheduler
+from .dialog import dialog
+from .manage_messages import manage_messages
+from .manage_tools import manage_tools
+from .rich_interface import rich_interface
 
 # Optional Tools
 try:
@@ -65,6 +69,10 @@ try:
         "dialog",
         "sqlite_memory",
         "scheduler",
+        "dialog",
+        "manage_messages",
+        "manage_tools",
+        "rich_interface",
     ]
 except ImportError:
     __all__ = [
@@ -95,6 +103,8 @@ except ImportError:
         "dialog",
         "sqlite_memory",
         "scheduler",
+        "dialog",
         "manage_messages",
         "manage_tools",
+        "rich_interface",
     ]
