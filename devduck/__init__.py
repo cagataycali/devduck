@@ -4034,7 +4034,7 @@ Claude Desktop Config:
     )
 
     # Query argument (for default mode)
-    parser.add_argument("query", nargs="*", help="Query to send to the agent")
+    parser.add_argument("query", nargs="*", default=[], help="Query to send to the agent")
 
     # MCP stdio mode flag
     parser.add_argument(
