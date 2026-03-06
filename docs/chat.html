@@ -421,7 +421,7 @@
 
         function connect() {
             try {
-                ws = new WebSocket('ws://localhost:8080');
+                ws = new WebSocket('ws://localhost:10001');
                 
                 ws.onopen = () => {
                     title.className = 'connected';
@@ -477,7 +477,7 @@
                 
                 ws.onerror = () => {
                     title.className = '';
-                    toast('Connection error. Make sure server is running on port 8080');
+                    toast('Connection error. Make sure server is running on port 10001');
                 };
                 
                 ws.onclose = () => {
