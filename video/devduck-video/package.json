@@ -1,0 +1,25 @@
+{
+  "name": "devduck-video",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "studio": "remotion studio src/index.ts",
+    "render": "remotion render src/index.ts DevDuckIntro out/devduck-intro.mp4",
+    "render:gif": "remotion render src/index.ts DevDuckIntro out/devduck-intro.gif --image-format png --every-nth-frame 2",
+    "upgrade": "remotion upgrade"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@remotion/bundler": "4.0.242",
+    "@remotion/cli": "4.0.242",
+    "@remotion/renderer": "4.0.242",
+    "@types/react": "18.3.18",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "remotion": "4.0.242",
+    "typescript": "5.7.3"
+  }
+}

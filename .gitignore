@@ -11,3 +11,4 @@ _version.py
 google_*.json
 gmail_*.json
 .DS_Store
+node_modules

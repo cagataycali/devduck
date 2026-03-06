@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="duck-animated.svg" alt="DevDuck" width="160" height="160">
+</p>
+
 # 🦆 DevDuck
 
 [![PyPI](https://badge.fury.io/py/devduck.svg)](https://pypi.org/project/devduck/)
@@ -5,6 +9,20 @@
 **Self-modifying AI agent that hot-reloads its own code—builds itself as it runs.**
 
 One Python file that adapts to your environment, fixes itself, and expands capabilities at runtime. Deploy anywhere — terminal, browser, cloud, or all at once in a unified mesh.
+
+<p align="center">
+  <img src="devduck-launcher.jpg" alt="DevDuck Launcher" width="700">
+  <br>
+  <em>DevDuck landing screen — your agent, ready to quack.</em>
+</p>
+
+<p align="center">
+  <video src="https://github.com/cagataycali/devduck/raw/main/devduck-intro.mp4" width="700" controls autoplay muted>
+    Your browser does not support the video tag. <a href="https://redduck.dev/videos/devduck-intro.mp4">Watch the intro video</a>.
+  </video>
+  <br>
+  <em>DevDuck in 90 seconds ▶</em>
+</p>
 
 Learn more: https://duck.nyc
 
