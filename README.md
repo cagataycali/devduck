@@ -24,7 +24,7 @@ One Python file that adapts to your environment, fixes itself, and expands capab
   <em>DevDuck in 90 seconds ▶</em>
 </p>
 
-Learn more: https://duck.nyc
+Learn more: https://dev.duck.nyc
 
 ## 🎬 See It In Action
 
@@ -36,6 +36,7 @@ Learn more: https://duck.nyc
 | 🌊 **TCP Streaming** | Connect via netcat, apps, or other agents | [Watch](https://redduck.dev/videos/tcp.mp4) |
 | 🔗 **Zenoh P2P** | Auto-discover & coordinate multiple DevDucks | Multi-terminal magic ✨ |
 | 🎬 **Session Recording** | Record, replay & resume agent sessions | Time-travel debugging 🕰️ |
+| 🎬 **Asciinema Recording** | Record agent trajectories as `.cast` files | Play anywhere with `asciinema play` 🎥 |
 | 🌙 **Ambient Mode** | Background thinking while you're idle | Auto-explores topics 🧠 |
 | 🔌 **IPC & Tray** | macOS menu bar + Unix socket IPC | ![Demo](docs/mac-os-tray.jpg) |
 | 💬 **Ambient Overlay** | Floating AI input with glassmorphism UI | [Watch](https://redduck.dev/videos/floating-input.mp4) |
@@ -69,6 +70,11 @@ python -c "import devduck; devduck('analyze this code')"
 devduck --record "analyze this codebase"
 # → Exports to /tmp/devduck/recordings/session-*.zip
 
+# Asciinema recording (shareable agent trajectories)
+DEVDUCK_ASCIINEMA=true devduck
+# → Records to /tmp/devduck/casts/devduck-*.cast
+# → Play with: asciinema play /tmp/devduck/casts/devduck-*.cast
+
 # Resume from recorded session
 devduck --resume session-20250202-123456.zip "continue where we left off"
 
@@ -98,6 +104,7 @@ devduck deploy --name my-agent --tools "strands_tools:shell,editor" --launch
 | ☁️ **Deploy CLI** | One-command AgentCore deployment | `devduck deploy --launch` |
 | 🔌 **MCP Client** | Connect to external MCP servers | Set `MCP_SERVERS` env var |
 | 🎬 **Session Recording** | Record & replay entire sessions | `devduck --record` or `session_recorder()` |
+| 🎥 **Asciinema Recording** | Record terminal output as `.cast` files | `DEVDUCK_ASCIINEMA=true devduck` |
 | 💾 **State Time-Travel** | Save/restore agent state | `state_manager(action="export")` |
 | 🌙 **Ambient Mode** | Background thinking when idle | `DEVDUCK_AMBIENT_MODE=true` or type `ambient` |
 | 📝 **Self-Improvement** | Updates own system prompt | `system_prompt(action="add_context", ...)` |
@@ -1007,6 +1014,70 @@ session-20250202-123456.zip
 
 ---
 
+### 🎥 Asciinema Recording (Shareable Agent Trajectories)
+
+**Record agent sessions as `.cast` files** — play them anywhere with `asciinema play`, upload to [asciinema.org](https://asciinema.org), or embed in docs and blog posts.
+
+**Zero dependencies** — asciicast v2 is just JSON Lines. No `asciinema` package needed for recording.
+
+```bash
+# Enable asciinema recording
+DEVDUCK_ASCIINEMA=true devduck
+
+# Custom output directory
+DEVDUCK_CAST_DIR=~/my-casts DEVDUCK_ASCIINEMA=true devduck
+```
+
+**What gets captured:**
+| Event | Description |
+|-------|-------------|
+| 🦆 **User prompts** | Your questions recorded as input events |
+| 📝 **Agent streaming** | Token-by-token text output |
+| 🛠️ **Tool markers** | Visual `───` separators when tools start |
+| ✔/✖ **Tool results** | Completion/failure with durations |
+| 💭 **Thinking** | Reasoning/thinking text (dimmed) |
+| ⏳ **Throttle warnings** | Rate limit notifications |
+
+**Playback & sharing:**
+```bash
+# Play locally (install asciinema for playback only)
+asciinema play /tmp/devduck/casts/devduck-20260306-023100.cast
+
+# Upload to asciinema.org for sharing
+asciinema upload /tmp/devduck/casts/devduck-20260306-023100.cast
+
+# Embed in HTML (via asciinema-player.js)
+# <asciinema-player src="recording.cast" cols="120" rows="40"></asciinema-player>
+
+# Cat (instant dump without timing)
+asciinema cat /tmp/devduck/casts/devduck-20260306-023100.cast
+```
+
+**How it works:**
+
+The `AsciinemaCallbackHandler` is a drop-in replacement for the default `CallbackHandler`. It mirrors all console output exactly while simultaneously writing [asciicast v2](https://docs.asciinema.org/manual/asciicast/v2/) events to a `.cast` file:
+
+```
+devduck-20260306-023100.cast (JSON Lines):
+┌─ {"version": 2, "width": 120, "height": 40, ...}     ← header
+├─ [0.001, "o", "🦆 DevDuck Session Recording\n"]       ← output event
+├─ [0.502, "i", "what is 2+2?"]                         ← input event  
+├─ [0.510, "o", "──────── 🛠️  calculator ────\n"]       ← tool marker
+├─ [1.203, "o", "The answer is 4\n"]                    ← agent output
+└─ [1.205, "o", "✔ calculator completed in 0.69s\n"]    ← tool result
+```
+
+**Configuration:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DEVDUCK_ASCIINEMA` | `false` | Enable asciinema recording |
+| `DEVDUCK_CAST_DIR` | `/tmp/devduck/casts` | Output directory for `.cast` files |
+
+Recording auto-stops and prints the file path when you exit the REPL (`exit`/`quit`/`q`).
+
+---
+
 ### 🌙 Ambient Mode (Background Thinking)
 
 **Continue working in the background** while you're idle:
@@ -1404,6 +1475,8 @@ devduck
 | `SPOTIFY_CLIENT_ID` | - | Spotify client ID |
 | `SPOTIFY_CLIENT_SECRET` | - | Spotify client secret |
 | **Context** | | |
+| `DEVDUCK_ASCIINEMA` | `false` | Enable asciinema `.cast` recording |
+| `DEVDUCK_CAST_DIR` | `/tmp/devduck/casts` | Output directory for `.cast` files |
 | `DEVDUCK_LOG_LINE_COUNT` | `50` | Recent log lines in context |
 | `DEVDUCK_LAST_MESSAGE_COUNT` | `200` | Recent messages in context |
 

@@ -24,8 +24,14 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional, Callable
 from logging.handlers import RotatingFileHandler
 from strands import Agent, tool
-from .callback_handler import callback_handler
 from devduck.tools.manage_tools import manage_tools
+
+# 🎬 Select callback handler: original or asciinema-recording
+if os.getenv("DEVDUCK_ASCIINEMA", "false").lower() == "true":
+    from .asciinema_callback_handler import callback_handler, callback_handler_instance as _cb_instance
+else:
+    from .callback_handler import callback_handler
+    _cb_instance = None
 
 # Try to import dill for better serialization, fall back to pickle
 try:
@@ -417,7 +423,7 @@ class SessionRecorder:
             "tool.result",
             {
                 "name": tool_name,
-                "result_preview": str(result),
+                "result_preview": str(result)[:500],
                 "duration_ms": duration_ms,
             },
             trace_id,
@@ -430,7 +436,7 @@ class SessionRecorder:
         self.event_buffer.record(
             "agent",
             "message",
-            {"role": role, "content_preview": content if content else ""},
+            {"role": role, "content_preview": content[:500] if content else ""},
             trace_id,
         )
 
@@ -3349,6 +3355,9 @@ def interactive():
             if q.lower() in ["exit", "quit", "q"]:
                 if devduck.ambient:
                     devduck.ambient.stop()
+                # 🎬 Stop asciinema recording on exit
+                if _cb_instance and hasattr(_cb_instance, 'stop_recording'):
+                    _cb_instance.stop_recording()
                 print("\n🦆 Goodbye!")
                 break
 
@@ -3440,6 +3449,10 @@ def interactive():
                 continue
 
             # Execute the agent with user input
+            # 🎬 Record user prompt in asciicast
+            if _cb_instance and hasattr(_cb_instance, '_record_input'):
+                _cb_instance._record_input(q)
+                _cb_instance._record_output(f"\n\033[1;33m🦆 \033[0m{q}\n")
             result = ask(q)
 
             # Append to shell history

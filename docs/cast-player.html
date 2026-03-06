@@ -1,0 +1,734 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎬 Cast Player - DevDuck Terminal Recordings</title>
+    <link rel="stylesheet" type="text/css" href="https://unpkg.com/asciinema-player@3.8.0/dist/bundle/asciinema-player.css" />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-tertiary: #1a1a25;
+            --border: rgba(255, 255, 255, 0.08);
+            --text-primary: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.7);
+            --text-muted: rgba(255, 255, 255, 0.4);
+            --accent-purple: #8b5cf6;
+            --accent-blue: #3b82f6;
+            --accent-green: #10b981;
+            --accent-yellow: #f59e0b;
+            --accent-red: #ef4444;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.7;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+            padding: 3rem 2rem;
+            text-align: center;
+            border-bottom: 1px solid var(--border);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 800px;
+            height: 400px;
+            background: radial-gradient(ellipse, rgba(245, 158, 11, 0.15) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .header h1 {
+            font-size: 2.75rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.7) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            position: relative;
+        }
+
+        .header .subtitle {
+            color: var(--text-secondary);
+            font-size: 1.2rem;
+            margin-bottom: 1rem;
+        }
+
+        .header .badges {
+            display: flex;
+            justify-content: center;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.4rem 1rem;
+            border-radius: 2rem;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .badge.green { background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.4); color: var(--accent-green); }
+        .badge.yellow { background: rgba(245, 158, 11, 0.2); border: 1px solid rgba(245, 158, 11, 0.4); color: var(--accent-yellow); }
+        .badge.blue { background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(59, 130, 246, 0.4); color: var(--accent-blue); }
+
+        .nav {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin-top: 1.5rem;
+            position: relative;
+        }
+
+        .nav a {
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+            padding: 0.5rem 0;
+            border-bottom: 2px solid transparent;
+        }
+
+        .nav a:hover { color: var(--text-primary); border-color: var(--accent-yellow); }
+        .nav a.active { color: var(--text-primary); border-color: var(--accent-yellow); }
+
+        /* Container */
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 3rem 2rem;
+        }
+
+        section { margin-bottom: 4rem; }
+
+        h2 {
+            font-size: 1.85rem;
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        h3 {
+            font-size: 1.3rem;
+            margin: 2rem 0 1rem;
+            color: var(--text-primary);
+        }
+
+        p {
+            margin-bottom: 1rem;
+            color: var(--text-secondary);
+        }
+
+        /* Hero */
+        .hero {
+            text-align: center;
+            padding: 4rem 2rem;
+            background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+            border: 1px solid var(--border);
+            border-radius: 1.5rem;
+            margin-bottom: 4rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero-icon {
+            font-size: 5rem;
+            margin-bottom: 1.5rem;
+            position: relative;
+        }
+
+        .hero h2 {
+            border: none;
+            font-size: 2.25rem;
+            margin-bottom: 1rem;
+            justify-content: center;
+        }
+
+        .hero p {
+            font-size: 1.15rem;
+            color: var(--text-secondary);
+            max-width: 650px;
+            margin: 0 auto;
+        }
+
+        /* Drop Zone */
+        .drop-zone {
+            width: 100%;
+            min-height: 280px;
+            border: 2px dashed rgba(255, 255, 255, 0.12);
+            border-radius: 1rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 3rem;
+            transition: all 0.25s ease;
+            cursor: pointer;
+            background: var(--bg-secondary);
+            position: relative;
+        }
+
+        .drop-zone.drag-over {
+            border-color: var(--accent-yellow);
+            background: rgba(245, 158, 11, 0.05);
+            box-shadow: 0 0 40px rgba(245, 158, 11, 0.1);
+        }
+
+        .drop-zone.has-player {
+            border: 1px solid var(--border);
+            padding: 0;
+            min-height: 0;
+            cursor: default;
+            overflow: hidden;
+            border-radius: 1rem;
+        }
+
+        .drop-zone .placeholder { text-align: center; }
+        .drop-zone .placeholder .icon { font-size: 3.5rem; margin-bottom: 1rem; opacity: 0.7; }
+        .drop-zone .placeholder h3 { font-size: 1.3rem; font-weight: 600; margin-bottom: 0.5rem; color: var(--text-primary); }
+        .drop-zone .placeholder p { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1rem; }
+        .drop-zone .placeholder .or { color: var(--text-muted); font-size: 0.8rem; margin: 0.75rem 0; }
+
+        /* Buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.6rem 1.25rem;
+            border-radius: 0.5rem;
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid var(--border);
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        .btn:hover { background: rgba(255, 255, 255, 0.1); }
+
+        .btn.primary {
+            background: var(--accent-yellow);
+            color: #000;
+            border-color: var(--accent-yellow);
+        }
+
+        .btn.primary:hover { background: #d4a800; }
+
+        /* URL bar */
+        .url-bar {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+            width: 100%;
+            max-width: 520px;
+        }
+
+        .url-bar input {
+            flex: 1;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 0.6rem 0.9rem;
+            border-radius: 0.5rem;
+            font-size: 0.85rem;
+            outline: none;
+            transition: border 0.2s;
+        }
+
+        .url-bar input:focus { border-color: var(--accent-yellow); }
+        .url-bar input::placeholder { color: var(--text-muted); }
+
+        /* Player container */
+        #player-container { width: 100%; border-radius: 1rem; overflow: hidden; }
+
+        /* Controls bar */
+        .controls {
+            display: none;
+            width: 100%;
+            padding: 1rem 0;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .controls.visible { display: flex; flex-wrap: wrap; }
+
+        .controls .filename {
+            flex: 1;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* Gallery */
+        .gallery { margin-top: 2rem; }
+
+        .gallery h3 {
+            font-size: 1rem;
+            color: var(--text-muted);
+            margin-bottom: 1rem;
+            font-weight: 500;
+        }
+
+        .gallery-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1rem;
+        }
+
+        .gallery-item {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            padding: 1.25rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .gallery-item:hover {
+            border-color: var(--accent-yellow);
+            background: var(--bg-tertiary);
+            transform: translateY(-1px);
+        }
+
+        .gallery-item .name { font-weight: 600; font-size: 0.9rem; margin-bottom: 0.25rem; }
+        .gallery-item .meta { color: var(--text-muted); font-size: 0.75rem; }
+
+        /* Terminal block */
+        .terminal {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            margin: 1.5rem 0;
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+            font-size: 0.85rem;
+            overflow-x: auto;
+            position: relative;
+        }
+
+        .terminal::before {
+            content: '●  ●  ●';
+            display: block;
+            color: var(--text-muted);
+            font-size: 0.6rem;
+            letter-spacing: 0.3rem;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+
+        .terminal .cmd { color: var(--accent-green); }
+        .terminal .comment { color: var(--text-muted); }
+        .terminal .output { color: var(--text-secondary); }
+
+        /* Feature grid */
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .feature-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 1rem;
+            padding: 1.75rem;
+            transition: all 0.2s;
+        }
+
+        .feature-card:hover {
+            border-color: rgba(255, 255, 255, 0.15);
+            transform: translateY(-2px);
+        }
+
+        .feature-card .icon { font-size: 2rem; margin-bottom: 0.75rem; }
+        .feature-card h4 { font-size: 1.05rem; margin-bottom: 0.5rem; }
+        .feature-card p { font-size: 0.85rem; color: var(--text-muted); margin: 0; }
+
+        /* Toast */
+        .toast {
+            position: fixed;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--accent-yellow);
+            color: #000;
+            padding: 0.6rem 1.5rem;
+            border-radius: 0.5rem;
+            font-size: 0.85rem;
+            font-weight: 600;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+            z-index: 999;
+        }
+
+        .toast.show { opacity: 1; }
+
+        .hidden { display: none !important; }
+
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 3rem 2rem;
+            border-top: 1px solid var(--border);
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+
+        .footer a { color: var(--accent-yellow); text-decoration: none; }
+        .footer a:hover { text-decoration: underline; }
+
+        code {
+            background: var(--bg-tertiary);
+            padding: 0.15rem 0.5rem;
+            border-radius: 0.3rem;
+            font-size: 0.85rem;
+            font-family: 'SF Mono', Monaco, Consolas, monospace;
+        }
+
+        /* asciinema overrides */
+        .ap-wrapper { border-radius: 0 !important; }
+
+        @media (max-width: 640px) {
+            .header h1 { font-size: 2rem; }
+            .nav { gap: 1rem; font-size: 0.8rem; }
+            .drop-zone { padding: 2rem 1rem; }
+            .hero { padding: 2.5rem 1.5rem; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>🎬 Cast Player</h1>
+    <p class="subtitle">Drop a <code>.cast</code> file and watch it instantly</p>
+
+    <div class="badges">
+        <span class="badge yellow">📁 Drag & Drop</span>
+        <span class="badge green">▶️ Instant Play</span>
+        <span class="badge blue">🔗 Share via URL</span>
+    </div>
+
+    <nav class="nav">
+        <a href="index.html">Home</a>
+        <a href="session-recording.html">Recording</a>
+        <a href="ambient-mode.html">Ambient</a>
+        <a href="zenoh.html">Zenoh</a>
+        <a href="tools.html">Tools</a>
+        <a href="models.html">Models</a>
+        <a href="cast-player.html" class="active">Cast Player</a>
+        <a href="https://github.com/cagataycali/devduck">GitHub</a>
+    </nav>
+</div>
+
+<div class="container">
+
+    <!-- Hero -->
+    <div class="hero">
+        <div class="hero-icon">🎬</div>
+        <h2>Terminal Recording Player</h2>
+        <p>Play asciinema <code>.cast</code> files directly in your browser. Drop a file, paste a URL, or use a query parameter to share.</p>
+    </div>
+
+    <!-- Player Section -->
+    <section>
+        <h2>▶️ Player</h2>
+
+        <div class="drop-zone" id="dropZone">
+            <div class="placeholder" id="placeholder">
+                <div class="icon">📂</div>
+                <h3>Drop .cast file here</h3>
+                <p>Drag & drop an asciinema recording to play it</p>
+                <button class="btn primary" onclick="fileInput.click()">Choose File</button>
+                <div class="or">— or paste a URL —</div>
+                <div class="url-bar">
+                    <input type="text" id="urlInput" placeholder="https://asciinema.org/a/xxxxx or raw .cast URL"
+                           onkeydown="if(event.key==='Enter') loadFromUrl()">
+                    <button class="btn" onclick="loadFromUrl()">Load</button>
+                </div>
+            </div>
+            <div id="player-container"></div>
+        </div>
+
+        <input type="file" id="fileInput" accept=".cast,.txt" class="hidden">
+
+        <div class="controls" id="controls">
+            <span class="filename" id="filename"></span>
+            <button class="btn" onclick="shareLink()">📋 Copy Link</button>
+            <button class="btn" onclick="resetPlayer()">✕ Close</button>
+        </div>
+
+        <div class="gallery" id="gallery">
+            <h3>📁 Recent recordings</h3>
+            <div class="gallery-grid" id="galleryGrid"></div>
+        </div>
+    </section>
+
+    <!-- How to Record -->
+    <section>
+        <h2>🔴 How to Record</h2>
+        <p>DevDuck has built-in asciinema recording. Every agent interaction is captured as a playable <code>.cast</code> file.</p>
+
+        <div class="terminal">
+            <span class="comment"># Start DevDuck with recording enabled</span><br>
+            <span class="cmd">$ DEVDUCK_ASCIINEMA=true devduck</span><br><br>
+            <span class="comment"># Interact normally — everything is recorded</span><br>
+            <span class="output">🦆 say hi to readers on GitHub!</span><br><br>
+            <span class="comment"># On exit, .cast file is saved to /tmp/devduck/casts/</span><br>
+            <span class="output">🎬 Recording saved: /tmp/devduck/casts/devduck-20260306-024447.cast</span><br><br>
+            <span class="comment"># Play it back</span><br>
+            <span class="cmd">$ asciinema play /tmp/devduck/casts/devduck-*.cast</span>
+        </div>
+
+        <h3>Share via URL parameter</h3>
+        <p>Link directly to a cast file with the <code>?src=</code> query parameter:</p>
+        <div class="terminal">
+            <span class="comment"># Link to a raw .cast file</span><br>
+            <span class="cmd">https://dev.duck.nyc/cast-player.html?src=https://example.com/demo.cast</span><br><br>
+            <span class="comment"># Link to an asciinema.org recording</span><br>
+            <span class="cmd">https://dev.duck.nyc/cast-player.html?src=https://asciinema.org/a/vXL4jGtHFzARQGIS</span>
+        </div>
+    </section>
+
+    <!-- Features -->
+    <section>
+        <h2>✨ Features</h2>
+
+        <div class="feature-grid">
+            <div class="feature-card">
+                <div class="icon">📂</div>
+                <h4>Drag & Drop</h4>
+                <p>Drop any <code>.cast</code> file onto the page and it plays instantly. No uploads, no servers — all local.</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon">🔗</div>
+                <h4>URL Loading</h4>
+                <p>Paste a raw URL or asciinema.org link. Auto-converts asciinema URLs to raw format.</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon">⏩</div>
+                <h4>Playback Controls</h4>
+                <p>Full asciinema player with play/pause, speed control, and idle time limiting.</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon">💾</div>
+                <h4>Recent Gallery</h4>
+                <p>Last 10 played recordings are remembered locally for quick replay.</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon">📎</div>
+                <h4>Shareable Links</h4>
+                <p>Use <code>?src=URL</code> to create direct links to any cast recording.</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon">🦆</div>
+                <h4>DevDuck Native</h4>
+                <p>Run <code>DEVDUCK_ASCIINEMA=true devduck</code> to record agent sessions as .cast files.</p>
+            </div>
+        </div>
+    </section>
+
+</div>
+
+<div class="footer">
+    <p>🦆 <a href="https://github.com/cagataycali/devduck">DevDuck</a> — self-modifying AI agent · <a href="https://pypi.org/project/devduck/">pip install devduck</a></p>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://unpkg.com/asciinema-player@3.8.0/dist/bundle/asciinema-player.min.js"></script>
+<script>
+    const dropZone = document.getElementById('dropZone');
+    const placeholder = document.getElementById('placeholder');
+    const playerContainer = document.getElementById('player-container');
+    const controls = document.getElementById('controls');
+    const filenameEl = document.getElementById('filename');
+    const fileInput = document.getElementById('fileInput');
+    const gallery = document.getElementById('gallery');
+    const galleryGrid = document.getElementById('galleryGrid');
+    const urlInput = document.getElementById('urlInput');
+
+    let currentPlayer = null;
+    const STORAGE_KEY = 'devduck_casts';
+
+    // --- Drag & Drop ---
+    ['dragenter', 'dragover'].forEach(e => {
+        dropZone.addEventListener(e, ev => { ev.preventDefault(); dropZone.classList.add('drag-over'); });
+    });
+    ['dragleave', 'drop'].forEach(e => {
+        dropZone.addEventListener(e, ev => { ev.preventDefault(); dropZone.classList.remove('drag-over'); });
+    });
+
+    dropZone.addEventListener('drop', e => {
+        const file = e.dataTransfer.files[0];
+        if (file) loadFile(file);
+    });
+
+    fileInput.addEventListener('change', e => {
+        if (e.target.files[0]) loadFile(e.target.files[0]);
+    });
+
+    // --- Load from file ---
+    function loadFile(file) {
+        const reader = new FileReader();
+        reader.onload = e => {
+            const text = e.target.result;
+            playCast(text, file.name);
+            saveCast(file.name, text);
+        };
+        reader.readAsText(file);
+    }
+
+    // --- Load from URL ---
+    function loadFromUrl() {
+        const url = urlInput.value.trim();
+        if (!url) return;
+
+        let fetchUrl = url;
+        const asciiMatch = url.match(/asciinema\.org\/a\/(\w+)/);
+        if (asciiMatch) {
+            fetchUrl = `https://asciinema.org/a/${asciiMatch[1]}.cast`;
+        }
+
+        toast('Loading...');
+        fetch(fetchUrl)
+            .then(r => { if (!r.ok) throw new Error(r.status); return r.text(); })
+            .then(text => {
+                const name = url.split('/').pop().replace(/[?#].*/, '') || 'remote.cast';
+                playCast(text, name);
+                saveCast(name, text);
+            })
+            .catch(err => toast('Failed: ' + err.message));
+    }
+
+    // --- Play cast ---
+    function playCast(text, name) {
+        if (currentPlayer) { currentPlayer.dispose(); currentPlayer = null; }
+        playerContainer.innerHTML = '';
+
+        let opts = { cols: 120, rows: 30, idleTimeLimit: 2, fit: 'width', autoPlay: true, speed: 1 };
+        try {
+            const header = JSON.parse(text.split('\n')[0]);
+            if (header.width) opts.cols = header.width;
+            if (header.height) opts.rows = header.height;
+        } catch (e) {}
+
+        const blob = new Blob([text], { type: 'text/plain' });
+        const blobUrl = URL.createObjectURL(blob);
+
+        placeholder.classList.add('hidden');
+        dropZone.classList.add('has-player');
+        controls.classList.add('visible');
+        filenameEl.textContent = name;
+        gallery.style.display = 'none';
+
+        currentPlayer = AsciinemaPlayer.create(blobUrl, playerContainer, opts);
+    }
+
+    // --- Reset ---
+    function resetPlayer() {
+        if (currentPlayer) { currentPlayer.dispose(); currentPlayer = null; }
+        playerContainer.innerHTML = '';
+        placeholder.classList.remove('hidden');
+        dropZone.classList.remove('has-player');
+        controls.classList.remove('visible');
+        gallery.style.display = '';
+        renderGallery();
+    }
+
+    // --- Local storage gallery ---
+    function saveCast(name, text) {
+        try {
+            let casts = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+            casts = casts.filter(c => c.name !== name);
+            const meta = parseHeader(text);
+            casts.unshift({ name, size: text.length, ts: Date.now(), ...meta });
+            if (casts.length > 10) casts = casts.slice(0, 10);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(casts));
+        } catch (e) {}
+    }
+
+    function parseHeader(text) {
+        try {
+            const h = JSON.parse(text.split('\n')[0]);
+            return { title: h.title || '', width: h.width, height: h.height };
+        } catch (e) { return {}; }
+    }
+
+    function renderGallery() {
+        try {
+            const casts = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+            if (!casts.length) { gallery.style.display = 'none'; return; }
+
+            gallery.style.display = '';
+            galleryGrid.innerHTML = casts.map(c => `
+                <div class="gallery-item" title="${c.name}">
+                    <div class="name">${c.title || c.name}</div>
+                    <div class="meta">
+                        ${c.width || '?'}×${c.height || '?'} · ${(c.size / 1024).toFixed(1)} KB · ${timeAgo(c.ts)}
+                    </div>
+                </div>
+            `).join('');
+        } catch (e) { gallery.style.display = 'none'; }
+    }
+
+    function timeAgo(ts) {
+        const s = Math.floor((Date.now() - ts) / 1000);
+        if (s < 60) return 'just now';
+        if (s < 3600) return Math.floor(s / 60) + 'm ago';
+        if (s < 86400) return Math.floor(s / 3600) + 'h ago';
+        return Math.floor(s / 86400) + 'd ago';
+    }
+
+    // --- Share ---
+    function shareLink() {
+        navigator.clipboard.writeText(window.location.href).then(() => toast('Link copied!'));
+    }
+
+    // --- Toast ---
+    function toast(msg) {
+        const t = document.getElementById('toast');
+        t.textContent = msg;
+        t.classList.add('show');
+        setTimeout(() => t.classList.remove('show'), 2000);
+    }
+
+    // --- Auto-load from URL params ---
+    const params = new URLSearchParams(window.location.search);
+    const castUrl = params.get('cast') || params.get('url') || params.get('src');
+    if (castUrl) {
+        urlInput.value = castUrl;
+        loadFromUrl();
+    }
+
+    renderGallery();
+</script>
+</body>
+</html>
