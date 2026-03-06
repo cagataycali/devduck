@@ -709,7 +709,10 @@
 
     // --- Share ---
     function shareLink() {
-        navigator.clipboard.writeText(window.location.href).then(() => toast('Link copied!'));
+        const url = new URL(window.location.href);
+        const srcVal = urlInput.value.trim();
+        if (srcVal) url.searchParams.set('src', srcVal);
+        navigator.clipboard.writeText(url.toString()).then(() => toast('Link copied!'));
     }
 
     // --- Toast ---
