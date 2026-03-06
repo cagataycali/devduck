@@ -556,6 +556,7 @@
             <a href="zenoh.html">Zenoh</a>
             <a href="tools.html">Tools</a>
             <a href="models.html">Models</a>
+            <a href="cast-player.html">Cast Player</a>
             <a href="https://github.com/cagataycali/devduck">GitHub</a>
         </div>
     </nav>
@@ -606,12 +607,6 @@
                 <h3>Ambient Mode</h3>
                 <p>Background thinking while you're idle. Standard mode explores topics; autonomous mode builds entire features.</p>
                 <a href="ambient-mode.html" class="link">Learn more →</a>
-            </div>
-            
-            <div class="feature-card">
-                <div class="icon">🔄</div>
-                <h3>Hot Reload</h3>
-                <p>Modify the agent while it's running. Code changes apply instantly without restart. Protected during execution.</p>
             </div>
             
             <div class="feature-card">
@@ -666,6 +661,33 @@
                 <h3>Hot Reload</h3>
                 <p>Modify the agent while it's running. Code changes apply instantly without restart. Protected during execution.</p>
                 <a href="hot-reload.html" class="link">Learn more →</a>
+            </div>
+            
+            <div class="feature-card">
+                <div class="icon">☁️</div>
+                <h3>AgentCore Deploy</h3>
+                <p>Deploy to Amazon Bedrock AgentCore with one command. Unified mesh proxy connects CLI + browser + cloud agents.</p>
+            </div>
+            
+            <div class="feature-card">
+                <div class="icon">🎥</div>
+                <h3>Asciinema Recording</h3>
+                <p>Record agent sessions as <code>.cast</code> files. Play them back in terminal or browser with the built-in cast player.</p>
+                <a href="cast-player.html" class="link">Cast Player →</a>
+            </div>
+
+            <div class="feature-card">
+                <div class="icon">🕸️</div>
+                <h3>Unified Mesh</h3>
+                <p>CLI, browser tabs, and cloud agents all join one network. Ring context keeps everyone in sync.</p>
+                <a href="multi-agent.html" class="link">Learn more →</a>
+            </div>
+
+            <div class="feature-card">
+                <div class="icon">📡</div>
+                <h3>Multi-Protocol Servers</h3>
+                <p>WebSocket, TCP, MCP, IPC — all auto-started with port conflict handling. Connect from anywhere.</p>
+                <a href="servers.html" class="link">Learn more →</a>
             </div>
         </div>
     </section>
@@ -726,6 +748,14 @@
                 <span class="icon">🌐</span>
                 <span class="text"><strong>Zenoh:</strong> ZENOH_CONNECT=tcp/host:7447 devduck</span>
             </div>
+            <div class="capability">
+                <span class="icon">🎥</span>
+                <span class="text"><strong>Asciinema:</strong> DEVDUCK_ASCIINEMA=true devduck</span>
+            </div>
+            <div class="capability">
+                <span class="icon">☁️</span>
+                <span class="text"><strong>Deploy:</strong> devduck deploy --launch</span>
+            </div>
         </div>
 
         <pre data-lang="python" style="margin-top: 2rem;"><code class="language-python"># Python API
@@ -759,7 +789,7 @@ session.resume_from_snapshot(2, agent=devduck.agent)</code></pre>
         <div class="chat-demo">
             <div class="chat-demo-header">
                 <h4>💬 DevDuck Chat</h4>
-                <span class="status">WebSocket: localhost:8080</span>
+                <span class="status">WebSocket: localhost:10001</span>
             </div>
             <iframe src="chat.html" class="chat-demo-iframe"></iframe>
             <div class="chat-demo-footer">
@@ -820,6 +850,7 @@ session.resume_from_snapshot(2, agent=devduck.agent)</code></pre>
             <a href="github.html">GitHub</a>
             <a href="system-prompt.html">Prompt</a>
             <a href="hot-reload.html">Hot Reload</a>
+            <a href="cast-player.html">Cast Player</a>
             <a href="https://pypi.org/project/devduck/">PyPI</a>
         </div>
     </footer>
