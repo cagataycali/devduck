@@ -57,6 +57,50 @@ devduck("analyze this code")
 
 ---
 
+## Power User Setup
+
+A real-world `.zshrc` config for daily driving DevDuck with all the bells and whistles:
+
+```bash
+# Model — Claude Opus via Bedrock bearer token (fastest auth, no STS calls)
+export AWS_BEARER_TOKEN_BEDROCK="ABSK..."
+export STRANDS_MODEL_ID="global.anthropic.claude-opus-4-6-v1"
+export STRANDS_MAX_TOKENS="64000"
+
+# Tools — curated toolset (loads faster than all 60+)
+export DEVDUCK_TOOLS="devduck.tools:use_github,editor,system_prompt,store_in_kb,manage_tools,websocket,zenoh_peer,agentcore_proxy,manage_messages,sqlite_memory,dialog,listen,use_computer,tasks,scheduler,telegram;strands_tools:retrieve,shell,file_read,file_write,use_agent"
+
+# Knowledge Base — automatic RAG (stores & retrieves every conversation)
+export STRANDS_KNOWLEDGE_BASE_ID="YOUR_KB_ID"
+
+# MCP — auto-load Strands docs server
+export MCP_SERVERS='{"mcpServers":{"strands-docs":{"command":"uvx","args":["strands-agents-mcp-server"]}}}'
+
+# Messaging — Telegram & Slack bots
+export TELEGRAM_BOT_TOKEN="your-telegram-bot-token"
+export SLACK_BOT_TOKEN="xoxb-your-slack-bot-token"
+export SLACK_APP_TOKEN="xapp-your-slack-app-token"
+
+# Spotify control
+export SPOTIFY_CLIENT_ID="your-client-id"
+export SPOTIFY_CLIENT_SECRET="your-client-secret"
+export SPOTIFY_REDIRECT_URI="http://127.0.0.1:8888/callback"
+
+# Gemini as fallback/sub-agent model
+export GEMINI_API_KEY="your-gemini-key"
+```
+
+This gives you:
+- 🧠 **Opus on Bedrock** as primary model with bearer token (zero-latency auth)
+- 📚 **Auto-RAG** — every conversation stored in Knowledge Base, context retrieved before each query
+- 📖 **Strands docs** available as MCP tools (search + fetch)
+- 📱 **Telegram + Slack** listeners ready (`telegram(action="start_listener")`)
+- 🎵 **Spotify** control via `use_spotify`
+- 🔗 **Zenoh P2P + mesh** auto-enabled (multi-terminal awareness)
+- 💬 **26 tools loaded** on startup, expandable to 60+ on demand via `manage_tools`
+
+---
+
 ## Model Detection
 
 Set your key. DevDuck figures out the rest.
