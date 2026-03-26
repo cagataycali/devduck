@@ -22,9 +22,9 @@ import os
 import sys
 import time
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
-from textual import work
+from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, ScrollableContainer
@@ -37,8 +37,11 @@ from textual.widgets import (
     RichLog,
     Collapsible,
     LoadingIndicator,
+    OptionList,
 )
+from textual.widgets.option_list import Option
 from textual.message import Message
+from textual.events import Key
 
 from rich.text import Text
 from rich.panel import Panel
@@ -80,6 +83,215 @@ TOOL_ICONS = {
     "manage_messages": "💬", "view_logs": "📋", "file_read": "📖",
     "speech_to_speech": "🎤", "speech_session": "🎙️",
 }
+
+
+# ─── Input History & Autocomplete ───────────────────────────────
+
+def _load_input_history(max_entries: int = 500) -> List[str]:
+    """Load input history from devduck shell history file (deduped, recent first)."""
+    history: List[str] = []
+    try:
+        from devduck import get_shell_history_file
+        history_file = get_shell_history_file()
+        with open(history_file, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                if "# devduck:" in line:
+                    try:
+                        query = line.split("# devduck:")[-1].strip()
+                        if query and query not in ("exit", "quit", "q"):
+                            history.append(query)
+                    except (ValueError, IndexError):
+                        continue
+    except Exception:
+        pass
+    # Dedupe keeping last occurrence, return recent-first
+    seen = set()
+    deduped = []
+    for item in reversed(history):
+        if item not in seen:
+            seen.add(item)
+            deduped.append(item)
+        if len(deduped) >= max_entries:
+            break
+    return deduped  # most recent first
+
+
+def _build_completions() -> List[str]:
+    """Build autocomplete word list from commands + history."""
+    base = [
+        "exit", "quit", "q", "help", "clear", "status", "reload",
+        "ambient", "auto", "autonomous", "record",
+        "/help", "/clear", "/clearall", "/status", "/peers", "/tools",
+        "/sidebar", "/ambient", "/auto", "/record", "/voice", "/logs",
+        "/schedule",
+    ]
+    try:
+        from devduck import extract_commands_from_history
+        base.extend(extract_commands_from_history())
+    except Exception:
+        pass
+    return sorted(set(base))
+
+
+class HistoryInput(Input):
+    """Input widget with up/down arrow history and inline autocomplete suggestions.
+
+    - Up/Down arrows cycle through previous inputs (like bash/zsh)
+    - Tab accepts the current ghost suggestion
+    - Typing filters suggestions from history + commands
+    """
+
+    BINDINGS = [
+        Binding("up", "history_prev", "Previous", show=False, priority=True),
+        Binding("down", "history_next", "Next", show=False, priority=True),
+        Binding("tab", "accept_suggestion", "Accept", show=False, priority=True),
+    ]
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._history: List[str] = []
+        self._history_index: int = -1  # -1 = not browsing history
+        self._saved_value: str = ""  # value before entering history mode
+        self._completions: List[str] = []
+        self._current_suggestion: str = ""
+        # Prefix index for O(1) suggestion lookup instead of O(n) linear scan
+        self._prefix_index: Dict[str, List[str]] = {}
+        self._suggest_timer = None  # Debounce timer for suggestions
+
+    def on_mount(self) -> None:
+        # Load history + completions on mount (fast, from file)
+        self._history = _load_input_history()
+        self._completions = _build_completions()
+        self._rebuild_prefix_index()
+
+    def _rebuild_prefix_index(self) -> None:
+        """Build prefix lookup dict for O(1) autocomplete. Called once on mount + on new input."""
+        idx: Dict[str, List[str]] = {}
+        # Index history entries (higher priority, added first)
+        for entry in self._history:
+            for plen in range(2, min(len(entry) + 1, 6)):  # prefixes of length 2-5
+                key = entry[:plen].lower()
+                if key not in idx:
+                    idx[key] = []
+                if entry not in idx[key]:
+                    idx[key].append(entry)
+        # Index completions (lower priority)
+        for cmd in self._completions:
+            for plen in range(2, min(len(cmd) + 1, 6)):
+                key = cmd[:plen].lower()
+                if key not in idx:
+                    idx[key] = []
+                if cmd not in idx[key]:
+                    idx[key].append(cmd)
+        self._prefix_index = idx
+
+    def record_input(self, value: str) -> None:
+        """Record a submitted input into the in-memory history."""
+        value = value.strip()
+        if value and value not in ("exit", "quit", "q"):
+            # Remove duplicate if exists, then prepend
+            if value in self._history:
+                self._history.remove(value)
+            self._history.insert(0, value)
+            # Add words to completions
+            for word in value.split():
+                if len(word) > 2 and word not in self._completions:
+                    self._completions.append(word)
+            # Update prefix index incrementally (just add the new entry)
+            for plen in range(2, min(len(value) + 1, 6)):
+                key = value[:plen].lower()
+                if key not in self._prefix_index:
+                    self._prefix_index[key] = []
+                if value not in self._prefix_index[key]:
+                    self._prefix_index[key].insert(0, value)
+
+    # ── History navigation ──────────────────────────────────────
+
+    def action_history_prev(self) -> None:
+        """Go to previous (older) history entry."""
+        if not self._history:
+            return
+        if self._history_index == -1:
+            # Save current typed text before entering history mode
+            self._saved_value = self.value
+        if self._history_index < len(self._history) - 1:
+            self._history_index += 1
+            self.value = self._history[self._history_index]
+            self.cursor_position = len(self.value)
+            self._current_suggestion = ""
+
+    def action_history_next(self) -> None:
+        """Go to next (newer) history entry, or restore typed text."""
+        if self._history_index <= -1:
+            return
+        self._history_index -= 1
+        if self._history_index == -1:
+            # Restore the text user was typing before browsing history
+            self.value = self._saved_value
+        else:
+            self.value = self._history[self._history_index]
+        self.cursor_position = len(self.value)
+        self._current_suggestion = ""
+
+    # ── Autocomplete suggestion ─────────────────────────────────
+
+    def _find_suggestion(self) -> str:
+        """Find a ghost suggestion using prefix index — O(1) lookup instead of O(n) scan."""
+        text = self.value.strip()
+        if not text or len(text) < 2:
+            return ""
+        text_lower = text.lower()
+        # Use the longest prefix we indexed (up to 5 chars) for best filtering
+        lookup_len = min(len(text), 5)
+        key = text_lower[:lookup_len]
+        candidates = self._prefix_index.get(key, [])
+        for entry in candidates:
+            if entry.lower().startswith(text_lower) and entry != text:
+                return entry
+        # Fallback: try shorter prefixes
+        if lookup_len > 2:
+            for plen in range(lookup_len - 1, 1, -1):
+                key = text_lower[:plen]
+                candidates = self._prefix_index.get(key, [])
+                for entry in candidates:
+                    if entry.lower().startswith(text_lower) and entry != text:
+                        return entry
+        return ""
+
+    def action_accept_suggestion(self) -> None:
+        """Tab key: accept the current ghost suggestion."""
+        if self._current_suggestion:
+            self.value = self._current_suggestion
+            self.cursor_position = len(self.value)
+            self._current_suggestion = ""
+            self.placeholder = self._default_placeholder()
+        # If no suggestion, Tab does nothing (don't insert tab char)
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        """Update ghost suggestion as user types — debounced for fast typing."""
+        # Reset history browsing when user types
+        if self._history_index != -1:
+            self._history_index = -1
+
+        # Cancel previous debounce timer and set a new one (80ms delay)
+        # This means suggestions only compute AFTER you pause typing briefly,
+        # so rapid keystrokes never block the input.
+        if self._suggest_timer is not None:
+            self._suggest_timer.stop()
+        self._suggest_timer = self.set_timer(0.08, self._deferred_suggestion)
+
+    def _deferred_suggestion(self) -> None:
+        """Run suggestion lookup after debounce period."""
+        self._suggest_timer = None
+        suggestion = self._find_suggestion()
+        self._current_suggestion = suggestion
+        if suggestion:
+            self.placeholder = suggestion
+        else:
+            self.placeholder = self._default_placeholder()
+
+    def _default_placeholder(self) -> str:
+        return "  Ask anything… | ! shell cmd | /help | ↑↓ history | Tab complete"
 
 
 # ─── Message types for thread-safe TUI updates ─────────────────
@@ -372,13 +584,143 @@ class ConversationPanel(Static):
 # for better performance and interactivity.
 
 
+# ─── Thread-safe shared message list ────────────────────────────
+
+import threading as _threading
+import copy as _copy
+
+
+class SharedMessages(list):
+    """Thread-safe list that multiple Agent instances share as their `messages`.
+
+    Each concurrent Agent points its `.messages` to the SAME SharedMessages
+    instance. All reads/writes are serialized via a lock so message ordering
+    is preserved regardless of which thread appends.
+
+    This gives:
+      - True concurrency (each Agent has its own callback handler)
+      - Shared awareness (agents see each other's messages in real-time)
+      - Correct ordering (lock serialises mutations)
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._lock = _threading.Lock()
+
+    # ── Mutating methods (need lock) ────────────────────────────
+
+    def append(self, item):
+        with self._lock:
+            super().append(item)
+
+    def extend(self, items):
+        with self._lock:
+            super().extend(items)
+
+    def insert(self, index, item):
+        with self._lock:
+            super().insert(index, item)
+
+    def pop(self, index=-1):
+        with self._lock:
+            return super().pop(index)
+
+    def remove(self, item):
+        with self._lock:
+            super().remove(item)
+
+    def clear(self):
+        with self._lock:
+            super().clear()
+
+    def __setitem__(self, key, value):
+        with self._lock:
+            super().__setitem__(key, value)
+
+    def __delitem__(self, key):
+        with self._lock:
+            super().__delitem__(key)
+
+    def __iadd__(self, other):
+        with self._lock:
+            super().__iadd__(other)
+            return self
+
+    # ── Read methods (need lock for consistency) ────────────────
+
+    def __len__(self):
+        with self._lock:
+            return super().__len__()
+
+    def __getitem__(self, key):
+        with self._lock:
+            return super().__getitem__(key)
+
+    def __iter__(self):
+        """Return a snapshot iterator that excludes trailing orphaned toolUse.
+
+        When the model reads messages for inference, an orphaned toolUse
+        (assistant message with toolUse but no following user+toolResult)
+        causes API errors. This happens when Agent #1 is mid-tool-execution
+        and Agent #2 iterates the shared list concurrently.
+
+        We trim trailing messages that form an incomplete tool turn:
+        - If the last message is assistant with toolUse → exclude it
+        - If the last messages are assistant+toolUse followed by user+toolResult
+          but no final assistant response → that's fine (model will continue)
+        """
+        with self._lock:
+            msgs = list(super().__iter__())
+
+        # Trim trailing incomplete tool turns from the snapshot
+        while msgs:
+            last = msgs[-1]
+            if not isinstance(last, dict):
+                break
+            role = last.get("role", "")
+            content = last.get("content", [])
+
+            # Check if last message is an assistant message containing toolUse
+            has_tool_use = False
+            if role == "assistant":
+                for c in content:
+                    if isinstance(c, dict) and "toolUse" in c:
+                        has_tool_use = True
+                        break
+
+            if has_tool_use:
+                # Orphaned toolUse — another agent is mid-execution.
+                # Remove it so model doesn't see an incomplete turn.
+                msgs.pop()
+            else:
+                break
+
+        return iter(msgs)
+
+    def __contains__(self, item):
+        with self._lock:
+            return super().__contains__(item)
+
+    def snapshot(self) -> list:
+        """Return a plain-list copy (for serialization, export, etc.)."""
+        with self._lock:
+            return list(self)
+
+    def trim_to(self, max_size: int):
+        """Keep only the last max_size messages."""
+        with self._lock:
+            if super().__len__() > max_size:
+                excess = super().__len__() - max_size
+                del self[:excess]
+
+
 # ─── Main TUI App ──────────────────────────────────────────────
 
 class DevDuckTUI(App):
     """DevDuck multi-conversation TUI."""
 
-    TITLE = "🦆 DevDuck"
-    SUB_TITLE = "Multi-conversation Agent TUI"
+    TITLE = "🦆"
+    SUB_TITLE = "DevDuck"
 
     CSS = """
     Screen {
@@ -496,6 +838,13 @@ class DevDuckTUI(App):
         self._speech_session_id: Optional[str] = None
         self._speech_provider: str = "novasonic"
         self._speech_panel_id: Optional[int] = None
+        # Shared message history — all concurrent conversations read/write to this
+        # single thread-safe list. Each conv gets a fresh Agent whose .messages
+        # is pointed at this shared instance. This gives:
+        #   1. True concurrency (separate Agent instances, no callback handler conflicts)
+        #   2. Real-time shared awareness (agents see each other's messages as they stream)
+        #   3. Correct ordering (SharedMessages lock serialises all mutations)
+        self._shared_messages = SharedMessages()
         # Cache
         self._zenoh_mod = None
         self._zenoh_checked = False
@@ -511,8 +860,8 @@ class DevDuckTUI(App):
             with Vertical(id="main-area"):
                 yield ScrollableContainer(id="conversations-scroll")
                 with Horizontal(id="input-area"):
-                    yield Input(
-                        placeholder="  Ask anything… | ! shell cmd | /help | ambient | auto",
+                    yield HistoryInput(
+                        placeholder="  Ask anything… | ! shell cmd | /help | ↑↓ history | Tab complete",
                         id="query-input",
                     )
                 yield Static(id="status-bar")
@@ -531,13 +880,13 @@ class DevDuckTUI(App):
         yield Footer()
 
     def on_mount(self) -> None:
-        self.query_one("#query-input", Input).focus()
+        self.query_one("#query-input", HistoryInput).focus()
         self._update_status_bar()
         self._ptt_timer = None  # PTT debounce timer
         self.set_interval(5.0, self._update_status_bar)
         self.set_interval(10.0, self._update_sidebar_stats)
         self.set_interval(3.0, self._update_sb_net_feed)
-        self.set_interval(0.2, self._update_sb_voice)  # Fast refresh for VAD meter
+        self.set_interval(1.0, self._update_sb_voice)  # Voice sidebar — fast only when active
         self._show_welcome()
 
         # Register for tui tool
@@ -1190,6 +1539,15 @@ class DevDuckTUI(App):
 
         event.input.value = ""
 
+        # Record in the input widget's history for up/down recall
+        try:
+            input_widget = self.query_one("#query-input", HistoryInput)
+            input_widget.record_input(query)
+            input_widget._history_index = -1  # Reset history browsing
+            input_widget.placeholder = input_widget._default_placeholder()
+        except NoMatches:
+            pass
+
         # Exit commands
         if query.lower() in ("exit", "quit", "q", "/quit", "/exit"):
             self.exit()
@@ -1281,25 +1639,81 @@ class DevDuckTUI(App):
                 return
 
             self.post_message(ToolEvent(conv_id, "shell", "start"))
-            result = self._devduck.agent.tool.shell(command=cmd, timeout=9000)
+            # Disable pagers for TUI — git diff, man, etc. hang without a real TTY.
+            # Set as env vars so they don't appear in the command display.
+            pager_env = "GIT_PAGER=cat PAGER=cat DELTA_PAGER=cat BAT_PAGER=cat LESS= "
+            result = self._devduck.agent.tool.shell(
+                command=f"{pager_env}{cmd}",
+                timeout=9000,
+                non_interactive=True,
+            )
             self.post_message(ToolEvent(conv_id, "shell", "success"))
 
-            # Stream the output
-            output = ""
+            # Parse shell result — extract just the command output, strip metadata.
+            # Shell tool returns content like:
+            #   [0] "Execution Summary:\nTotal commands: 1\nSuccessful: 1\nFailed: 0"
+            #   [1] "Command: ...\nStatus: success\nExit Code: 0\nOutput: <actual>\n\nError: <stderr>"
+            raw_parts = []
             if result and "content" in result:
                 for item in result["content"]:
                     if isinstance(item, dict) and "text" in item:
-                        output += item["text"]
+                        raw_parts.append(item["text"])
 
-            if output:
-                self.post_message(StreamChunk(conv_id, output))
+            raw_text = "\n".join(raw_parts)
+            cmd_output = ""
+            cmd_error = ""
+
+            if "\nOutput:" in raw_text:
+                # Extract between "Output:" and "\nError:" (or end)
+                after_output = raw_text.split("\nOutput:", 1)[1]
+                if "\nError:" in after_output:
+                    cmd_output, cmd_error = after_output.split("\nError:", 1)
+                else:
+                    cmd_output = after_output
+                cmd_output = cmd_output.strip()
+                cmd_error = cmd_error.strip()
+            elif "Output:" in raw_text:
+                # "Output:" at start of a part
+                after_output = raw_text.split("Output:", 1)[1]
+                if "\nError:" in after_output:
+                    cmd_output, cmd_error = after_output.split("\nError:", 1)
+                else:
+                    cmd_output = after_output
+                cmd_output = cmd_output.strip()
+                cmd_error = cmd_error.strip()
+            else:
+                # No structured format — show everything
+                cmd_output = raw_text.strip()
+
+            # Render clean output
+            if cmd_output:
+                self.post_message(StreamChunk(conv_id, f"\n```\n{cmd_output}\n```\n"))
+            elif not cmd_error:
+                self.post_message(StreamChunk(conv_id, "\n*(no output)*\n"))
+
+            if cmd_error:
+                self.post_message(StreamChunk(conv_id, f"\n**stderr:**\n```\n{cmd_error}\n```\n"))
+
+            # Inject shell result into shared messages so agents have context.
+            # Format as a user→assistant pair so the model sees what happened.
+            display_output = cmd_output or "(no output)"
+            if cmd_error:
+                display_output += f"\nstderr: {cmd_error}"
+            self._shared_messages.append({
+                "role": "user",
+                "content": [{"text": f"[Shell command]: {cmd}"}],
+            })
+            self._shared_messages.append({
+                "role": "assistant",
+                "content": [{"text": f"[Shell output]:\n{display_output}"}],
+            })
 
             self.post_message(ConversationDone(conv_id))
 
             # Save to history
             try:
                 from devduck import append_to_shell_history
-                append_to_shell_history(f"! {cmd}", output)
+                append_to_shell_history(f"! {cmd}", cmd_output or raw_text)
             except Exception:
                 pass
 
@@ -1633,7 +2047,14 @@ class DevDuckTUI(App):
                 return
 
             tui_handler = TUICallbackHandler(self, conv_id)
+            original_query = query
 
+            # Create a FRESH Agent per conversation for true concurrency.
+            # Each agent has its own callback handler (no conflicts), but ALL agents
+            # share the SAME SharedMessages list as their .messages. This means:
+            #   - Messages from conv1 are visible to conv2 in real-time
+            #   - Ordering is preserved by the SharedMessages lock
+            #   - No snapshot/merge needed — it's live
             from strands import Agent
 
             tools = list(self._devduck.tools)
@@ -1643,24 +2064,166 @@ class DevDuckTUI(App):
             except ImportError:
                 pass
 
-            agent = Agent(
+            conv_agent = Agent(
                 model=self._devduck.agent_model,
                 tools=tools,
                 system_prompt=self._devduck._build_system_prompt(),
                 callback_handler=tui_handler,
-                load_tools_from_directory=False,
+                load_tools_from_directory=True,
             )
 
-            result = agent(query)
-            self.post_message(ConversationDone(conv_id))
+            # Point this agent's messages at the shared thread-safe list
+            conv_agent.messages = self._shared_messages
 
+            # 🔒 Mark agent as executing to prevent hot-reload interruption
+            dd = self._devduck
+            if dd:
+                dd._agent_executing = True
+
+            # 🎬 Record user query if recording active
             try:
-                from devduck import append_to_shell_history
-                append_to_shell_history(query, str(result))
+                from devduck import get_session_recorder
+                recorder = get_session_recorder()
+                if recorder and recorder.recording:
+                    recorder.record_agent_message("user", query)
+                    recorder.snapshot(conv_agent, "before_tui_call", last_query=query)
+            except Exception:
+                recorder = None
+
+            # 🌙 Inject ambient result if available
+            if dd and dd.ambient:
+                ambient_result = dd.ambient.get_and_clear_result()
+                if ambient_result:
+                    self.post_message(StreamChunk(conv_id, "\n🌙 *Injecting ambient background work…*\n"))
+                    query = f"{ambient_result}\n\n[New user query]:\n{query}"
+
+            # 📚 Knowledge Base Retrieval (BEFORE agent runs)
+            knowledge_base_id = os.getenv("DEVDUCK_KNOWLEDGE_BASE_ID")
+            if knowledge_base_id and conv_agent:
+                try:
+                    if "retrieve" in conv_agent.tool_names:
+                        conv_agent.tool.retrieve(
+                            text=query, knowledgeBaseId=knowledge_base_id
+                        )
+                except Exception:
+                    pass
+
+            # 🔗 Inject dynamic context (zenoh + ring + ambient + recording events)
+            try:
+                from devduck import (
+                    get_zenoh_peers_context, get_unified_ring_context,
+                    get_ambient_status_context,
+                )
+                zenoh_ctx = get_zenoh_peers_context()
+                ring_ctx = get_unified_ring_context()
+                ambient_ctx = get_ambient_status_context()
+
+                # 🎬 Inject recent recorded events
+                recording_ctx = ""
+                if recorder and recorder.recording:
+                    recording_ctx = recorder.event_buffer.get_recent_context(
+                        seconds=10.0, max_events=15
+                    )
+
+                dynamic_context = zenoh_ctx + ring_ctx + ambient_ctx + recording_ctx
+                if dynamic_context:
+                    query = f"[Dynamic Context]{dynamic_context}\n\n[User Query]\n{query}"
+            except ImportError:
+                pass
             except Exception:
                 pass
 
+            # Run query on the per-conversation agent
+            try:
+                result = conv_agent(query)
+            except Exception as e:
+                # Context window overflow — clear shared history and retry
+                error_str = str(e).lower()
+                if any(kw in error_str for kw in ("trim conversation", "context window", "too many tokens", "input is too long")):
+                    self.post_message(StreamChunk(conv_id, "\n⚠️ Context overflow — clearing shared history and retrying…\n"))
+                    self._shared_messages.clear()
+                    result = conv_agent(original_query)
+                else:
+                    raise
+
+            self.post_message(ConversationDone(conv_id))
+
+            # Trim shared history to prevent unbounded growth / context overflow.
+            # Messages were already added live by the agent — no merge needed.
+            max_shared = int(os.getenv("DEVDUCK_TUI_MAX_SHARED_MESSAGES", "100"))
+            self._shared_messages.trim_to(max_shared)
+
+            # 🎬 Record agent response if recording active
+            try:
+                if recorder and recorder.recording:
+                    recorder.record_agent_message("assistant", str(result)[:2000])
+                    recorder.snapshot(
+                        conv_agent,
+                        "after_tui_call",
+                        last_query=original_query,
+                        last_result=str(result)[:5000],
+                    )
+            except Exception:
+                pass
+
+            # 🌙 Record interaction for ambient mode
+            if dd and dd.ambient:
+                dd.ambient.record_interaction(original_query, result)
+
+            # 🔗 Push to unified mesh ring (bidirectional sync)
+            try:
+                from devduck.tools.unified_mesh import add_to_ring
+                result_preview = str(result)
+                add_to_ring(
+                    "local:devduck-tui",
+                    "local",
+                    f"Q: {original_query} → {result_preview}",
+                    {"source": "tui"},
+                )
+            except (ImportError, Exception):
+                pass
+
+            # 💾 Knowledge Base Storage (AFTER agent runs)
+            if knowledge_base_id and conv_agent:
+                try:
+                    if "store_in_kb" in conv_agent.tool_names:
+                        from datetime import datetime as _dt
+                        conv_agent.tool.store_in_kb(
+                            content=f"Input: {original_query}, Result: {result!s}",
+                            title=f"DevDuck TUI: {_dt.now().strftime('%Y-%m-%d')} | {original_query[:500]}",
+                            knowledge_base_id=knowledge_base_id,
+                        )
+                except Exception:
+                    pass
+
+            try:
+                from devduck import append_to_shell_history
+                append_to_shell_history(original_query, str(result))
+            except Exception:
+                pass
+
+            # 🔒 Clear executing flag + check pending hot-reload
+            if dd:
+                dd._agent_executing = False
+                if dd._reload_pending:
+                    try:
+                        from devduck import logger as _logger
+                        _logger.info("Hot-reload pending but skipped in TUI mode")
+                    except Exception:
+                        pass
+
         except Exception as e:
+            # 🔒 Reset executing flag on error
+            if self._devduck:
+                self._devduck._agent_executing = False
+            # 🎬 Record error if recording active
+            try:
+                from devduck import get_session_recorder
+                rec = get_session_recorder()
+                if rec and rec.recording:
+                    rec.record_agent_message("error", str(e))
+            except Exception:
+                pass
             self.post_message(ConversationDone(conv_id, str(e)[:300]))
 
     # ── Message handlers ────────────────────────────────────────
@@ -1686,7 +2249,7 @@ class DevDuckTUI(App):
     # ── Actions ─────────────────────────────────────────────────
 
     def action_focus_input(self) -> None:
-        self.query_one("#query-input", Input).focus()
+        self.query_one("#query-input", HistoryInput).focus()
 
     def action_clear_done(self) -> None:
         to_remove = [cid for cid, p in self._active_conversations.items() if p.is_done]
@@ -1719,7 +2282,7 @@ class DevDuckTUI(App):
     def action_ptt_press(self) -> None:
         """Space press — open mic gate if voice session active and input not focused."""
         # Only activate PTT if input is NOT focused (so typing works normally)
-        input_widget = self.query_one("#query-input", Input)
+        input_widget = self.query_one("#query-input", HistoryInput)
         if input_widget.has_focus:
             # Input is focused — let space type normally
             input_widget.insert_text_at_cursor(" ")
@@ -1733,7 +2296,7 @@ class DevDuckTUI(App):
         # Textual doesn't have native key-release events, so we use a timer approach:
         # Every Space press resets a debounce timer. When the timer fires, mic closes.
         if event.key == "space":
-            input_widget = self.query_one("#query-input", Input)
+            input_widget = self.query_one("#query-input", HistoryInput)
             if not input_widget.has_focus and self._speech_session_id:
                 # Reset the PTT release timer
                 if hasattr(self, "_ptt_timer") and self._ptt_timer is not None:

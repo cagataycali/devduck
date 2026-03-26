@@ -37,6 +37,7 @@ from .manage_messages import manage_messages
 from .manage_tools import manage_tools
 from .rich_interface import rich_interface
 from .editor import editor
+from .use_flipper import use_flipper
 
 # Optional Tools
 try:
@@ -77,6 +78,7 @@ try:
         "manage_tools",
         "rich_interface",
         "editor",
+        "use_flipper",
     ]
 except ImportError:
     __all__ = [
@@ -113,4 +115,5 @@ except ImportError:
         "manage_tools",
         "rich_interface",
         "editor",
+        "use_flipper",
     ]

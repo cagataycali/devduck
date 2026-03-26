@@ -129,6 +129,44 @@ User → [CLI/TUI/WS/TCP/MCP/IPC] → DevDuck Core → Tools → Response
 
 **Ports:** 10000 (mesh relay) · 10001 (WebSocket) · 10002 (TCP) · 10003 (MCP)
 
+### TUI Concurrency Model
+
+The TUI (`devduck --tui`) supports true concurrent conversations with shared awareness:
+
+```
+              ┌─────────────────────────────────┐
+              │   SharedMessages (thread-safe)   │
+              │   [msg1, msg2, msg3, msg4, ...]  │
+              └───┬──────────┬──────────┬───────┘
+                  │          │          │
+                  ▼          ▼          ▼
+            ┌──────────┐ ┌──────────┐ ┌──────────┐
+            │ Agent #1 │ │ Agent #2 │ │ Agent #3 │
+            │ cb → 🟦  │ │ cb → 🟩  │ │ cb → 🟨  │
+            │ panel #1 │ │ panel #2 │ │ panel #3 │
+            └──────────┘ └──────────┘ └──────────┘
+            All agents share the SAME messages list
+```
+
+Each conversation creates a **fresh Agent** (like TCP/Telegram tools do), but all agents point their `.messages` at a single `SharedMessages` instance — a thread-safe list subclass that serializes all reads and writes via a lock. This gives you:
+
+- **True concurrency** — separate Agent instances with separate callback handlers, no conflicts
+- **Real-time shared awareness** — when Agent #1 appends a message, Agent #2 sees it immediately on its next loop iteration
+- **Correct ordering** — the lock ensures messages are appended in the order they're produced
+- **Isolated rendering** — each agent's callback handler routes streaming output to its own color-coded TUI panel
+
+The shared history is capped at 100 messages (configurable via `DEVDUCK_TUI_MAX_SHARED_MESSAGES`) and auto-clears on context window overflow.
+
+**Comparison across interfaces:**
+
+| Interface | Agent per request | Shared messages | Use case |
+|-----------|:-:|:-:|---|
+| **CLI** | No (reuse one) | N/A (single-threaded) | Sequential interactive REPL |
+| **TUI** | Yes (fresh Agent) | Yes (`SharedMessages`) | Concurrent conversations with shared context |
+| **TCP** | Yes (fresh DevDuck) | No (fully isolated) | External network clients |
+| **Telegram** | Yes (fresh DevDuck) | No (fully isolated) | Chat bot, each user isolated |
+| **WebSocket** | Yes (fresh DevDuck) | No (fully isolated) | Browser clients |
+
 ---
 
 ## Multi-Agent Networking
@@ -330,6 +368,7 @@ Drop an `AGENTS.md` in your working directory. DevDuck auto-loads it into the sy
 | `DEVDUCK_AMBIENT_MAX_ITERATIONS` | `3` | Max ambient iterations |
 | `DEVDUCK_AUTONOMOUS_MAX_ITERATIONS` | `100` | Max autonomous iterations |
 | `DEVDUCK_ASCIINEMA` | `false` | Record `.cast` files |
+| `DEVDUCK_TUI_MAX_SHARED_MESSAGES` | `100` | Max shared message history in TUI |
 | `DEVDUCK_LSP_AUTO_DIAGNOSTICS` | `false` | Auto LSP after edits |
 | `TELEGRAM_BOT_TOKEN` | — | Telegram bot |
 | `SLACK_BOT_TOKEN` | — | Slack bot |
