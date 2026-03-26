@@ -14,13 +14,17 @@ nav:
     - Quickstart: getting-started/quickstart.md
     - Run Anywhere: getting-started/run-anywhere.md
   - Guide:
+    - Power User Setup: guide/power-user.md
     - Hot Reload: guide/hot-reload.md
     - Tools: guide/tools.md
     - Models: guide/models.md
+    - Unified Mesh: guide/mesh.md
     - Multi-Agent: guide/multi-agent.md
     - Servers: guide/servers.md
     - MCP Integration: guide/mcp.md
     - Zenoh P2P: guide/zenoh.md
+    - Messaging: guide/messaging.md
+    - macOS Native: guide/macos.md
     - Ambient Mode: guide/ambient-mode.md
     - System Prompt: guide/system-prompt.md
     - Knowledge Base: guide/knowledge-base.md
