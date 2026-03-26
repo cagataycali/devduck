@@ -94,7 +94,9 @@ This gives you:
 - 🧠 **Opus on Bedrock** as primary model with bearer token (zero-latency auth)
 - 📚 **Auto-RAG** — every conversation stored in Knowledge Base, context retrieved before each query
 - 📖 **Strands docs** available as MCP tools (search + fetch)
-- 📱 **Telegram + Slack** listeners ready (`telegram(action="start_listener")`)
+- 📱 **Telegram + Slack + WhatsApp** — three messaging channels ready
+  - Telegram & Slack: set tokens above, then `telegram(action="start_listener")`
+  - WhatsApp: no token needed — uses local `wacli` pairing, just `whatsapp(action="start_listener")`
 - 🎵 **Spotify** control via `use_spotify`
 - 🔗 **Zenoh P2P + mesh** auto-enabled (multi-terminal awareness)
 - 💬 **26 tools loaded** on startup, expandable to 60+ on demand via `manage_tools`
