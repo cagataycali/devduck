@@ -53,6 +53,7 @@ from rich.columns import Columns
 from rich.align import Align
 from rich.console import Group
 from rich import box
+import threading
 
 
 # ─── Color palette for concurrent conversations ────────────────
@@ -82,6 +83,7 @@ TOOL_ICONS = {
     "apple_sensors": "📡", "websocket": "🔌", "agentcore_proxy": "☁️",
     "manage_messages": "💬", "view_logs": "📋", "file_read": "📖",
     "speech_to_speech": "🎤", "speech_session": "🎙️",
+    "browse": "🌐", "chrome_bridge": "🔌",
 }
 
 
@@ -123,7 +125,11 @@ def _build_completions() -> List[str]:
         "ambient", "auto", "autonomous", "record",
         "/help", "/clear", "/clearall", "/status", "/peers", "/tools",
         "/sidebar", "/ambient", "/auto", "/record", "/voice", "/logs",
-        "/schedule",
+        "/image", "/img",
+        "/voice handsfree", "/voice ptt", "/voice novasonic", "/voice openai", "/voice gemini",
+        "/schedule", "/listen", "/listen start", "/listen stop", "/listen status",
+        "/listen auto", "/listen devices",
+        "/browse", "/browse close", "/browse scroll down", "/browse scroll up", "/browse refresh",
     ]
     try:
         from devduck import extract_commands_from_history
@@ -395,6 +401,204 @@ class TUICallbackHandler:
 
         if force_stop:
             self.app.post_message(ConversationDone(self.conv_id))
+
+
+# ─── Conversation Panel ────────────────────────────────────────
+
+# ─── Browser Panel ─────────────────────────────────────────────
+
+class BrowserPanel(Static):
+    """Inline browser rendered as halfblock characters in the TUI."""
+
+    DEFAULT_CSS = """
+    BrowserPanel {
+        height: auto;
+        margin: 0 0 1 0;
+        border: round #61afef;
+        padding: 0;
+    }
+    BrowserPanel.closed {
+        border: round $success-darken-2;
+        opacity: 0.5;
+    }
+    """
+
+    def __init__(self, url: str = "about:blank", **kwargs):
+        super().__init__(**kwargs)
+        self._url = url
+        self._session = None
+        self._log = None
+        self._render_width = 160
+        self._render_height = 100
+        self._streaming = False
+
+    def compose(self) -> ComposeResult:
+        yield Static(
+            f"[bold #61afef]🌐 Browser[/] [dim]— {self._url}[/]",
+            id="browser-header",
+        )
+        yield RichLog(id="browser-canvas", markup=True, wrap=True, min_width=80)
+        yield Static(
+            "[dim]Click coords: browse(action='click', x=N, y=N) | "
+            "Scroll: browse(action='scroll') | "
+            "Navigate: browse(action='navigate', url='...')[/]",
+            id="browser-footer",
+        )
+
+    def on_mount(self) -> None:
+        self._log = self.query_one("#browser-canvas", RichLog)
+        # Start browser in background
+        self._open_browser()
+
+    @work(thread=True)
+    def _open_browser(self) -> None:
+        """Launch headless Chrome and render first frame."""
+        try:
+            from devduck.tools.browse import browse, get_browser_session, HalfblockRenderer
+            import io
+
+            # Get terminal width for render sizing
+            try:
+                size = self.app.size
+                self._render_width = min(size.width - 4, 240)
+                self._render_height = min((size.height - 8) * 2, 160)
+            except Exception:
+                pass
+
+            # Open browser
+            result = browse(
+                action="open",
+                url=self._url,
+                headless=True,
+                use_profile=False,
+                width=self._render_width,
+                height=self._render_height,
+                render="raw",
+            )
+
+            if result.get("status") != "success":
+                self.app.call_from_thread(
+                    self._log.write,
+                    Text(f"Error: {result.get('content', [{}])[0].get('text', 'unknown')}")
+                )
+                return
+
+            # Render the frame
+            self._render_frame()
+
+        except Exception as e:
+            self.app.call_from_thread(
+                self._log.write, Text(f"Browser error: {e}")
+            )
+
+    def _render_frame(self) -> None:
+        """Capture screenshot and render to RichLog as halfblock Rich Text."""
+        try:
+            from devduck.tools.browse import get_browser_session, HalfblockRenderer
+            import asyncio
+
+            session = get_browser_session()
+            if not session or not session.cdp:
+                return
+
+            # Get event loop and capture screenshot
+            from devduck.tools.browse import _run_async, _screenshot, _get_page_info
+
+            img_data = _run_async(_screenshot(session))
+
+            # Render to Rich Text object
+            rich_text = HalfblockRenderer.render_to_rich_text(
+                img_data,
+                width=self._render_width,
+                height=self._render_height,
+            )
+
+            # Update header with page info
+            try:
+                info = _run_async(_get_page_info(session))
+                title = info.get("title", "?")
+                url = info.get("url", "?")
+                header_text = f"[bold #61afef]🌐 {title}[/] [dim]— {url}[/]"
+            except Exception:
+                header_text = f"[bold #61afef]🌐 Browser[/] [dim]— {self._url}[/]"
+
+            def _update():
+                self._log.clear()
+                self._log.write(rich_text)
+                try:
+                    self.query_one("#browser-header", Static).update(header_text)
+                except Exception:
+                    pass
+
+            self.app.call_from_thread(_update)
+
+        except Exception as e:
+            self.app.call_from_thread(
+                self._log.write, Text(f"Render error: {e}")
+            )
+
+    @work(thread=True)
+    def refresh_frame(self) -> None:
+        """Public method to refresh the browser frame (after click/scroll/navigate)."""
+        import time
+        time.sleep(0.5)  # Let page settle
+        self._render_frame()
+
+    @work(thread=True)
+    def navigate(self, url: str) -> None:
+        """Navigate to a new URL and re-render."""
+        try:
+            from devduck.tools.browse import browse
+            browse(action="navigate", url=url, render="raw")
+            self._url = url
+            import time
+            time.sleep(0.5)
+            self._render_frame()
+        except Exception as e:
+            self.app.call_from_thread(
+                self._log.write, Text(f"Navigate error: {e}")
+            )
+
+    @work(thread=True)
+    def click(self, x: int, y: int) -> None:
+        """Click at coordinates and re-render."""
+        try:
+            from devduck.tools.browse import browse
+            browse(
+                action="click", x=x, y=y,
+                width=self._render_width, height=self._render_height,
+                render="raw",
+            )
+            import time
+            time.sleep(0.5)
+            self._render_frame()
+        except Exception as e:
+            self.app.call_from_thread(
+                self._log.write, Text(f"Click error: {e}")
+            )
+
+    @work(thread=True)
+    def scroll_page(self, direction: str = "down") -> None:
+        """Scroll and re-render."""
+        try:
+            from devduck.tools.browse import browse
+            browse(action="scroll", direction=direction, render="raw")
+            import time
+            time.sleep(0.3)
+            self._render_frame()
+        except Exception as e:
+            self.app.call_from_thread(
+                self._log.write, Text(f"Scroll error: {e}")
+            )
+
+    def close_browser(self) -> None:
+        """Close the browser session."""
+        try:
+            from devduck.tools.browse import browse
+            browse(action="close")
+            self.add_class("closed")
+        except Exception:
+            pass
 
 
 # ─── Conversation Panel ────────────────────────────────────────
@@ -838,6 +1042,9 @@ class DevDuckTUI(App):
         self._speech_session_id: Optional[str] = None
         self._speech_provider: str = "novasonic"
         self._speech_panel_id: Optional[int] = None
+        self._speech_ptt: bool = True  # True = push-to-talk, False = always-on (hands-free)
+        # Listen (Whisper) state
+        self._listen_panel_id: Optional[int] = None
         # Shared message history — all concurrent conversations read/write to this
         # single thread-safe list. Each conv gets a fresh Agent whose .messages
         # is pointed at this shared instance. This gives:
@@ -870,6 +1077,7 @@ class DevDuckTUI(App):
                 yield Static("🦆 DevDuck", id="sidebar-title")
                 with ScrollableContainer(id="sidebar-scroll"):
                     yield Static(id="sb-convos")
+                    yield Static(id="sb-listen")
                     yield Static(id="sb-voice")
                     yield Static(id="sb-tools")
                     yield Static(id="sb-schedules")
@@ -884,9 +1092,10 @@ class DevDuckTUI(App):
         self._update_status_bar()
         self._ptt_timer = None  # PTT debounce timer
         self.set_interval(5.0, self._update_status_bar)
-        self.set_interval(10.0, self._update_sidebar_stats)
+        self.set_interval(3.0, self._update_sidebar_stats)
         self.set_interval(3.0, self._update_sb_net_feed)
         self.set_interval(1.0, self._update_sb_voice)  # Voice sidebar — fast only when active
+        self.set_interval(2.0, self._update_sb_listen)  # Listen sidebar — live transcripts
         self._show_welcome()
 
         # Register for tui tool
@@ -1084,6 +1293,11 @@ class DevDuckTUI(App):
         help_table.add_row("[bright_cyan]/clear[/] [bright_cyan]/tools[/] [bright_cyan]/peers[/]", "manage · Ctrl+L Ctrl+K Ctrl+T")
         help_table.add_row("[bright_cyan]Ctrl+V[/]", "🎤 toggle voice (speech-to-speech)")
         help_table.add_row("[bright_cyan]/voice[/] [dim]provider[/]", "configure voice provider")
+        help_table.add_row("[bright_cyan]/listen[/]", "🎤 background Whisper transcription")
+        help_table.add_row("[bright_cyan]/browse[/] [dim]URL[/]", "🌐 inline browser (halfblock rendering)")
+        help_table.add_row("[bright_cyan]/image[/] [dim]path[/]", "🖼️ render image inline (halfblock pixels)")
+        help_table.add_row("[bright_cyan]/voice handsfree[/]", "🔊 hands-free mode (always listening)")
+        help_table.add_row("[bright_cyan]/voice ptt[/]", "push-to-talk mode (hold Space)")
         help_table.add_row("[bright_cyan]exit[/] / [bright_cyan]q[/]", "quit  ·  Ctrl+C to force")
 
         help_panel = Panel(help_table, title="[bold]⌨️  Commands[/]", border_style="dim yellow", box=box.ROUNDED, padding=(0, 0))
@@ -1170,6 +1384,26 @@ class DevDuckTUI(App):
         except ImportError:
             pass
 
+        # Listen indicator
+        try:
+            from devduck.tools.listen import STATE as LISTEN_STATE
+            if LISTEN_STATE.get("running"):
+                count = LISTEN_STATE.get("transcript_count", 0)
+                bar.append("  │  ", style="dim")
+                bar.append(f"🎤 {count}", style="bold bright_green")
+        except ImportError:
+            pass
+
+        # Event bus indicator
+        try:
+            from devduck.tools.event_bus import bus as _evt_bus
+            evt_count = _evt_bus.size
+            if evt_count > 0:
+                bar.append("  │  ", style="dim")
+                bar.append(f"🔔 {evt_count}", style="bright_yellow")
+        except ImportError:
+            pass
+
         try:
             self.query_one("#status-bar", Static).update(bar)
         except NoMatches:
@@ -1178,6 +1412,7 @@ class DevDuckTUI(App):
     def _update_sidebar_stats(self) -> None:
         """Update all sidebar sections."""
         self._update_sb_convos()
+        self._update_sb_listen()
         self._update_sb_voice()
         self._update_sb_tools()
         self._update_sb_schedules()
@@ -1208,6 +1443,59 @@ class DevDuckTUI(App):
                 t.append(f" {panel.elapsed_str}", style="dim yellow")
             t.append("\n")
         w.update(t)
+
+    def _update_sb_listen(self) -> None:
+        """Listen/Whisper transcription sidebar section with live transcript feed."""
+        try:
+            w = self.query_one("#sb-listen", Static)
+        except NoMatches:
+            return
+
+        t = Text()
+        t.append("── Listen ──\n", style="bold dim")
+
+        try:
+            from devduck.tools.listen import STATE as LISTEN_STATE
+
+            running = LISTEN_STATE.get("running", False)
+            if running:
+                model = LISTEN_STATE.get("model_name", "base")
+                count = LISTEN_STATE.get("transcript_count", 0)
+                uptime = time.time() - LISTEN_STATE.get("start_time", time.time())
+
+                t.append(" 🎤 ", style="bold bright_green")
+                t.append("ACTIVE", style="bold bright_green")
+                t.append(f" ({model})\n", style="dim")
+                t.append(f"   {count} transcripts", style="dim")
+                t.append(f" · {uptime:.0f}s\n", style="dim")
+
+                # Show last few transcripts
+                items = list(LISTEN_STATE.get("transcript_log", []))[-5:]
+                if items:
+                    t.append("\n", style="")
+                    for item in items:
+                        txt = item.get("text", "")
+                        if txt and not txt.startswith("["):
+                            ts = item.get("timestamp", "?")
+                            # Time only (HH:MM:SS)
+                            ts_short = ts[11:19] if len(ts) > 19 else ts[:8]
+                            preview = txt[:30].replace("\n", " ")
+                            if len(txt) > 30:
+                                preview += "…"
+                            t.append(f"   {ts_short} ", style="dim")
+                            t.append(f"{preview}\n", style="")
+
+                t.append(" /listen stop\n", style="dim")
+            else:
+                t.append(" 🎤 ", style="dim")
+                t.append("inactive\n", style="dim")
+                t.append(" /listen to start\n", style="dim")
+        except ImportError:
+            t.append(" 🎤 ", style="dim")
+            t.append("not loaded\n", style="dim italic")
+
+        w.update(t)
+
 
     def _update_sb_voice(self) -> None:
         """Voice/speech-to-speech section in sidebar with live VAD meter."""
@@ -1252,11 +1540,20 @@ class DevDuckTUI(App):
                             else:
                                 t.append("   ○ press Space\n", style="dim")
                         else:
-                            t.append("   ● always-on\n", style="green")
+                            if session.is_transmitting:
+                                t.append("   🔊 listening\n", style="bright_green")
+                            else:
+                                t.append("   ● hands-free\n", style="green")
 
                         # AEC indicator
-                        if hasattr(session, '_audio_io') and session._audio_io and session._audio_io._has_aec:
-                            t.append("   🔇 AEC+NS on\n", style="dim green")
+                        if hasattr(session, '_audio_io') and session._audio_io:
+                            backend = getattr(session._audio_io, '_backend', 'none')
+                            if backend == "pywebrtc-audio":
+                                t.append("   🔇 AEC+NS+AGC\n", style="dim green")
+                            elif backend == "webrtc-noise-gain":
+                                t.append("   🔇 NS+AGC\n", style="dim yellow")
+                            else:
+                                t.append("   ⚠ raw audio\n", style="dim red")
 
                     t.append(f" Ctrl+V to stop\n", style="dim")
                 else:
@@ -1272,66 +1569,174 @@ class DevDuckTUI(App):
         w.update(t)
 
     def _update_sb_tools(self) -> None:
-        """Tools section — shows loaded tools with counts."""
+        """Live Event Stream — replaces static tools list.
+
+        Shows real-time events from telegram, whatsapp, scheduler, tasks,
+        listen, notify, zenoh — everything that matters.
+        """
         try:
             w = self.query_one("#sb-tools", Static)
         except NoMatches:
             return
 
-        if not self._devduck:
-            w.update(Text(""))
-            return
-
-        tool_names = []
-        if hasattr(self._devduck, 'agent') and self._devduck.agent:
-            try:
-                tool_names = sorted(self._devduck.agent.tool_names)
-            except Exception:
-                pass
-
         t = Text()
-        t.append("── Tools ", style="bold dim")
-        t.append(f"({len(tool_names)})", style="dim")
-        t.append(" ──\n", style="bold dim")
+        t.append("── Event Stream ──\n", style="bold dim")
 
-        # Show tools in compact format
-        for name in tool_names:
-            icon = TOOL_ICONS.get(name, "·")
-            t.append(f" {icon} ", style="dim")
-            # Truncate long tool names
-            display = name[:22] + "…" if len(name) > 22 else name
-            t.append(f"{display}\n", style="")
+        try:
+            from devduck.tools.event_bus import bus, EVENT_ICONS
+
+            events = bus.recent(count=20)
+            if events:
+                for e in events:
+                    age = e.age_seconds
+                    # Fade old events
+                    if age < 30:
+                        time_style = "bold"
+                        text_style = ""
+                    elif age < 120:
+                        time_style = ""
+                        text_style = ""
+                    else:
+                        time_style = "dim"
+                        text_style = "dim"
+
+                    icon = e.icon
+                    t.append(f" {icon} ", style=text_style)
+                    t.append(f"{e.time_str} ", style=f"dim {time_style}")
+                    # Source tag (compact)
+                    src_style = {
+                        "telegram": "bold cyan",
+                        "whatsapp": "bold green",
+                        "scheduler": "bold yellow",
+                        "tasks": "bold magenta",
+                        "listen": "bold bright_green",
+                        "notify": "bold bright_yellow",
+                        "zenoh": "bold bright_cyan",
+                    }.get(e.source, "bold")
+                    t.append(f"{e.source[:6]} ", style=src_style)
+                    # Summary (truncated)
+                    summary = e.summary[:30]
+                    if len(e.summary) > 30:
+                        summary += "…"
+                    t.append(f"{summary}\n", style=text_style)
+
+                t.append(f"\n {bus.size} events", style="dim")
+                t.append(f" · {bus.count} total\n", style="dim")
+            else:
+                t.append(" No events yet\n", style="dim italic")
+                t.append("\n Events from telegram,\n", style="dim")
+                t.append(" whatsapp, scheduler,\n", style="dim")
+                t.append(" tasks, listen, notify\n", style="dim")
+                t.append(" appear here live\n", style="dim")
+
+        except ImportError:
+            t.append(" event_bus not loaded\n", style="dim italic")
+
         w.update(t)
 
     def _update_sb_schedules(self) -> None:
-        """Schedules section — shows active scheduled jobs."""
+        """Schedules section — shows active scheduled jobs with rich details."""
         try:
             w = self.query_one("#sb-schedules", Static)
         except NoMatches:
             return
 
         t = Text()
-        t.append("── Schedules ──\n", style="bold dim")
 
-        # Try to get scheduler state
+        # Read from the correct module-level _state dict
         has_jobs = False
+        jobs = {}
+        running = False
         try:
             sched_mod = sys.modules.get("devduck.tools.scheduler")
-            if sched_mod and hasattr(sched_mod, "_SCHEDULER_STATE"):
-                state = sched_mod._SCHEDULER_STATE
+            if sched_mod and hasattr(sched_mod, "_state"):
+                state = sched_mod._state
+                running = state.get("running", False)
                 jobs = state.get("jobs", {})
-                if jobs:
-                    has_jobs = True
-                    for name, job in jobs.items():
-                        enabled = job.get("enabled", True)
-                        schedule = job.get("schedule", job.get("run_at", "?"))
-                        icon = "✓" if enabled else "○"
-                        style = "green" if enabled else "dim"
-                        t.append(f" {icon} ", style=style)
-                        t.append(f"{name[:18]}", style="bold" if enabled else "dim")
-                        t.append(f"\n   {schedule}\n", style="dim")
+                # Also try loading from disk if live mirror is empty
+                if not jobs and hasattr(sched_mod, "_load_jobs"):
+                    jobs = sched_mod._load_jobs()
         except Exception:
             pass
+
+        active_count = sum(1 for j in jobs.values() if j.get("enabled", True))
+        t.append("── Schedules ", style="bold dim")
+        t.append(f"({active_count})", style="dim")
+        t.append(" ──\n", style="bold dim")
+
+        # Scheduler daemon status
+        if running:
+            t.append(" ⏰ ", style="bold green")
+            t.append("running\n", style="green")
+        elif jobs:
+            t.append(" ⏰ ", style="bold yellow")
+            t.append("stopped\n", style="yellow")
+
+        if jobs:
+            has_jobs = True
+            for name, job in jobs.items():
+                enabled = job.get("enabled", True)
+                schedule = job.get("schedule", job.get("run_at", "?"))
+                last_status = job.get("last_status")
+                runs = job.get("run_count", 0)
+
+                # Status icon
+                if not enabled:
+                    icon = "○"
+                    name_style = "dim"
+                elif last_status == "error":
+                    icon = "✗"
+                    name_style = "bold red"
+                elif last_status == "success":
+                    icon = "✓"
+                    name_style = "bold green"
+                else:
+                    icon = "◆"
+                    name_style = "bold"
+
+                icon_style = "green" if enabled and last_status != "error" else "red" if last_status == "error" else "dim"
+                t.append(f" {icon} ", style=icon_style)
+                t.append(f"{name[:16]}", style=name_style)
+                if runs > 0:
+                    t.append(f" ×{runs}", style="dim")
+                t.append("\n")
+
+                # Schedule line
+                sched_display = schedule[:22] if len(str(schedule)) > 22 else schedule
+                t.append(f"   ⏱ {sched_display}\n", style="dim")
+
+                # System prompt hint
+                sys_p = job.get("system_prompt")
+                if sys_p:
+                    t.append(f"   📝 {sys_p[:20]}…\n", style="dim italic")
+
+                # Tools hint
+                tools = job.get("tools")
+                if tools:
+                    t.append(f"   🔧 {tools[:20]}…\n", style="dim")
+
+                # Last run info
+                last_triggered = job.get("last_triggered", 0)
+                if last_triggered:
+                    last_dt = datetime.fromtimestamp(last_triggered)
+                    age = time.time() - last_triggered
+                    if age < 3600:
+                        age_str = f"{age / 60:.0f}m ago"
+                    elif age < 86400:
+                        age_str = f"{age / 3600:.0f}h ago"
+                    else:
+                        age_str = last_dt.strftime("%m/%d %H:%M")
+                    dur = f" {job['last_duration']:.0f}s" if job.get("last_duration") else ""
+                    status_icon = "✓" if last_status == "success" else "✗" if last_status == "error" else "—"
+                    t.append(f"   {status_icon} {age_str}{dur}\n", style="dim green" if last_status == "success" else "dim red" if last_status == "error" else "dim")
+
+                # Last result snippet
+                last_result = job.get("last_result")
+                if last_result:
+                    snippet = last_result[:25].replace("\n", " ")
+                    if len(last_result) > 25:
+                        snippet += "…"
+                    t.append(f"   → {snippet}\n", style="dim")
 
         if not has_jobs:
             t.append(" No scheduled jobs\n", style="dim italic")
@@ -1501,6 +1906,16 @@ class DevDuckTUI(App):
 
         t = Text()
         t.append("── Stats ──\n", style="bold dim")
+
+        # CWD
+        import os as _os
+        cwd = _os.getcwd()
+        # Show last 2 path components for brevity
+        parts = cwd.split(_os.sep)
+        short_cwd = _os.sep.join(parts[-2:]) if len(parts) > 2 else cwd
+        t.append(" 📁 ", style="dim")
+        t.append(f"{short_cwd}\n", style="bold bright_cyan")
+
         t.append(" ⚡ ", style="yellow" if active else "dim")
         t.append(f"{active} running  ", style="bold yellow" if active else "dim")
         t.append("✓ ", style="green" if done else "dim")
@@ -1833,12 +2248,18 @@ class DevDuckTUI(App):
             self._show_voice_config()
 
         elif cmd_lower.startswith("/voice ") or cmd_lower.startswith("/v "):
-            # /voice novasonic, /voice openai, /voice gemini_live, /voice stop
+            # /voice novasonic, /voice openai, /voice gemini_live, /voice stop, /voice handsfree
             parts = cmd.strip().split(None, 1)
             if len(parts) > 1:
                 arg = parts[1].strip().lower()
                 if arg in ("stop", "off", "end"):
                     self._toggle_voice(force_stop=True)
+                elif arg in ("ptt", "push-to-talk", "push"):
+                    self._speech_ptt = True
+                    self._notify_voice_mode("Push-to-Talk (hold Space)")
+                elif arg in ("handsfree", "hands-free", "free", "always", "auto", "continuous", "direct"):
+                    self._speech_ptt = False
+                    self._notify_voice_mode("Hands-Free (always listening)")
                 elif arg in ("novasonic", "openai", "gemini_live", "gemini"):
                     provider = "gemini_live" if arg == "gemini" else arg
                     self._speech_provider = provider
@@ -1852,6 +2273,15 @@ class DevDuckTUI(App):
         elif cmd_lower in ("/logs", "/log"):
             self._show_logs()
 
+        elif cmd_lower.startswith("/listen"):
+            self._handle_listen_command(cmd)
+
+        elif cmd_lower.startswith("/image") or cmd_lower.startswith("/img"):
+            self._handle_image_command(cmd)
+
+        elif cmd_lower.startswith("/browse") or cmd_lower.startswith("/b "):
+            self._handle_browse_command(cmd)
+
         else:
             scroll.mount(
                 Static(
@@ -1862,6 +2292,206 @@ class DevDuckTUI(App):
                     )
                 )
             )
+            scroll.scroll_end(animate=False)
+
+    def _handle_image_command(self, cmd: str) -> None:
+        """Handle /image commands to render images inline in the TUI.
+
+        Usage:
+            /image /path/to/file.png              — render a local image
+            /image https://example.com/pic.jpg    — render from URL
+            /image                                — show help
+        """
+        scroll = self.query_one("#conversations-scroll", ScrollableContainer)
+        parts = cmd.strip().split(None, 1)
+        path_or_url = parts[1].strip() if len(parts) > 1 else ""
+
+        if not path_or_url:
+            md = (
+                "## 🖼️ Image — Inline Image Rendering\n\n"
+                "Renders images as halfblock characters directly in the TUI.\n"
+                "Works with any 24-bit color terminal.\n\n"
+                "| Command | Description |\n"
+                "|---------|-------------|\n"
+                "| `/image /path/to/file.png` | Render a local image |\n"
+                "| `/image https://...` | Render image from URL |\n"
+                "| `/img ~/screenshot.jpg` | Short alias |\n\n"
+                "**Supported formats:** PNG, JPEG, GIF, BMP, WebP, TIFF\n\n"
+                "**Agent usage:**\n"
+                "```python\n"
+                "tui(action='image', content='/path/to/image.png', title='My Image')\n"
+                "```"
+            )
+            scroll.mount(Static(Panel(Markdown(md), border_style="bright_magenta", title="🖼️ Image")))
+            scroll.scroll_end(animate=False)
+            return
+
+        # Render the image via the tui tool
+        try:
+            from devduck.tools.tui import _load_image_bytes, _action_image, get_tui_app
+
+            # Verify the app is set
+            if get_tui_app() is None:
+                from devduck.tools.tui import set_tui_app
+                set_tui_app(self)
+
+            # Remove welcome panel
+            try:
+                self.query_one("#welcome-panel").remove()
+            except NoMatches:
+                pass
+
+            # Use the worker thread to avoid blocking
+            self._render_image_worker(path_or_url)
+
+        except ImportError as e:
+            scroll.mount(Static(Panel(
+                f"[red]Image rendering requires Pillow: pip install Pillow[/]\n[dim]{e}[/]",
+                border_style="red",
+            )))
+            scroll.scroll_end(animate=False)
+
+    @work(thread=True)
+    def _render_image_worker(self, path_or_url: str) -> None:
+        """Background worker to load and render an image."""
+        try:
+            from devduck.tools.tui import _action_image, get_tui_app
+            result = _action_image(self, path_or_url, "", "bright_magenta", 0)
+            if result.get("status") == "error":
+                error_text = result["content"][0]["text"]
+                from textual.widgets import Static
+                from textual.containers import ScrollableContainer
+                from rich.panel import Panel
+                scroll = self.query_one("#conversations-scroll", ScrollableContainer)
+                self.call_from_thread(
+                    scroll.mount,
+                    Static(Panel(f"[red]{error_text}[/]", border_style="red", title="🖼️ Error"))
+                )
+                self.call_from_thread(scroll.scroll_end, animate=False)
+        except Exception as e:
+            from textual.widgets import Static
+            from textual.containers import ScrollableContainer
+            from rich.panel import Panel
+            try:
+                scroll = self.query_one("#conversations-scroll", ScrollableContainer)
+                self.call_from_thread(
+                    scroll.mount,
+                    Static(Panel(f"[red]Image error: {e}[/]", border_style="red"))
+                )
+                self.call_from_thread(scroll.scroll_end, animate=False)
+            except Exception:
+                pass
+
+    def _handle_browse_command(self, cmd: str) -> None:
+        """Handle /browse commands to open inline browser in TUI.
+
+        Usage:
+            /browse https://github.com     — open URL
+            /browse                         — show help
+            /browse scroll down             — scroll current browser
+            /browse click 50 20             — click at coords
+            /browse navigate https://...    — navigate to URL
+            /browse close                   — close browser
+            /browse refresh                 — re-render current page
+        """
+        scroll = self.query_one("#conversations-scroll", ScrollableContainer)
+        parts = cmd.strip().split(None, 2)
+        args = parts[1:] if len(parts) > 1 else []
+
+        if not args:
+            # Show help
+            md = """## 🌐 Browse — Inline Browser
+
+| Command | Description |
+|---------|-------------|
+| `/browse https://...` | Open URL in headless Chrome |
+| `/browse scroll down` | Scroll page down |
+| `/browse scroll up` | Scroll page up |
+| `/browse click X Y` | Click at terminal coordinates |
+| `/browse navigate URL` | Go to new URL |
+| `/browse refresh` | Re-render current page |
+| `/browse close` | Close browser session |
+
+The browser renders as halfblock characters directly in the TUI.
+Works with any website. Uses headless Chrome via CDP.
+"""
+            scroll.mount(Static(Panel(Markdown(md), border_style="#61afef", title="🌐 Browse")))
+            scroll.scroll_end(animate=False)
+            return
+
+        arg0 = args[0].lower()
+
+        # Check for existing browser panel
+        browser_panels = self.query("BrowserPanel")
+        active_panel = None
+        for bp in browser_panels:
+            if not bp.has_class("closed"):
+                active_panel = bp
+                break
+
+        if arg0 == "close":
+            if active_panel:
+                active_panel.close_browser()
+                scroll.mount(Static(Panel("[dim]🌐 Browser closed[/]", border_style="dim")))
+            else:
+                scroll.mount(Static(Panel("[dim]No active browser[/]", border_style="dim")))
+            scroll.scroll_end(animate=False)
+
+        elif arg0 == "refresh":
+            if active_panel:
+                active_panel.refresh_frame()
+            else:
+                scroll.mount(Static(Panel("[dim]No active browser to refresh[/]", border_style="dim")))
+                scroll.scroll_end(animate=False)
+
+        elif arg0 == "scroll":
+            direction = args[1] if len(args) > 1 else "down"
+            if active_panel:
+                active_panel.scroll_page(direction)
+            else:
+                scroll.mount(Static(Panel("[dim]No active browser[/]", border_style="dim")))
+                scroll.scroll_end(animate=False)
+
+        elif arg0 == "click" and len(args) >= 3:
+            try:
+                x, y = int(args[1]), int(args[2])
+                if active_panel:
+                    active_panel.click(x, y)
+                else:
+                    scroll.mount(Static(Panel("[dim]No active browser[/]", border_style="dim")))
+                    scroll.scroll_end(animate=False)
+            except ValueError:
+                scroll.mount(Static(Panel("[red]Usage: /browse click X Y[/]", border_style="red")))
+                scroll.scroll_end(animate=False)
+
+        elif arg0 == "navigate" and len(args) >= 2:
+            url = args[1]
+            if active_panel:
+                active_panel.navigate(url)
+            else:
+                # Open new browser with this URL
+                panel = BrowserPanel(url=url)
+                scroll.mount(panel)
+                scroll.scroll_end(animate=False)
+
+        elif arg0.startswith("http") or arg0.startswith("www."):
+            # Direct URL — open new browser panel
+            url = args[0] if args[0].startswith("http") else f"https://{args[0]}"
+
+            # Close existing browser if any
+            if active_panel:
+                active_panel.close_browser()
+
+            panel = BrowserPanel(url=url)
+            scroll.mount(panel)
+            scroll.scroll_end(animate=False)
+
+        else:
+            scroll.mount(Static(Panel(
+                f"[dim]Unknown browse command:[/] {arg0}\n"
+                f"[dim]Try /browse for help[/]",
+                border_style="yellow",
+            )))
             scroll.scroll_end(animate=False)
 
     def _show_logs(self) -> None:
@@ -1902,6 +2532,276 @@ class DevDuckTUI(App):
             lines.append(f"*Error reading logs: {e}*")
 
         scroll.mount(Static(Panel(Markdown("\n".join(lines)), border_style="dim")))
+        scroll.scroll_end(animate=False)
+
+
+    def _handle_listen_command(self, cmd: str) -> None:
+        """Handle /listen commands — start/stop background Whisper transcription.
+
+        Supports:
+            /listen                          — Show status or start
+            /listen start                    — Start basic listener
+            /listen stop                     — Stop listener
+            /listen status                   — Show status
+            /listen "hey duck"               — Start with trigger keyword
+            /listen trigger "hey duck"       — Start with trigger keyword (explicit)
+            /listen auto                     — Start in auto mode (triggers on long speech)
+            /listen auto 30                  — Auto mode with custom character threshold
+            /listen model small              — Use a specific Whisper model
+            /listen device "MacBook"         — Use a specific audio device
+        """
+        scroll = self.query_one("#conversations-scroll", ScrollableContainer)
+
+        try:
+            from devduck.tools.listen import listen as listen_tool, STATE as LISTEN_STATE
+        except ImportError:
+            scroll.mount(Static(Panel(
+                "[red]listen tool not available.[/]\n"
+                "[dim]Install: pip install openai-whisper sounddevice[/]",
+                border_style="red", title="🎤 Listen",
+            )))
+            scroll.scroll_end(animate=False)
+            return
+
+        running = LISTEN_STATE.get("running", False)
+
+        # Parse the command arguments
+        raw = cmd.strip()
+        # Remove the /listen prefix
+        if raw.lower().startswith("/listen"):
+            raw = raw[7:].strip()
+
+        # Extract quoted strings (trigger keywords)
+        import re
+        quoted_match = re.search(r'["\'](.+?)["\']', raw)
+        quoted_value = quoted_match.group(1) if quoted_match else None
+        # Remove quoted part for further parsing
+        if quoted_match:
+            raw_without_quotes = raw[:quoted_match.start()] + raw[quoted_match.end():]
+        else:
+            raw_without_quotes = raw
+        tokens = raw_without_quotes.lower().split()
+
+        # ── STOP ──
+        if any(t in tokens for t in ("stop", "off", "end")):
+            if running:
+                result = listen_tool(action="stop")
+                msg = result.get("content", [{}])[0].get("text", "Stopped")
+            else:
+                msg = "Listener not running."
+            scroll.mount(Static(Panel(Markdown(f"🎤 {msg}"), border_style="bright_red")))
+            scroll.scroll_end(animate=False)
+            self._update_sb_listen()
+            return
+
+        # ── STATUS ──
+        if "status" in tokens:
+            self._show_listen_status(scroll, LISTEN_STATE)
+            return
+
+        # ── DEVICES ──
+        if any(t in tokens for t in ("devices", "list_devices")):
+            result = listen_tool(action="list_devices")
+            msg = result.get("content", [{}])[0].get("text", "No devices")
+            scroll.mount(Static(Panel(Markdown(f"```\n{msg}\n```"), border_style="bright_green", title="🎤 Audio Devices")))
+            scroll.scroll_end(animate=False)
+            return
+
+        # ── START (with options) ──
+        if running and not any(t in tokens for t in ("start", "on", "trigger", "auto")):
+            # Already running and no explicit start — show status
+            if not tokens and not quoted_value:
+                self._show_listen_status(scroll, LISTEN_STATE)
+                return
+            # If they typed something unrecognized, show help
+            if tokens:
+                self._show_listen_help(scroll)
+                return
+
+        # Parse options
+        trigger_keyword = None
+        auto_mode = False
+        length_threshold = 50
+        model_name = "base"
+        device_name = None
+
+        # Quoted value = trigger keyword (e.g., /listen "hey duck")
+        if quoted_value:
+            trigger_keyword = quoted_value
+
+        # Explicit trigger keyword
+        if "trigger" in tokens:
+            idx = tokens.index("trigger")
+            # The trigger keyword should be the quoted value, or the next token
+            if not trigger_keyword and idx + 1 < len(tokens):
+                trigger_keyword = tokens[idx + 1]
+
+        # Auto mode
+        if "auto" in tokens:
+            auto_mode = True
+            # Check for optional threshold number after "auto"
+            idx = tokens.index("auto")
+            if idx + 1 < len(tokens):
+                try:
+                    length_threshold = int(tokens[idx + 1])
+                except ValueError:
+                    pass
+
+        # Model selection
+        if "model" in tokens:
+            idx = tokens.index("model")
+            if idx + 1 < len(tokens):
+                model_name = tokens[idx + 1]
+
+        # Device selection (quoted or after "device" keyword)
+        if "device" in tokens:
+            idx = tokens.index("device")
+            if idx + 1 < len(tokens):
+                device_name = tokens[idx + 1]
+
+        # If already running, stop first then restart with new config
+        if running:
+            listen_tool(action="stop")
+            time.sleep(0.3)
+
+        # Register a transcript callback that pushes to shared messages + TUI
+        def _tui_transcript_callback(text: str, timestamp: str) -> None:
+            """Push transcript into shared messages so agents see voice input."""
+            self._shared_messages.append({
+                "role": "user",
+                "content": [{"text": f"[🎤 Voice transcript {timestamp}]: {text}"}],
+            })
+            # Also post a stream chunk to any active listen panel
+            if hasattr(self, "_listen_panel_id") and self._listen_panel_id:
+                self.post_message(StreamChunk(self._listen_panel_id, f"\n🎤 **[{timestamp}]** {text}\n"))
+
+        LISTEN_STATE["transcript_callback"] = _tui_transcript_callback
+
+        # Get parent agent for trigger/auto mode
+        parent_agent = self._devduck.agent if self._devduck else None
+
+        result = listen_tool(
+            action="start",
+            model_name=model_name,
+            device_name=device_name,
+            agent=parent_agent,
+            trigger_keyword=trigger_keyword,
+            auto_mode=auto_mode,
+            length_threshold=length_threshold,
+        )
+        msg = result.get("content", [{}])[0].get("text", "Started")
+
+        # Remove welcome
+        try:
+            self.query_one("#welcome-panel").remove()
+        except NoMatches:
+            pass
+
+        # Build descriptive panel title
+        features = []
+        if trigger_keyword:
+            features.append(f'trigger: "{trigger_keyword}"')
+        if auto_mode:
+            features.append(f"auto (>{length_threshold} chars)")
+        feature_str = f" · {', '.join(features)}" if features else ""
+
+        # Create a visual panel for the listen session
+        self._conv_counter += 1
+        conv_id = self._conv_counter
+        self._listen_panel_id = conv_id
+        color = "#98c379"  # green for listen
+
+        panel = ConversationPanel(
+            conv_id=conv_id,
+            query=f"🎤 Whisper Listener{feature_str}",
+            color=color,
+        )
+        self._active_conversations[conv_id] = panel
+        scroll.mount(panel)
+
+        # Build info text
+        info_lines = [f"**{msg}**\n"]
+        info_lines.append("Transcriptions appear here in real-time and are injected into agent context.\n")
+        if trigger_keyword:
+            info_lines.append(f'🎯 **Trigger keyword:** Say **"{trigger_keyword}"** to activate the agent.\n')
+            info_lines.append(f'Anything spoken after the keyword will be processed as a command.\n')
+        if auto_mode:
+            info_lines.append(f"🤖 **Auto mode:** Transcripts longer than {length_threshold} chars will auto-trigger the agent.\n")
+        info_lines.append("`/listen stop` to end.\n")
+
+        panel.append_text("\n".join(info_lines))
+        scroll.scroll_end(animate=False)
+        self._update_sb_listen()
+
+    def _show_listen_status(self, scroll: ScrollableContainer, LISTEN_STATE: dict) -> None:
+        """Show listen status panel."""
+        running = LISTEN_STATE.get("running", False)
+        if running:
+            count = LISTEN_STATE.get("transcript_count", 0)
+            model = LISTEN_STATE.get("model_name", "base")
+            uptime = time.time() - LISTEN_STATE.get("start_time", time.time())
+            trigger = LISTEN_STATE.get("trigger_keyword")
+            auto = LISTEN_STATE.get("auto_mode", False)
+            threshold = LISTEN_STATE.get("length_threshold", 50)
+
+            lines = [
+                f"## 🎤 Listen Status\n",
+                f"- **Status:** ACTIVE",
+                f"- **Model:** {model}",
+                f"- **Transcripts:** {count}",
+                f"- **Uptime:** {uptime:.0f}s",
+            ]
+            if trigger:
+                lines.append(f'- **Trigger keyword:** "{trigger}"')
+            if auto:
+                lines.append(f"- **Auto mode:** ON (>{threshold} chars)")
+            lines.append(f"\n`/listen stop` to end")
+            md = "\n".join(lines)
+        else:
+            self._show_listen_help(scroll)
+            return
+
+        scroll.mount(Static(Panel(Markdown(md), border_style="bright_green", title="🎤 Listen")))
+        scroll.scroll_end(animate=False)
+
+    def _show_listen_help(self, scroll: ScrollableContainer) -> None:
+        """Show listen help/documentation panel."""
+        md = (
+            "## 🎤 Listen — Background Whisper Transcription\n\n"
+            "Records audio → detects speech → transcribes with Whisper → injects into agent context.\n\n"
+            "### Commands\n"
+            "| Command | Description |\n"
+            "|---------|-------------|\n"
+            '| `/listen` | Start basic listener |\n'
+            '| `/listen "hey duck"` | Start with trigger keyword |\n'
+            '| `/listen trigger "hey duck"` | Same as above (explicit) |\n'
+            "| `/listen auto` | Auto mode — triggers agent on long speech |\n"
+            "| `/listen auto 30` | Auto mode with custom char threshold |\n"
+            "| `/listen model small` | Use a specific Whisper model |\n"
+            '| `/listen device "MacBook"` | Use specific audio device |\n'
+            "| `/listen stop` | Stop listening |\n"
+            "| `/listen status` | Check status |\n"
+            "| `/listen devices` | List audio devices |\n\n"
+            "### Trigger Keyword Mode\n"
+            'Say the keyword (e.g., "hey duck") and everything after it becomes a command.\n'
+            'Example: "Hey duck, what time is it?" → agent processes "what time is it?"\n\n'
+            "### Auto Mode\n"
+            "Longer speech (default >50 chars) automatically triggers the agent.\n"
+            "Useful for hands-free operation.\n\n"
+            "### Combined Example\n"
+            '```\n/listen "hey duck" auto 30 model small\n```\n'
+            "Starts listener with trigger keyword + auto mode + smaller threshold + small model.\n\n"
+            "### How it works\n"
+            "1. Background thread captures microphone audio\n"
+            "2. WebRTC VAD detects speech segments\n"
+            "3. Whisper transcribes each segment\n"
+            "4. Transcripts are **immediately injected** into shared agent messages\n"
+            "5. All agents see voice input as context in their next query\n"
+            "6. Trigger/auto mode can invoke the agent automatically\n\n"
+            "### Requirements\n"
+            "```\npip install openai-whisper sounddevice\n```"
+        )
+        scroll.mount(Static(Panel(Markdown(md), border_style="bright_green", title="🎤 Listen")))
         scroll.scroll_end(animate=False)
 
 
@@ -2034,6 +2934,13 @@ class DevDuckTUI(App):
         if row:
             lines.append(" · ".join(row))
 
+        # Also show event bus stats
+        try:
+            from devduck.tools.event_bus import bus
+            lines.append(f"\n## 🔔 Event Bus: {bus.size} buffered, {bus.count} total events")
+        except ImportError:
+            pass
+
         scroll.mount(Static(Panel(Markdown("\n".join(lines)), border_style="cyan")))
         scroll.scroll_end(animate=False)
 
@@ -2108,15 +3015,16 @@ class DevDuckTUI(App):
                 except Exception:
                     pass
 
-            # 🔗 Inject dynamic context (zenoh + ring + ambient + recording events)
+            # 🔗 Inject dynamic context (zenoh + ring + ambient + recording events + listen + event bus)
             try:
                 from devduck import (
                     get_zenoh_peers_context, get_unified_ring_context,
-                    get_ambient_status_context,
+                    get_ambient_status_context, get_listen_transcripts_context,
                 )
                 zenoh_ctx = get_zenoh_peers_context()
                 ring_ctx = get_unified_ring_context()
                 ambient_ctx = get_ambient_status_context()
+                listen_ctx = get_listen_transcripts_context()
 
                 # 🎬 Inject recent recorded events
                 recording_ctx = ""
@@ -2125,7 +3033,15 @@ class DevDuckTUI(App):
                         seconds=10.0, max_events=15
                     )
 
-                dynamic_context = zenoh_ctx + ring_ctx + ambient_ctx + recording_ctx
+                # 🔔 Inject unified event bus context (telegram, whatsapp, scheduler, tasks, etc.)
+                event_bus_ctx = ""
+                try:
+                    from devduck.tools.event_bus import bus as _event_bus
+                    event_bus_ctx = _event_bus.get_context_string(max_events=15, max_age_seconds=300)
+                except ImportError:
+                    pass
+
+                dynamic_context = zenoh_ctx + ring_ctx + ambient_ctx + recording_ctx + listen_ctx + event_bus_ctx
                 if dynamic_context:
                     query = f"[Dynamic Context]{dynamic_context}\n\n[User Query]\n{query}"
             except ImportError:
@@ -2373,9 +3289,11 @@ class DevDuckTUI(App):
         self._speech_panel_id = conv_id
         color = "#e06c75"  # red for voice
 
+        mode_label = "PTT" if self._speech_ptt else "Hands-Free"
+
         panel = ConversationPanel(
             conv_id=conv_id,
-            query=f"🎙️ Voice Session ({self._speech_provider})",
+            query=f"🎙️ Voice Session ({self._speech_provider} · {mode_label})",
             color=color,
         )
         self._active_conversations[conv_id] = panel
@@ -2386,14 +3304,27 @@ class DevDuckTUI(App):
         session_id = f"tui_voice_{dt.now().strftime('%H%M%S')}"
         self._speech_session_id = session_id
 
-        # Show starting message
+        # Show starting message based on mode
+        if self._speech_ptt:
+            mode_instructions = (
+                f"- **Hold Space** to talk, release to listen\n"
+                f"- **Ctrl+V** to stop\n\n"
+                f"🎤 Hold Space and speak...\n"
+            )
+        else:
+            mode_instructions = (
+                f"- 🔊 **Hands-free** — just talk naturally!\n"
+                f"- Mic is always on, VAD detects speech\n"
+                f"- **Ctrl+V** to stop\n\n"
+                f"🎤 Listening... speak anytime!\n"
+            )
+
         panel.append_text(
             f"**Starting speech-to-speech session...**\n\n"
             f"- **Provider:** `{self._speech_provider}`\n"
+            f"- **Mode:** `{mode_label}`\n"
             f"- **Session:** `{session_id}`\n"
-            f"- **Hold Space** to talk, release to listen\n"
-            f"- **Ctrl+V** to stop\n\n"
-            f"🎤 Hold Space and speak...\n"
+            f"{mode_instructions}"
         )
         panel.append_tool_event("speech_to_speech", "start")
 
@@ -2437,10 +3368,10 @@ class DevDuckTUI(App):
                 tool_names=None,  # Inherit all tools
                 parent_agent=parent_agent,
                 load_history_from=None,
-                inherit_system_prompt=False,  # Use concise prompt for voice
+                inherit_system_prompt=True,
                 input_device_index=None,
                 output_device_index=None,
-                push_to_talk=True,  # TUI uses hold-Space PTT
+                push_to_talk=self._speech_ptt,  # PTT or hands-free based on mode
                 echo_cancellation=True,
                 noise_suppression=True,
                 transcript_callback=on_transcript,
@@ -2556,19 +3487,26 @@ class DevDuckTUI(App):
             with _session_lock:
                 if _active_sessions:
                     for sid, session in _active_sessions.items():
-                        active_info = f"\n\n🎙️ **Active Session:** `{sid}` — Ctrl+V to stop"
+                        mode = "PTT" if session.push_to_talk else "Hands-Free"
+                        active_info = f"\n\n🎙️ **Active Session:** `{sid}` ({mode}) — Ctrl+V to stop"
         except ImportError:
             pass
 
+        mode_label = "Push-to-Talk" if self._speech_ptt else "🔊 **Hands-Free (always listening)**"
+
         md = (
             "## 🎤 Voice — Speech-to-Speech\n\n"
-            f"**Current Provider:** `{self._speech_provider}`{active_info}\n\n"
+            f"**Current Provider:** `{self._speech_provider}`\n"
+            f"**Mode:** {mode_label}{active_info}\n\n"
             "### Quick Start\n"
             "- **Ctrl+V** — Toggle voice on/off\n"
             "- `/voice novasonic` — Switch to Nova Sonic (AWS)\n"
             "- `/voice openai` — Switch to OpenAI Realtime\n"
             "- `/voice gemini` — Switch to Gemini Live\n"
             "- `/voice stop` — Force stop session\n\n"
+            "### Voice Modes\n"
+            "- `/voice ptt` — **Push-to-Talk** (hold Space to speak)\n"
+            "- `/voice handsfree` — **Hands-Free** (always listening, natural conversation)\n\n"
             "### Providers\n\n"
             "| Provider | Voices | Requires |\n"
             "|----------|--------|----------|\n"
@@ -2580,16 +3518,41 @@ class DevDuckTUI(App):
             "- 💬 **Natural conversation** — VAD auto-interruption\n"
             "- 📝 **Auto-transcript** — saved to history after session\n"
             "- 🔄 **Background** — TUI stays responsive during voice\n"
+            "- 🔊 **Hands-free** — no keyboard needed, just talk!\n"
         )
 
         scroll.mount(Static(Panel(Markdown(md), border_style="bright_red", title="🎤 Voice Config")))
         scroll.scroll_end(animate=False)
+
+    def _notify_voice_mode(self, mode_desc: str) -> None:
+        """Show a notification when voice mode changes."""
+        scroll = self.query_one("#conversations-scroll", ScrollableContainer)
+        scroll.mount(Static(Panel(
+            f"🎤 Voice mode set to: **{mode_desc}**\n\n"
+            f"Press Ctrl+V to start a session with this mode.",
+            border_style="bright_red",
+            title="🎤 Mode Changed",
+        )))
+        scroll.scroll_end(animate=False)
+
+        # If there's an active session, restart it with new mode
+        if self._speech_session_id:
+            self._toggle_voice(force_stop=True)
+            self._toggle_voice(force_start=True)
 
     def action_quit(self) -> None:
         # Stop active voice sessions
         try:
             from devduck.tools.speech_to_speech import _stop_speech_session
             _stop_speech_session(None)  # Stop all
+        except (ImportError, Exception):
+            pass
+        # Stop active listen sessions
+        try:
+            from devduck.tools.listen import STATE as LISTEN_STATE
+            if LISTEN_STATE.get("running"):
+                from devduck.tools.listen import listen as listen_tool
+                listen_tool(action="stop")
         except (ImportError, Exception):
             pass
         try:

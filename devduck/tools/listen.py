@@ -67,13 +67,69 @@ STATE: Dict[str, Any] = {
     "agent": None,
     "auto_mode": False,
     "length_threshold": 50,
+    "transcript_callback": None,  # Callable for live TUI transcript push
 }
 
 MAX_TRANSCRIPTS = 50
 
+# Short/noise transcripts to filter out (Whisper hallucinations on silence/noise)
+NOISE_PHRASES = {
+    "thank you", "thank you.", "thanks.", "thanks",
+    "you", "you.", "bye.", "bye",
+    "the end.", "the end",
+    "okay.", "okay",
+    "so.", "so",
+    "hmm.", "hmm",
+    "uh.", "uh",
+    "um.", "um",
+    "", ".",
+}
+
+# Minimum audio duration in seconds to keep a segment
+MIN_SEGMENT_DURATION_SEC = float(os.environ.get("DEVDUCK_LISTEN_MIN_DURATION", "1.5"))
+
 
 def _now_ts() -> str:
     return datetime.utcnow().strftime("%Y-%m-%dT%H-%M-%S.%fZ")
+
+
+def _push_transcript_to_context(text: str) -> None:
+    """Push a new transcript into shared agent messages and ring context.
+
+    This makes transcriptions immediately available to:
+    1. The TUI shared message history (agents see it as context)
+    2. The unified mesh ring (visible in sidebar network feed)
+    3. Any registered callback (e.g., TUI live transcript panel)
+    4. The unified event bus (for sidebar event stream)
+    """
+    timestamp = datetime.utcnow().strftime("%H:%M:%S")
+
+    # 1. Push to unified event bus (for TUI sidebar + agent context)
+    try:
+        from devduck.tools.event_bus import emit
+        emit("listen.transcript", "listen", text[:80], text, {"timestamp": timestamp})
+    except ImportError:
+        pass
+
+    # 2. Push to unified mesh ring (visible across all agents)
+    try:
+        from devduck.tools.unified_mesh import add_to_ring
+        add_to_ring(
+            "listen:whisper",
+            "local",
+            f"🎤 [{timestamp}] {text}",
+            {"source": "listen", "type": "transcript"},
+        )
+    except (ImportError, Exception):
+        pass
+
+    # 3. Call registered transcript callback (for TUI live updates)
+    cb = STATE.get("transcript_callback")
+    if cb:
+        try:
+            cb(text, timestamp)
+        except Exception:
+            pass
 
 
 def _rms(a: np.ndarray) -> float:
@@ -200,6 +256,85 @@ def _segmenter_worker(stop_event: threading.Event) -> None:
             seg_start_ts = None
 
 
+
+def get_recent_transcripts_context(max_entries: int = 10) -> str:
+    """Get recent transcripts formatted for system prompt / dynamic context injection.
+
+    Returns empty string if listener not running or no transcripts.
+    """
+    if not STATE.get("running"):
+        return ""
+
+    items = list(STATE.get("transcript_log", []))[-max_entries:]
+    if not items:
+        return ""
+
+    lines = ["\n\n## 🎤 Recent Voice Transcriptions (Whisper):"]
+    for t in items:
+        ts = t.get("timestamp", "?")[:19]
+        txt = t.get("text", "")
+        if txt and not txt.startswith("[transcription_error]"):
+            lines.append(f"- [{ts}] {txt[:300]}")
+
+    if len(lines) <= 1:
+        return ""
+
+    lines.append("*Listen tool active — transcripts are live.*")
+    return "\n".join(lines)
+
+
+
+def _transcribe_numpy(model, audio_f32: np.ndarray) -> str:
+    """Transcribe a numpy float32 audio array using whisper, fully subprocess-safe.
+
+    In Python 3.13 + TUI/PTY environments, subprocess.run() fails with
+    "bad value(s) in fds_to_keep" due to PTY FD races. Whisper's transcribe()
+    *should* accept numpy directly, but torch internals or whisper's audio
+    pipeline can still trigger subprocess calls (e.g. ffmpeg, torch compile).
+
+    This function:
+    1. Converts audio to torch tensor ourselves (bypass load_audio/ffmpeg)
+    2. Computes log-mel spectrogram directly via whisper.audio
+    3. Calls whisper's decode pipeline on the mel features
+    4. Falls back to monkey-patching subprocess if needed
+    """
+    import torch
+
+    try:
+        # Direct path: pass numpy array — whisper.transcribe handles it
+        result = model.transcribe(audio_f32, fp16=False)
+        return (result or {}).get("text", "").strip()
+    except (ValueError, OSError) as e:
+        if "fds_to_keep" not in str(e):
+            raise
+        # Fall through to manual mel spectrogram path
+        logger.debug(f"fds_to_keep error, using manual mel path: {e}")
+
+    # Manual path: compute mel spectrogram ourselves, then decode
+    try:
+        from whisper.audio import log_mel_spectrogram, pad_or_trim, N_FRAMES, SAMPLE_RATE
+        from whisper import DecodingOptions, decode
+
+        # Convert numpy → torch tensor (this is what log_mel_spectrogram does internally)
+        audio_tensor = torch.from_numpy(audio_f32).float()
+
+        # Compute mel spectrogram — pure torch, no subprocess
+        mel = log_mel_spectrogram(audio_tensor, model.dims.n_mels, padding=16000 * 30)
+        mel_segment = pad_or_trim(mel, N_FRAMES).to(model.device).to(torch.float32)
+
+        # Decode
+        options = DecodingOptions(language="en", fp16=False)
+        result = decode(model, mel_segment, options)
+
+        if isinstance(result, list):
+            return " ".join(r.text.strip() for r in result if r.text)
+        return result.text.strip() if hasattr(result, "text") else ""
+
+    except Exception as e2:
+        logger.error(f"Manual mel transcription also failed: {e2}")
+        return f"[transcription_error] {e2}"
+
+
 def _transcriber_worker(stop_event: threading.Event) -> None:
     if whisper is None:
         return
@@ -219,18 +354,42 @@ def _transcriber_worker(stop_event: threading.Event) -> None:
 
         seg_audio = item["audio"]
         seg_started = item["started"]
+        sr = STATE["sample_rate"]
 
-        # Save WAV
-        fname = f"segment_{seg_started}_{_now_ts()}.wav"
-        wav_path = os.path.join(STATE["save_dir"], fname)
-        _write_wav(wav_path, seg_audio, STATE["sample_rate"])
+        # ── Filter 1: Skip segments shorter than MIN_SEGMENT_DURATION_SEC ──
+        duration_sec = len(seg_audio) / sr if sr > 0 else 0
+        if duration_sec < MIN_SEGMENT_DURATION_SEC:
+            logger.debug(f"Skipping short segment ({duration_sec:.2f}s < {MIN_SEGMENT_DURATION_SEC}s)")
+            STATE["segment_queue"].task_done()
+            continue
 
-        # Transcribe
+        # Convert to float32 for whisper
         try:
-            result = model.transcribe(wav_path)
-            text = (result or {}).get("text", "").strip()
+            if seg_audio.dtype == np.int16:
+                audio_f32 = seg_audio.astype(np.float32) / 32768.0
+            elif seg_audio.dtype == np.float32:
+                audio_f32 = seg_audio
+            else:
+                audio_f32 = seg_audio.astype(np.float32)
+
+            text = _transcribe_numpy(model, audio_f32)
         except Exception as e:
             text = f"[transcription_error] {e}"
+
+        # ── Filter 2: Skip known noise/hallucination phrases ──
+        text_clean = (text or "").strip().lower()
+        if text_clean in NOISE_PHRASES:
+            logger.debug(f"Filtered noise transcript: '{text}' ({duration_sec:.2f}s)")
+            STATE["segment_queue"].task_done()
+            continue
+
+        # Only save WAV + log for segments that pass both filters
+        fname = f"segment_{seg_started}_{_now_ts()}.wav"
+        wav_path = os.path.join(STATE["save_dir"], fname)
+        try:
+            _write_wav(wav_path, seg_audio, sr)
+        except Exception as e:
+            logger.warning(f"Failed to write WAV {wav_path}: {e}")
 
         record = {"timestamp": _now_ts(), "wav_path": wav_path, "text": text}
         STATE["transcript_log"].append(record)
@@ -238,10 +397,17 @@ def _transcriber_worker(stop_event: threading.Event) -> None:
         STATE["transcript_count"] += 1
 
         try:
-            with open(STATE["log_path"], "a", encoding="utf-8") as f:
-                f.write(json.dumps(record, ensure_ascii=False) + "\n")
-        except Exception:
-            pass
+            log_path = STATE.get("log_path")
+            if log_path:
+                os.makedirs(os.path.dirname(log_path), exist_ok=True)
+                with open(log_path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(record, ensure_ascii=False) + "\n")
+        except Exception as e:
+            logger.debug(f"Failed to write transcript log: {e}")
+
+        # 🔗 Push transcript to shared messages immediately (for TUI/agent awareness)
+        if text and not text.startswith("[transcription_error]"):
+            _push_transcript_to_context(text)
 
         # Trigger keyword or auto mode
         agent = STATE.get("agent")

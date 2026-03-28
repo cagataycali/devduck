@@ -1289,6 +1289,20 @@ def get_zenoh_peers_context():
         return ""
 
 
+
+def get_listen_transcripts_context():
+    """Get recent listen/whisper transcriptions for dynamic context injection."""
+    try:
+        from devduck.tools.listen import get_recent_transcripts_context
+        return get_recent_transcripts_context(max_entries=10)
+    except ImportError:
+        return ""
+    except Exception as e:
+        logger.debug(f"Could not get listen transcripts context: {e}")
+        return ""
+
+
+
 def get_unified_ring_context():
     """Get unified ring context from the mesh (includes browser ring + devduck ring).
 
@@ -1833,7 +1847,7 @@ class DevDuck:
             # Default tool config
             # Agent can load additional tools on-demand via fetch_github_tool
 
-            # 🔧 Available DevDuck Tools (load on-demand from https://github.com/cagataycali/devduck/blob/main/devduck/tools/*.py): system_prompt,store_in_kb,ipc,tcp,websocket,mcp_server,scraper,tray,ambient,agentcore_config,agentcore_invoke,agentcore_logs,agentcore_agents,create_subagent,use_github,speech_to_speech,state_manager,zenoh_peer,ambient_mode,telegram,slack,whatsapp,apple_notes,use_mac,use_spotify
+            # 🔧 Available DevDuck Tools (load on-demand from https://github.com/cagataycali/devduck/blob/main/devduck/tools/*.py): system_prompt,store_in_kb,ipc,tcp,websocket,mcp_server,scraper,tray,ambient,agentcore_config,agentcore_invoke,agentcore_logs,agentcore_agents,create_subagent,use_github,speech_to_speech,state_manager,zenoh_peer,ambient_mode,telegram,slack,whatsapp,apple_notes,use_mac,use_spotify,identity,openapi
 
             # 📦 Strands Tools
             # - file_read, file_write, image_reader, load_tool, retrieve
@@ -1857,14 +1871,14 @@ class DevDuck:
                 server_tools_needed.append("zenoh_peer")
             if servers.get("agentcore_proxy", {}).get("enabled", False):
                 server_tools_needed.append("agentcore_proxy")
-
+            # export DEVDUCK_TOOLS="devduck.tools:use_github,editor,system_prompt,store_in_kb,manage_tools,websocket,zenoh_peer,agentcore_proxy,manage_messages,sqlite_memory,dialog,listen,use_computer,tasks,scheduler,telegram;strands_tools:retrieve,shell,file_read,file_write,use_agent"
             # Append to default tools if any server tools are needed
             if server_tools_needed:
                 server_tools_str = ",".join(server_tools_needed)
-                default_tools = f"devduck.tools:system_prompt,fetch_github_tool,manage_tools,manage_messages,tasks,websocket,zenoh_peer,ambient_mode,notify,{server_tools_str};strands_tools:shell"
+                default_tools = f"devduck.tools:system_prompt,use_github,listen,speech_to_speech,telegram,whatsapp,use_computer,browse,fetch_github_tool,manage_tools,manage_messages,tasks,scheduler,websocket,zenoh_peer,ambient_mode,notify,identity,openapi,{server_tools_str};strands_tools:shell"
                 logger.info(f"Auto-added server tools: {server_tools_str}")
             else:
-                default_tools = "devduck.tools:system_prompt,fetch_github_tool,manage_tools,manage_messages,websocket,zenoh_peer,ambient_mode;strands_tools:shell"
+                default_tools = "devduck.tools:system_prompt,browse,fetch_github_tool,manage_tools,manage_messages,scheduler,websocket,zenoh_peer,ambient_mode,notify,identity,openapi;strands_tools:shell"
 
             tools_config = os.getenv("DEVDUCK_TOOLS", default_tools)
             logger.info(f"Loading tools from config: {tools_config}")
@@ -2130,6 +2144,14 @@ class DevDuck:
                 self.ambient.start()
                 logger.info("Ambient mode enabled")
                 print("🌙 Ambient mode enabled (background thinking when idle)")
+
+            # ⏰ Auto-start scheduler if jobs exist on disk
+            if "--mcp" not in sys.argv:
+                try:
+                    from devduck.tools.scheduler import auto_start_scheduler
+                    auto_start_scheduler(agent=self.agent)
+                except Exception as e:
+                    logger.debug(f"Scheduler auto-start skipped: {e}")
 
             logger.info(
                 f"DevDuck agent initialized successfully with model {self.model}"
@@ -2911,10 +2933,11 @@ How it works:
                 except Exception as e:
                     logger.warning(f"KB retrieval failed: {e}")
 
-            # 🔗 Inject dynamic context (zenoh + ring + ambient + recording events)
+            # 🔗 Inject dynamic context (zenoh + ring + ambient + recording events + listen + event bus)
             zenoh_context = get_zenoh_peers_context()
             ring_context = get_unified_ring_context()
             ambient_context = get_ambient_status_context()
+            listen_context = get_listen_transcripts_context()
 
             # 🎬 Inject recent recorded events into context if recording
             recording_context = ""
@@ -2923,8 +2946,16 @@ How it works:
                     seconds=10.0, max_events=15
                 )
 
+            # 🔔 Inject unified event bus context (telegram, whatsapp, scheduler, tasks, etc.)
+            event_bus_context = ""
+            try:
+                from devduck.tools.event_bus import bus as _event_bus
+                event_bus_context = _event_bus.get_context_string(max_events=15, max_age_seconds=300)
+            except ImportError:
+                pass
+
             dynamic_context = (
-                zenoh_context + ring_context + ambient_context + recording_context
+                zenoh_context + ring_context + ambient_context + recording_context + listen_context + event_bus_context
             )
             if dynamic_context:
                 query_with_context = (

@@ -114,43 +114,48 @@ HISTORY_DIR.mkdir(parents=True, exist_ok=True)
 # ── Audio constants ─────────────────────────────────────────────
 SAMPLE_RATE = 16000
 FRAME_SIZE = 160  # 10ms at 16kHz
-PYAUDIO_FRAMES_PER_BUFFER = 512
+PYAUDIO_FRAMES_PER_BUFFER = 160  # Aligned to FRAME_SIZE for proper AEC
 
-# ── Optional pywebrtc-audio for AEC + noise suppression ────────
-_AudioProcessor = None
-_VoiceDetector = None
+# ── Audio processing backend ───────────────────────────────────
+# webrtc-noise-gain: Noise suppression + auto gain control + VAD
+#   Process10ms(bytes) → ProcessedAudioChunk(audio=bytes, is_speech=bool)
+#
+_WNG_AudioProcessor = None  # webrtc-noise-gain AudioProcessor class
+_HAS_WEBRTC_NG = False      # webrtc-noise-gain available (NS + AGC + VAD)
+
 try:
-    from pywebrtc_audio import AudioProcessor as _AudioProcessor, VoiceDetector as _VoiceDetector
-    _HAS_WEBRTC_AUDIO = True
-    logger.info("pywebrtc-audio loaded — AEC + noise suppression available")
+    from webrtc_noise_gain import AudioProcessor as _WNG_AudioProcessor
+    _HAS_WEBRTC_NG = True
+    logger.info("webrtc-noise-gain loaded — NS + AGC + VAD available")
 except ImportError:
-    _HAS_WEBRTC_AUDIO = False
-    logger.debug("pywebrtc-audio not installed — running without AEC/NS (pip install pywebrtc-audio)")
+    logger.debug("webrtc-noise-gain not installed (pip install webrtc-noise-gain)")
+
+if not _HAS_WEBRTC_NG:
+    logger.warning("No audio processing backend available — running raw audio")
 
 
 # ═══════════════════════════════════════════════════════════════
-# Push-to-Talk Audio I/O with AEC + Noise Suppression + VAD
-# Inspired by Arron's pywebrtc-audio BidiProcessedAudioIO pattern
+# Push-to-Talk Audio I/O with Noise Suppression + VAD
 # ═══════════════════════════════════════════════════════════════
 
 class _PTTAudioInput(BidiInput):
-    """Mic input with push-to-talk gate, echo cancellation, noise suppression, and VAD.
+    """Mic input with push-to-talk gate and audio processing.
 
-    When the gate is closed, sends silence instead of mic audio.
-    When open, applies optional AEC (using speaker reference) + NS before sending.
-    Exposes speech_probability for live VAD metering.
+    Backend priority:
+    1. webrtc-noise-gain (NS + AGC + VAD) — noise suppression, good for PTT
+    2. Raw audio — no processing
+
+    When PTT gate is closed, sends silence instead of mic audio.
     """
 
     def __init__(
         self,
-        ap: Optional[Any],  # AudioProcessor or None
-        vd: Optional[Any],  # VoiceDetector or None
+        wng: Optional[Any],  # webrtc-noise-gain AudioProcessor or None
         ref_buf: queue.Queue,
         ptt_gate: threading.Event,
         device_index: Optional[int] = None,
     ):
-        self._ap = ap
-        self._vd = vd
+        self._wng = wng      # webrtc-noise-gain (NS + AGC + VAD)
         self._ref_buf = ref_buf
         self._ptt_gate = ptt_gate
         self._device_index = device_index
@@ -195,18 +200,6 @@ class _PTTAudioInput(BidiInput):
     def _callback(self, in_data: bytes, frame_count: int, *_: Any) -> tuple:
         near = np.frombuffer(in_data, dtype=np.int16)
 
-        # ── VAD (always runs, even when gate closed) ──
-        if self._vd is not None:
-            try:
-                self.speech_probability = self._vd.process(near)
-            except Exception:
-                pass
-        elif self._ap is not None:
-            try:
-                self.speech_probability = self._ap.speech_probability
-            except Exception:
-                pass
-
         # ── Push-to-talk gate ──
         gate_open = self._ptt_gate.is_set()
         self.is_transmitting = gate_open
@@ -217,25 +210,29 @@ class _PTTAudioInput(BidiInput):
             self._buffer.put(silence.tobytes())
             return (None, pyaudio.paContinue)
 
-        # ── AEC + noise suppression (when available) ──
-        if self._ap is not None:
+        # ── Audio processing ──
+        if self._wng is not None:
+            # webrtc-noise-gain — NS + AGC + VAD
             try:
-                far_frame = self._ref_buf.get_nowait()
-            except queue.Empty:
-                far_frame = np.zeros(FRAME_SIZE, dtype=np.int16)
-            try:
-                processed = self._ap.process(near, far_frame)
-                self._buffer.put(processed.tobytes())
+                result = self._wng.Process10ms(in_data)
+                self.speech_probability = 1.0 if result.is_speech else 0.0
+                self._buffer.put(result.audio)
             except Exception:
                 self._buffer.put(in_data)
         else:
+            # Raw audio — no processing
             self._buffer.put(in_data)
 
         return (None, pyaudio.paContinue)
 
 
 class _AECAudioOutput(BidiOutput):
-    """Speaker output that feeds reference frames for echo cancellation."""
+    """Speaker output that feeds reference frames for echo cancellation.
+
+    - Plays audio through the speaker
+    - Feeds each output frame into the reference queue
+    - On interruption, clears buffers + reference queue
+    """
 
     def __init__(
         self,
@@ -287,14 +284,11 @@ class _AECAudioOutput(BidiOutput):
         byte_count = frame_count * pyaudio.get_sample_size(pyaudio.paInt16)
         data = self._buffer.get(byte_count)
 
-        # Feed reference for echo cancellation
+        # Feed reference frame for echo cancellation
         if self._feed_ref:
             samples = np.frombuffer(data, dtype=np.int16)
-            # Feed in FRAME_SIZE chunks for proper AEC alignment
-            for i in range(0, len(samples), FRAME_SIZE):
-                chunk = samples[i:i + FRAME_SIZE]
-                if len(chunk) == FRAME_SIZE:
-                    self._ref_buf.put(chunk.copy())
+            if len(samples) == FRAME_SIZE:
+                self._ref_buf.put(samples.copy())
 
         return (data, pyaudio.paContinue)
 
@@ -327,18 +321,16 @@ class _TranscriptOutput(BidiOutput):
 
 
 class PTTAudioIO:
-    """Push-to-talk audio I/O with optional WebRTC AEC + noise suppression.
+    """Push-to-talk audio I/O with WebRTC audio processing.
 
-    Yoinks the core idea from Arron's pywebrtc-audio BidiProcessedAudioIO:
-    - Speaker output feeds reference frames into a queue
-    - Mic input consumes those frames for echo cancellation
-    - AudioProcessor runs AEC3 + noise suppression in one pass
-    - VoiceDetector provides speech probability for VAD metering
+    Backend selection (automatic, based on availability):
+    1. webrtc-noise-gain: NS + AGC + VAD (public PyPI)
+    2. Raw audio: No processing (fallback)
 
-    Adds:
-    - Push-to-talk gate (threading.Event) — silence when closed
-    - Graceful fallback when pywebrtc-audio not installed
-    - Transcript output routing for TUI integration
+    With PYAUDIO_FRAMES_PER_BUFFER aligned to FRAME_SIZE (160 = 10ms),
+    each callback processes exactly one frame — no splitting needed.
+
+    Speaker output feeds reference frames into a queue.
     """
 
     def __init__(
@@ -346,6 +338,9 @@ class PTTAudioIO:
         ptt_gate: threading.Event,
         echo_cancellation: bool = True,
         noise_suppression: bool = True,
+        auto_gain_control: bool = True,
+        ns_level: int = 2,
+        agc_level: int = 3,
         input_device_index: Optional[int] = None,
         output_device_index: Optional[int] = None,
         transcript_callback: Optional[Callable[[str, str, bool], None]] = None,
@@ -356,35 +351,31 @@ class PTTAudioIO:
         self._output_device_index = output_device_index
         self._transcript_callback = transcript_callback
 
-        # Create AudioProcessor if pywebrtc-audio is available
-        self._ap = None
-        self._vd = None
-        self._has_aec = False
+        # Audio processing backend
+        self._wng = None  # webrtc-noise-gain AudioProcessor
+        self._backend = "none"
 
-        if _HAS_WEBRTC_AUDIO and (echo_cancellation or noise_suppression):
+        # webrtc-noise-gain (NS + AGC + VAD)
+        if _HAS_WEBRTC_NG and (noise_suppression or auto_gain_control):
             try:
-                self._ap = _AudioProcessor(
-                    sample_rate=SAMPLE_RATE,
-                    echo_cancellation=echo_cancellation,
-                    noise_suppression=noise_suppression,
-                    stream_delay_ms=int(PYAUDIO_FRAMES_PER_BUFFER / SAMPLE_RATE * 1000),
-                )
-                self._has_aec = echo_cancellation
-                # Standalone VAD for when AP is not processing (gate closed)
-                self._vd = _VoiceDetector(sample_rate=SAMPLE_RATE)
-                logger.info(f"WebRTC audio: AEC={echo_cancellation}, NS={noise_suppression}")
+                agc = agc_level if auto_gain_control else 0
+                ns = ns_level if noise_suppression else 0
+                self._wng = _WNG_AudioProcessor(agc, ns)
+                self._backend = "webrtc-noise-gain"
+                logger.info(f"Audio backend: webrtc-noise-gain (AGC={agc}, NS={ns})")
             except Exception as e:
-                logger.warning(f"Failed to create AudioProcessor: {e}")
-                self._ap = None
-                self._vd = None
+                logger.warning(f"webrtc-noise-gain init failed: {e}")
+                self._wng = None
+
+        if self._backend == "none":
+            logger.warning("No audio processing backend — raw audio mode")
 
         # The input instance — stored for external state access
         self._audio_input: Optional[_PTTAudioInput] = None
 
     def input(self) -> _PTTAudioInput:
         self._audio_input = _PTTAudioInput(
-            ap=self._ap,
-            vd=self._vd,
+            wng=self._wng,
             ref_buf=self._ref_buf,
             ptt_gate=self._ptt_gate,
             device_index=self._input_device_index,
@@ -394,7 +385,7 @@ class PTTAudioIO:
     def output(self) -> _AECAudioOutput:
         return _AECAudioOutput(
             ref_buf=self._ref_buf,
-            feed_ref=self._has_aec,
+            feed_ref=False,
             device_index=self._output_device_index,
         )
 
@@ -421,7 +412,7 @@ class SpeechSession:
     - **Always-on** (default): mic always hot, natural conversation
     - **Push-to-talk**: mic gated by external control (e.g., hold Space in TUI)
 
-    Features AEC + noise suppression via pywebrtc-audio when available,
+    Features noise suppression via webrtc-noise-gain when available,
     live VAD probability for UI metering, and transcript routing.
     """
 
@@ -463,6 +454,12 @@ class SpeechSession:
         self.active = True
         self.thread = threading.Thread(target=self._run_session, daemon=True)
         self.thread.start()
+        # Emit start event to event bus
+        try:
+            from devduck.tools.event_bus import emit, EVT_SPEECH_START
+            emit(EVT_SPEECH_START, "speech", f"Session started: {self.session_id}", "", {"session_id": self.session_id})
+        except ImportError:
+            pass
 
     def stop(self) -> None:
         if not self.active:
@@ -480,6 +477,12 @@ class SpeechSession:
         if self.thread:
             self.thread.join(timeout=5.0)
         self._save_history()
+        # Emit stop event to event bus
+        try:
+            from devduck.tools.event_bus import emit, EVT_SPEECH_STOP
+            emit(EVT_SPEECH_STOP, "speech", f"Session stopped: {self.session_id}", "", {"session_id": self.session_id})
+        except ImportError:
+            pass
 
     # ── PTT controls ────────────────────────────────────────────
 
@@ -530,8 +533,38 @@ class SpeechSession:
             if self.loop:
                 self.loop.close()
 
+    def _emit_transcript(self, role: str, text: str, is_final: bool) -> None:
+        """Push transcript events to the unified event bus + call user callback."""
+        # Forward to user-provided callback first
+        if self.transcript_callback:
+            try:
+                self.transcript_callback(role, text, is_final)
+            except Exception as e:
+                logger.debug(f"Transcript callback error: {e}")
+
+        # Push to event bus (only final transcripts to avoid noise)
+        if is_final and text.strip() and role in ("user", "assistant"):
+            try:
+                from devduck.tools.event_bus import emit, EVT_SPEECH_TRANSCRIPT
+                prefix = "🗣️ You" if role == "user" else "🤖 AI"
+                emit(
+                    EVT_SPEECH_TRANSCRIPT,
+                    "speech",
+                    f"{prefix}: {text[:80]}",
+                    text,
+                    {
+                        "session_id": self.session_id,
+                        "role": role,
+                        "is_final": is_final,
+                    },
+                )
+            except ImportError:
+                pass
+            except Exception as e:
+                logger.debug(f"Event bus emit error: {e}")
+
     async def _async_session(self) -> None:
-        """Async session with PTT audio I/O + AEC + transcript routing."""
+        """Async session with PTT audio I/O + noise suppression + transcript routing."""
         try:
             self._audio_io = PTTAudioIO(
                 ptt_gate=self.ptt_gate,
@@ -539,7 +572,7 @@ class SpeechSession:
                 noise_suppression=self.noise_suppression,
                 input_device_index=self.input_device_index,
                 output_device_index=self.output_device_index,
-                transcript_callback=self.transcript_callback,
+                transcript_callback=self._emit_transcript,
             )
 
             outputs = [self._audio_io.output(), self._audio_io.transcript_output()]

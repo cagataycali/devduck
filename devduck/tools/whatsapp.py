@@ -227,6 +227,15 @@ def _is_sender_allowed(sender_jid: str) -> bool:
     return phone in allowlist or sender_jid in allowlist
 
 
+def _emit_event(event_type: str, summary: str, detail: str = "", metadata: dict = None):
+    """Push event to the unified event bus (if available)."""
+    try:
+        from devduck.tools.event_bus import emit
+        emit(event_type, "whatsapp", summary, detail, metadata)
+    except ImportError:
+        pass
+
+
 def _process_whatsapp_message(message: Dict):
     """Process a single WhatsApp message with a fresh DevDuck instance."""
     chat_jid = message.get("ChatJID", message.get("chat_jid", ""))
@@ -242,6 +251,14 @@ def _process_whatsapp_message(message: Dict):
 
     _LISTENER_STATE["messages_processed"] += 1
     logger.info(f"WhatsApp: processing message from {sender_jid} in {chat_jid}")
+
+    # 🔔 Emit incoming message event
+    _emit_event(
+        "whatsapp.in",
+        f"{sender_jid.split('@')[0]}: {text[:60]}",
+        text,
+        {"chat_jid": chat_jid, "sender_jid": sender_jid, "msg_id": msg_id},
+    )
 
     try:
         from devduck import DevDuck
@@ -716,6 +733,8 @@ def whatsapp(
             json_output=False,
         )
         if result["status"] == "success":
+            # 🔔 Emit outgoing message event
+            _emit_event("whatsapp.out", f"→ {to}: {text[:60]}", text, {"to": to})
             return _result("success", f"✅ Message sent to {to}")
         return _result("error", f"❌ Send failed: {result['output']}")
 

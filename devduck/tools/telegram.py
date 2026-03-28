@@ -219,6 +219,15 @@ def _send_telegram_message(bot_token: str, chat_id, text: str, reply_to: int = N
         return None
 
 
+def _emit_event(event_type: str, summary: str, detail: str = "", metadata: dict = None):
+    """Push event to the unified event bus (if available)."""
+    try:
+        from devduck.tools.event_bus import emit
+        emit(event_type, "telegram", summary, detail, metadata)
+    except ImportError:
+        pass
+
+
 def _process_message(message: Dict, bot_token: str):
     """Process a single message with a fresh DevDuck instance (TCP pattern)."""
     chat_id = message.get("chat", {}).get("id")
@@ -232,6 +241,14 @@ def _process_message(message: Dict, bot_token: str):
 
     _LISTENER_STATE["connections"] += 1
     logger.info(f"Telegram: processing message from {user_display} in chat {chat_id}")
+
+    # 🔔 Emit incoming message event
+    _emit_event(
+        "telegram.in",
+        f"{user_display}: {text[:60]}",
+        text,
+        {"chat_id": chat_id, "user": user_display, "message_id": message_id},
+    )
 
     try:
         from devduck import DevDuck
@@ -592,7 +609,12 @@ def telegram(
             params["reply_markup"] = json.dumps(reply_markup)
         elif inline_keyboard:
             params["reply_markup"] = json.dumps({"inline_keyboard": inline_keyboard})
-        return _telegram_api_call(bot_token, "sendMessage", params)
+        result = _telegram_api_call(bot_token, "sendMessage", params)
+        # 🔔 Emit outgoing message event
+        if result.get("status") == "success":
+            _emit_event("telegram.out", f"→ {chat_id}: {(text or '')[:60]}", text or "",
+                        {"chat_id": chat_id})
+        return result
 
     elif action == "send_photo":
         params = {

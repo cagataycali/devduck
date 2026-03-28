@@ -405,7 +405,11 @@ def _action_train(
 
     # Create model
     start_time = time.time()
-    model = algo_cls(resolved_policy, train_env, tensorboard_log=str(log_dir), **hp)
+    # Skip tensorboard — it deadlocks on macOS Python 3.13 in subprocess threads
+    tb_log = None
+    if os.getenv("DEVDUCK_RL_TENSORBOARD", "false").lower() == "true":
+        tb_log = str(log_dir)
+    model = algo_cls(resolved_policy, train_env, tensorboard_log=tb_log, **hp)
 
     # Callbacks
     progress = _ProgressCallback(total_timesteps)

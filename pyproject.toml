@@ -50,6 +50,7 @@ dependencies = [
     "halo",
     "textual>=0.80",
     "strands-agents[bidi-all]",
+    "webrtc-noise-gain",
     "openai-whisper",
     "webrtcvad",
     "sounddevice",

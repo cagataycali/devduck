@@ -42,6 +42,15 @@ _task_queues: Dict[str, queue.Queue] = {}
 class TaskState:
     """Tracks task lifecycle and persists to disk."""
 
+    @staticmethod
+    def _emit_event(event_type: str, summary: str, detail: str = "", metadata: dict = None):
+        """Push event to the unified event bus (if available)."""
+        try:
+            from devduck.tools.event_bus import emit
+            emit(event_type, "tasks", summary, detail, metadata)
+        except ImportError:
+            pass
+
     def __init__(
         self,
         task_id: str,
@@ -99,6 +108,11 @@ class TaskState:
         self.status = status
         self.updated_at = datetime.now().isoformat()
         self._save()
+        # 🔔 Emit task state change event
+        if status in ("completed", "error", "stopped"):
+            evt = "task.done" if status == "completed" else "task.error" if status == "error" else "task.done"
+            self._emit_event(evt, f"'{self.task_id}' → {status}", self.prompt[:150],
+                             {"task_id": self.task_id, "status": status})
 
     def append_result(self, content: str):
         try:
@@ -242,6 +256,10 @@ def tasks(
 
         ts = TaskState(task_id, prompt, system_prompt, tools, timeout)
         _task_states[task_id] = ts
+
+        # 🔔 Emit task create event
+        TaskState._emit_event("task.create", f"'{task_id}' started", prompt[:150],
+                              {"task_id": task_id})
 
         t = threading.Thread(
             target=_run_task, args=(ts, agent), name=f"task-{task_id}", daemon=True

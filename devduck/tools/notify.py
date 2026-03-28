@@ -245,6 +245,15 @@ def notify(
         if failed:
             summary += f" (failed: {', '.join(failed)})"
 
+        # 🔔 Push to unified event bus
+        if delivered:
+            try:
+                from devduck.tools.event_bus import emit
+                emit("notify", "notify", f"{title}: {message[:60]}", message,
+                     {"method": method, "delivered": delivered})
+            except ImportError:
+                pass
+
         return {
             "status": "success" if delivered else "error",
             "content": [{"text": summary}],

@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 320px;
+      font-family: -apple-system, system-ui, sans-serif;
+      background: #1e1e2e;
+      color: #cdd6f4;
+      padding: 16px;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .header h1 {
+      font-size: 16px;
+      font-weight: 600;
+    }
+    .header .emoji { font-size: 24px; }
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 12px;
+      background: #313244;
+      border-radius: 8px;
+      margin-bottom: 12px;
+      font-size: 13px;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #f38ba8;
+    }
+    .dot.connected { background: #a6e3a1; }
+    .actions {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    button {
+      padding: 8px 12px;
+      border: 1px solid #45475a;
+      border-radius: 6px;
+      background: #313244;
+      color: #cdd6f4;
+      font-size: 13px;
+      cursor: pointer;
+      text-align: left;
+      transition: all 0.15s;
+    }
+    button:hover {
+      background: #45475a;
+      border-color: #89b4fa;
+    }
+    button .icon { margin-right: 6px; }
+    .info {
+      font-size: 11px;
+      color: #6c7086;
+      margin-top: 12px;
+      line-height: 1.4;
+    }
+    .info a {
+      color: #89b4fa;
+      text-decoration: none;
+    }
+    #result {
+      margin-top: 8px;
+      padding: 8px;
+      background: #181825;
+      border-radius: 6px;
+      font-family: monospace;
+      font-size: 11px;
+      max-height: 120px;
+      overflow-y: auto;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <span class="emoji">🦆</span>
+    <h1>DevDuck Bridge</h1>
+  </div>
+
+  <div class="status" id="status">
+    <span class="dot" id="statusDot"></span>
+    <span id="statusText">Checking connection...</span>
+  </div>
+
+  <div class="actions">
+    <button id="btnScreenshot">
+      <span class="icon">📸</span> Capture Screenshot
+    </button>
+    <button id="btnInfo">
+      <span class="icon">ℹ️</span> Page Info
+    </button>
+    <button id="btnTabs">
+      <span class="icon">📋</span> List Tabs
+    </button>
+    <button id="btnClickable">
+      <span class="icon">🖱️</span> Find Clickable Elements
+    </button>
+  </div>
+
+  <div id="result"></div>
+
+  <div class="info">
+    Connected to DevDuck terminal agent via WebSocket.<br>
+    Mesh relay: <a href="#">ws://localhost:10000</a><br>
+    All commands from terminal are handled automatically.
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -420,6 +420,248 @@ export MCP_SERVERS='{"mcpServers": {"docs": {"command": "uvx", "args": ["strands
 
 ---
 
+## OpenAPI Tool — Universal API Client
+
+One tool to rule them all. Load any OpenAPI/Swagger spec (JSON or YAML), authenticate once, and call any endpoint. Tokens persist to disk and auto-refresh — no re-auth needed.
+
+### Quick Start
+
+```python
+# 1. Load any spec (JSON, YAML, local file, or GitHub URL)
+openapi(action="load", spec_url="https://petstore3.swagger.io/api/v3/openapi.json")
+openapi(action="load", spec_url="https://raw.githubusercontent.com/sonallux/spotify-web-api/main/fixed-spotify-open-api.yml")
+openapi(action="load", spec_url="./my-local-spec.yaml")
+openapi(action="load", spec_url="https://github.com/owner/repo/blob/main/openapi.yml")  # auto-converts to raw
+
+# 2. List operations
+openapi(action="list", alias="spotify")
+
+# 3. Call endpoints
+openapi(action="call", alias="spotify", operation="get-current-users-profile")
+openapi(action="call", alias="petstore", operation="findPetsByStatus", params='{"status": "available"}')
+```
+
+### Authentication
+
+Supports every auth method you'll encounter in the wild:
+
+```python
+# API Key
+openapi(action="auth", alias="weather", api_key="sk-xxx")
+
+# Bearer Token
+openapi(action="auth", alias="myapi", token="eyJhbG...")
+
+# Basic Auth
+openapi(action="auth", alias="jenkins", username="admin", password="secret")
+
+# OAuth2 — Authorization Code (opens browser, waits for callback)
+openapi(action="auth", alias="spotify", auth_flow="authorization_code",
+        client_id="xxx", client_secret="yyy",
+        scopes="user-read-private,playlist-read-private")
+
+# OAuth2 — Client Credentials (server-to-server, no browser)
+openapi(action="auth", alias="stripe", auth_flow="client_credentials",
+        client_id="xxx", client_secret="yyy")
+
+# OAuth2 — Resource Owner Password
+openapi(action="auth", alias="legacy", auth_flow="password",
+        client_id="xxx", username="user", password="pass")
+```
+
+### Zero-Config Auth via Environment Variables
+
+Set env vars and the tool auto-detects credentials — no need to pass them explicitly:
+
+```bash
+# Pattern: {ALIAS}_CLIENT_ID, {ALIAS}_CLIENT_SECRET, {ALIAS}_REDIRECT_URI
+export SPOTIFY_CLIENT_ID="your-client-id"
+export SPOTIFY_CLIENT_SECRET="your-client-secret"
+export SPOTIFY_REDIRECT_URI="http://127.0.0.1:8888/callback"
+```
+
+```python
+# Just specify the flow — credentials auto-detected from env vars
+openapi(action="auth", alias="spotify", auth_flow="authorization_code",
+        scopes="user-read-private,user-read-email")
+# → 🔍 Auto-detected client_id from $SPOTIFY_CLIENT_ID
+# → 🔍 Auto-detected client_secret from $SPOTIFY_CLIENT_SECRET
+# → 🔍 Auto-detected redirect_uri from $SPOTIFY_REDIRECT_URI
+# → 🌐 Opening browser...
+# → ✅ OAuth2 token obtained
+```
+
+### Token Persistence & Auto-Refresh
+
+Tokens are stored in `~/.devduck/openapi/` with all metadata needed for silent refresh:
+
+```
+~/.devduck/openapi/
+├── token_spotify.json    # access_token + refresh_token + client_id + token_url
+├── token_github.json     # bearer token
+├── token_weather.json    # API key
+└── spec_spotify.json     # cached spec (offline use)
+```
+
+When a token expires, the next API call **automatically refreshes** it — no browser, no user interaction:
+
+```
+  🔄 Token expired for `spotify`, auto-refreshing...
+  ✅ Token refreshed, expires Sat Mar 28 01:53:47 2026
+```
+
+### OAuth2 Flow Details
+
+The authorization code flow:
+1. Spins up a local HTTP server on the redirect URI port
+2. Opens browser to the provider's auth page
+3. User approves → provider redirects to local server with auth code
+4. Tool exchanges code for access + refresh tokens
+5. Tokens + metadata persisted to disk
+
+**Smart token exchange:** Tries `Authorization: Basic` header first (Spotify-style), falls back to body params (GitHub-style) — works with both.
+
+### Spec Format Support
+
+| Format | Extensions | Source |
+|--------|-----------|--------|
+| OpenAPI 3.x JSON | `.json` | URL, local file |
+| OpenAPI 3.x YAML | `.yaml`, `.yml` | URL, local file |
+| Swagger 2.0 JSON | `.json` | URL, local file |
+| Swagger 2.0 YAML | `.yaml`, `.yml` | URL, local file |
+| GitHub blob URLs | any | Auto-converts to raw.githubusercontent.com |
+
+### All Actions
+
+| Action | What |
+|--------|------|
+| `load` | Load spec from URL/file (JSON or YAML) |
+| `list` | List loaded APIs and all operations |
+| `call` | Call operation by `operationId` |
+| `raw` | Raw HTTP request (method + path) |
+| `auth` | Configure authentication |
+| `token` | View/manage stored tokens |
+| `schemas` | Show API data models |
+| `help` | Usage reference |
+
+### Real-World Example: Spotify
+
+```python
+# Load YAML spec
+openapi(action="load",
+    spec_url="https://raw.githubusercontent.com/sonallux/spotify-web-api/main/fixed-spotify-open-api.yml",
+    alias="spotify")
+
+# Auth (env vars auto-detected)
+openapi(action="auth", alias="spotify", auth_flow="authorization_code",
+    scopes="user-read-private,user-read-email,user-read-playback-state,playlist-read-private")
+
+# Now just call endpoints — auth applied automatically, refreshes silently
+openapi(action="call", alias="spotify", operation="get-current-users-profile")
+openapi(action="call", alias="spotify", operation="get-the-users-currently-playing-track")
+openapi(action="call", alias="spotify", operation="get-a-list-of-current-users-playlists", params='{"limit": 10}')
+```
+
+
+## Identity — Portable AI Personas
+
+Create, manage, and switch between complete DevDuck configurations. Each identity stores everything: system prompt, model, tools, channels, servers, ambient mode, env vars. SQLite-backed with full-text search.
+
+```bash
+# Storage location (priority: param → env var → default)
+~/.devduck/identities.db          # default (desktop)
+DEVDUCK_IDENTITY_DB=/tmp          # Lambda / containers
+db_path="/data/agents"            # per-call override
+```
+
+### Quick Start
+
+```python
+# Create a persona
+identity(action="create", name="code-reviewer",
+    system_prompt="You are a senior code reviewer...",
+    model_provider="bedrock",
+    model_id="us.anthropic.claude-sonnet-4-20250514-v1:0",
+    tools_config="strands_tools:shell,file_read;devduck:use_github,lsp",
+    tags="dev,security,python")
+
+# List all identities
+identity(action="list")
+
+# Switch — sets all env vars in one shot
+identity(action="activate", name="code-reviewer")
+# → Sets MODEL_PROVIDER, STRANDS_MODEL_ID, DEVDUCK_TOOLS, ...
+# → 19 env vars applied. Restart to take effect.
+
+# Search across all fields
+identity(action="search", query="telegram")
+
+# Compare two personas
+identity(action="diff", name="code-reviewer", description="devops-bot")
+
+# Clone and customize
+identity(action="clone", name="code-reviewer", description="strict-reviewer")
+identity(action="update", name="strict-reviewer", temperature=0)
+
+# Export / import (JSON)
+identity(action="export", name="code-reviewer")        # → JSON
+identity(action="import", system_knowledge='{"name":"imported", ...}')
+
+# Talk to an identity (spawns a fresh agent with its config)
+identity(action="talk", name="code-reviewer", query="Review this function for security issues")
+
+# Fan-out — parallel tasks across multiple identities
+identity(action="fan_out", system_knowledge=json.dumps([
+    {"identity": "code-reviewer", "task": "Review this PR for security"},
+    {"identity": "devops-bot", "task": "Check deployment readiness"},
+    {"identity": "strict-reviewer", "task": "Find all code smells",
+     "context": "Focus on SOLID violations"}
+]))
+# → Runs all 3 in parallel, merges results into one output
+
+# Sync to cloud
+identity(action="sync", name="code-reviewer")           # → tiny.technology
+
+# Edge / Lambda — custom DB path
+identity(action="create", name="edge-bot", db_path="/tmp",
+    system_prompt="Minimal agent", enable_ws=0, enable_zenoh=0)
+```
+
+### What Each Identity Stores
+
+| Category | Fields |
+|----------|--------|
+| **Persona** | system_prompt, system_knowledge, model_provider, model_id, temperature, max_tokens |
+| **Tools** | tools_config, mcp_servers, load_tools_from_dir |
+| **Channels** | telegram_token/chat_id, slack_token/channel, whatsapp_number |
+| **Servers** | ws, tcp, mcp, zenoh, ipc, agentcore_proxy (all with ports) |
+| **Ambient** | mode, idle_seconds, max_iterations, cooldown, autonomous settings |
+| **Storage** | knowledge_base_id, env_vars (custom JSON), tags |
+| **Cloud** | tiny.technology sync (name, url) |
+
+### All Actions
+
+| Action | What |
+|--------|------|
+| `create` | New identity with any config fields |
+| `get` | Full JSON view (secrets redacted) |
+| `update` | Partial update — only provided fields change |
+| `delete` | Remove identity |
+| `list` | Table of all identities |
+| `search` | Full-text across name, prompt, tags, tools, env_vars |
+| `activate` | Set all env vars for this identity |
+| `export` | Full JSON export |
+| `import` | Import from JSON |
+| `clone` | Copy identity with new name |
+| `diff` | Side-by-side comparison |
+| `talk` | Send a query to an identity (spawns fresh agent) |
+| `fan_out` | Run multiple identities in parallel, merge results |
+| `history` | Audit trail of all changes |
+| `sync` | Push to tiny.technology cloud |
+| `stats` | Database statistics |
+
+---
+
 ## macOS
 
 ```python
@@ -454,12 +696,14 @@ use_spotify(action="now_playing")
 | `rl` | Train RL agents, fine-tune LLMs |
 | `scraper` | HTML/XML parsing |
 | `use_agent` | Nested agents with different models |
+| `openapi` | Universal API client (any OpenAPI/Swagger spec) |
+| `identity` | Portable AI persona manager with fan-out (SQLite, 16 actions) |
 | `retrieve` / `store_in_kb` | Bedrock Knowledge Base RAG |
 
 <details>
 <summary><strong>All 60+ tools</strong></summary>
 
-**Core:** system_prompt · manage_tools · manage_messages · tasks · scheduler · sqlite_memory · dialog · notify · use_computer · listen · lsp · tui · session_recorder · view_logs
+**Core:** system_prompt · manage_tools · manage_messages · identity · tasks · scheduler · sqlite_memory · dialog · notify · use_computer · listen · lsp · tui · session_recorder · view_logs
 
 **Network:** tcp · websocket · ipc · mcp_server · zenoh_peer · agentcore_proxy · unified_mesh · mesh_registry · jsonrpc
 
@@ -467,7 +711,7 @@ use_spotify(action="now_playing")
 
 **Cloud:** use_github · fetch_github_tool · gist · agentcore_config · agentcore_invoke · agentcore_logs · agentcore_agents · create_subagent · store_in_kb · retrieve
 
-**AI/ML:** rl · speech_to_speech · use_agent · scraper
+**AI/ML:** rl · speech_to_speech · use_agent · scraper · openapi
 
 **macOS Native:** apple_nlp · apple_vision · apple_wifi · apple_sensors · apple_smc
 
@@ -503,6 +747,7 @@ Drop an `AGENTS.md` in your working directory. DevDuck auto-loads it into the sy
 | `DEVDUCK_TOOLS` | 60+ tools | `package:tool1,tool2;package2:tool3` |
 | `DEVDUCK_LOAD_TOOLS_FROM_DIR` | `false` | Auto-load `./tools/*.py` |
 | `DEVDUCK_KNOWLEDGE_BASE_ID` | — | Bedrock KB for auto-RAG |
+| `DEVDUCK_IDENTITY_DB` | `~/.devduck/identities.db` | Identity database path (use `/tmp` for Lambda) |
 | `MCP_SERVERS` | — | JSON config for MCP servers |
 | `DEVDUCK_ENABLE_WS` | `true` | WebSocket server |
 | `DEVDUCK_ENABLE_ZENOH` | `true` | Zenoh P2P |

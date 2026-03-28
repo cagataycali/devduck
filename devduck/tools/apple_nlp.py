@@ -81,7 +81,7 @@ def apple_nlp(
             return {"status": "success", "content": [{"text": "\n".join(lines)}]}
 
         elif action == "embed":
-            word_to_embed = word or text.split()[0] if text else None
+            word_to_embed = word or (text.split()[0] if text else None)
             if not word_to_embed:
                 return {"status": "error", "content": [{"text": "word or text required"}]}
 
