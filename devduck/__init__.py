@@ -1289,6 +1289,50 @@ def get_zenoh_peers_context():
         return ""
 
 
+def get_zcm_peers_context():
+    """Get current ZCM peers for dynamic context injection."""
+    try:
+        import sys as _sys
+
+        _zp_mod = _sys.modules.get("devduck.tools.zcm_peer")
+        if _zp_mod:
+            ZCM_STATE = _zp_mod.ZCM_STATE
+        else:
+            from devduck.tools.zcm_peer import ZCM_STATE
+        import time
+
+        if not ZCM_STATE.get("running"):
+            return ""
+
+        instance_id = ZCM_STATE.get("instance_id", "unknown")
+        peers = ZCM_STATE.get("peers", {})
+        transport_url = ZCM_STATE.get("transport_url", "unknown")
+
+        context = f"\n\n## ZCM Network Status:\n"
+        context += f"- **My Instance ID**: {instance_id}\n"
+        context += f"- **Transport**: {transport_url}\n"
+        context += f"- **Connected Peers**: {len(peers)}\n"
+
+        if peers:
+            context += "\n### Active ZCM Peers:\n"
+            for peer_id, info in peers.items():
+                age = time.time() - info.get("last_seen", 0)
+                hostname = info.get("hostname", "unknown")
+                model = info.get("model", "unknown")
+                context += f"- `{peer_id}` ({hostname}) - model: {model}, seen {age:.0f}s ago\n"
+            context += "\n**Use**: `zcm_peer(action='broadcast', message='...')` to send to all, or `zcm_peer(action='send', peer_id='...', message='...')` for specific peer\n"
+        else:
+            context += "\n*No ZCM peers discovered yet.*\n"
+
+        return context
+    except ImportError:
+        return ""
+    except Exception as e:
+        logger.debug(f"Could not get ZCM peers context: {e}")
+        return ""
+
+
+
 
 def get_listen_transcripts_context():
     """Get recent listen/whisper transcriptions for dynamic context injection."""
@@ -2960,6 +3004,7 @@ How it works:
 
             # 🔗 Inject dynamic context (zenoh + ring + ambient + recording events + listen + event bus)
             zenoh_context = get_zenoh_peers_context()
+            zcm_context = get_zcm_peers_context()
             ring_context = get_unified_ring_context()
             ambient_context = get_ambient_status_context()
             listen_context = get_listen_transcripts_context()
@@ -2980,7 +3025,7 @@ How it works:
                 pass
 
             dynamic_context = (
-                zenoh_context + ring_context + ambient_context + recording_context + listen_context + event_bus_context
+                zenoh_context + zcm_context + ring_context + ambient_context + recording_context + listen_context + event_bus_context
             )
             if dynamic_context:
                 query_with_context = (
