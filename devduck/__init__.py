@@ -4170,6 +4170,13 @@ Claude Desktop Config:
         "--region", "-r", default="us-west-2", help="AWS region (default: us-west-2)"
     )
 
+    # Service subcommand (systemd/launchd install)
+    try:
+        from devduck.tools.service import register_parser as _register_service_parser
+        _register_service_parser(subparsers)
+    except Exception as _e:
+        logger.debug(f"service subcommand unavailable: {_e}")
+
     # Query argument (for default mode)
     parser.add_argument("query", nargs="*", default=[], help="Query to send to the agent")
 
@@ -4250,6 +4257,17 @@ Claude Desktop Config:
             region=args.region,
         )
         return
+
+    # Handle service subcommand
+    if args.command == "service":
+        try:
+            from devduck.tools.service import dispatch as _service_dispatch
+            rc = _service_dispatch(args)
+            sys.exit(rc)
+        except Exception as e:
+            logger.error(f"service command failed: {e}")
+            print(f"🦆 service error: {e}", file=sys.stderr)
+            sys.exit(1)
 
     # Handle --mcp flag for stdio mode
     if args.mcp:
