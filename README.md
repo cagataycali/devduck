@@ -155,6 +155,23 @@ export DEVDUCK_TOOLS="strands_tools:shell,editor;devduck.tools:use_github,schedu
 
 ---
 
+### 🔍 Code Inspection
+
+Built-in `inspect` tool (powered by [strands-inspect](https://github.com/cagataycali/strands-inspect)) — turn any Python package into an interactive tool.
+
+```python
+inspect(action="scan", target="json")                    # deep-scan package API
+inspect(action="call", target="json.dumps", args='[{"hi": 1}]')  # call anything
+inspect(action="search", target="pathlib", query="read file")
+inspect(action="generate", target="requests.post")       # working code example
+inspect(action="profile", target="myfunc")               # memory + CPU timeline
+inspect(action="graph", target="mypkg")                  # call-graph + hotspots
+```
+
+No wrappers, no stubs — point it at any installed package and start calling.
+
+---
+
 ## Architecture
 
 ```

@@ -861,45 +861,134 @@ class SharedMessages(list):
             return super().__getitem__(key)
 
     def __iter__(self):
-        """Return a snapshot iterator that excludes trailing orphaned toolUse.
+        """Return a sanitized snapshot iterator safe for concurrent streaming.
 
-        When the model reads messages for inference, an orphaned toolUse
-        (assistant message with toolUse but no following user+toolResult)
-        causes API errors. This happens when Agent #1 is mid-tool-execution
-        and Agent #2 iterates the shared list concurrently.
+        Concurrent agents writing to the shared list can create three kinds of
+        invalid states that make Bedrock/Anthropic reject the request with a
+        validation error:
 
-        We trim trailing messages that form an incomplete tool turn:
-        - If the last message is assistant with toolUse → exclude it
-        - If the last messages are assistant+toolUse followed by user+toolResult
-          but no final assistant response → that's fine (model will continue)
+        1. **Mid-stream partial toolUse** — another agent is still streaming
+           the toolUse JSON; `input` is an empty string / partial object, not
+           a valid dict. Bedrock requires `input` to be an object.
+
+        2. **Orphaned toolUse** — assistant message contains toolUse blocks
+           whose toolUseId has no matching toolResult anywhere in the list.
+           This happens when Agent A emits toolUse, Agent B iterates before
+           Agent A's tool finishes and appends the toolResult.
+
+        3. **Orphaned toolResult** — user message contains toolResult whose
+           toolUseId has no matching toolUse (rare, from pathological drops).
+
+        We fix by:
+          - Dropping toolUse blocks with non-dict / empty `input` (mid-stream).
+          - Dropping toolUse blocks whose ID has no toolResult later in list.
+          - Dropping toolResult blocks whose ID has no toolUse earlier.
+          - Removing messages whose content becomes empty after filtering.
+          - Preserving thinking/redacted_thinking blocks unchanged.
         """
         with self._lock:
             msgs = list(super().__iter__())
 
-        # Trim trailing incomplete tool turns from the snapshot
-        while msgs:
-            last = msgs[-1]
+        if not msgs:
+            return iter(msgs)
+
+        # Pass 1: collect all completed toolUseIds (have matching toolResult)
+        tool_use_ids: set = set()
+        tool_result_ids: set = set()
+        for m in msgs:
+            if not isinstance(m, dict):
+                continue
+            for c in m.get("content", []) or []:
+                if not isinstance(c, dict):
+                    continue
+                if "toolUse" in c:
+                    tu = c["toolUse"]
+                    tid = tu.get("toolUseId") if isinstance(tu, dict) else None
+                    if tid:
+                        tool_use_ids.add(tid)
+                elif "toolResult" in c:
+                    tr = c["toolResult"]
+                    tid = tr.get("toolUseId") if isinstance(tr, dict) else None
+                    if tid:
+                        tool_result_ids.add(tid)
+
+        # Valid tool IDs = those with BOTH toolUse and toolResult
+        complete_ids = tool_use_ids & tool_result_ids
+
+        # Pass 2: rebuild messages, filtering bad blocks
+        sanitized = []
+        for m in msgs:
+            if not isinstance(m, dict):
+                continue
+
+            content = m.get("content", []) or []
+
+            # Preserve thinking blocks unchanged (Bedrock requirement)
+            has_thinking = any(
+                isinstance(c, dict) and ("thinking" in c or "redacted_thinking" in c)
+                for c in content
+            )
+            if has_thinking:
+                sanitized.append(m)
+                continue
+
+            new_content = []
+            for c in content:
+                if not isinstance(c, dict):
+                    new_content.append(c)
+                    continue
+
+                if "toolUse" in c:
+                    tu = c.get("toolUse") or {}
+                    tid = tu.get("toolUseId") if isinstance(tu, dict) else None
+                    tu_input = tu.get("input") if isinstance(tu, dict) else None
+                    # Drop if:
+                    #   - no ID
+                    #   - input is not a dict (mid-stream partial)
+                    #   - no matching toolResult yet (another agent mid-execution)
+                    if not tid:
+                        continue
+                    if not isinstance(tu_input, dict):
+                        continue
+                    if tid not in complete_ids:
+                        continue
+                    new_content.append(c)
+
+                elif "toolResult" in c:
+                    tr = c.get("toolResult") or {}
+                    tid = tr.get("toolUseId") if isinstance(tr, dict) else None
+                    # Drop toolResult without a matching toolUse
+                    if not tid or tid not in complete_ids:
+                        continue
+                    new_content.append(c)
+
+                else:
+                    # text / image / reasoningContent — keep as-is, but drop
+                    # completely empty text blocks from mid-stream assistants
+                    if "text" in c and isinstance(c.get("text"), str) and not c["text"].strip():
+                        continue
+                    new_content.append(c)
+
+            # Only keep message if it has content after filtering
+            if new_content:
+                sanitized.append({**m, "content": new_content})
+
+        # Pass 3: trim trailing orphaned assistant message (no text, no tools)
+        # This handles the case where an assistant message had ONLY a mid-stream
+        # toolUse that we just filtered out, leaving it empty — which we already
+        # skipped above. But also trim trailing assistant-only-text that ends
+        # with an incomplete state. Safer to leave text in.
+        while sanitized:
+            last = sanitized[-1]
             if not isinstance(last, dict):
-                break
-            role = last.get("role", "")
-            content = last.get("content", [])
+                sanitized.pop()
+                continue
+            if not last.get("content"):
+                sanitized.pop()
+                continue
+            break
 
-            # Check if last message is an assistant message containing toolUse
-            has_tool_use = False
-            if role == "assistant":
-                for c in content:
-                    if isinstance(c, dict) and "toolUse" in c:
-                        has_tool_use = True
-                        break
-
-            if has_tool_use:
-                # Orphaned toolUse — another agent is mid-execution.
-                # Remove it so model doesn't see an incomplete turn.
-                msgs.pop()
-            else:
-                break
-
-        return iter(msgs)
+        return iter(sanitized)
 
     def __contains__(self, item):
         with self._lock:

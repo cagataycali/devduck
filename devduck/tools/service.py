@@ -13,7 +13,6 @@ Fully covered config via CLI flags + env file:
   • log paths, memory limits, restart policy
   • self-healing wrapper (pydantic-core fix, crash-recovery)
 """
-from __future__ import annotations
 
 import os
 import sys
@@ -108,6 +107,7 @@ class InstallPlan:
         memory_max: str = "8G",
         description: Optional[str] = None,
         platform_override: Optional[str] = None,  # "linux" | "macos"
+        policy: Optional[str] = None,
     ) -> None:
         self.name = name
         self.system = system
@@ -125,6 +125,7 @@ class InstallPlan:
         self.memory_max = memory_max
         self.description = description or f"🦆 DevDuck Service ({name})"
         self.platform = platform_override or ("linux" if _is_linux() else "macos" if _is_macos() else "linux")
+        self.policy = policy
 
 
     @staticmethod
@@ -263,6 +264,9 @@ class InstallPlan:
         if self.mcp_servers:
             # caller already passes valid JSON
             lines.append(f"MCP_SERVERS={self.mcp_servers}")
+        if self.policy:
+            # strands-inspect policy (name or path to .toml/.json)
+            lines.append(f"DEVDUCK_POLICY={self.policy}")
 
         lines.append("")
         lines.append("# --- User-provided env ---")
@@ -655,6 +659,7 @@ def cmd_install(args) -> int:
         restart_sec=args.restart_sec,
         memory_max=args.memory_max,
         platform_override="linux" if remote_host else None,
+        policy=getattr(args, "policy", None),
     )
 
     if remote_host:
@@ -786,6 +791,7 @@ def cmd_show(args) -> int:
         startup_prompt=args.startup_prompt,
         env_vars=env_vars,
         platform_override="linux" if remote_host else None,
+        policy=getattr(args, "policy", None),
     )
     print("=" * 60)
     print(f"Service name: {plan.service_name}")
@@ -795,6 +801,8 @@ def cmd_show(args) -> int:
     print(f"Wrapper:      {plan.wrapper_path}")
     print(f"Unit:         {plan.unit_path}")
     print(f"Log:          {plan.log_path}")
+    if plan.policy:
+        print(f"Policy:       {plan.policy}")
     print("=" * 60)
     print("\n--- env file content ---")
     print(plan.env_file_content())
@@ -847,6 +855,7 @@ def register_parser(subparsers) -> None:
     ip.add_argument("--memory-max", default="8G", help="MemoryMax (systemd)")
     ip.add_argument("--restart-sec", type=int, default=15, help="RestartSec (systemd)")
     ip.add_argument("--service-user", help="User to run as (system mode only)")
+    ip.add_argument("--policy", help="strands-inspect policy (name: sandbox/strict/deny_network/allow_all, or path to .toml/.json)")
     ip.add_argument("--no-start", action="store_true", help="Install but don't start")
 
     # ---- uninstall ----
@@ -873,6 +882,7 @@ def register_parser(subparsers) -> None:
     _common(shp)
     shp.add_argument("--model"); shp.add_argument("--tools")
     shp.add_argument("--system-prompt"); shp.add_argument("--startup-prompt")
+    shp.add_argument("--policy", help="strands-inspect policy")
     shp.add_argument("--env", "-e", action="append", dest="env_vars",
                     metavar="KEY=VALUE", help="Env var (repeatable)")
 
@@ -938,6 +948,7 @@ def service(
     restart_sec: int = 15,
     service_user: Optional[str] = None,
     no_start: bool = False,
+    policy: Optional[str] = None,
     # logs-only
     lines: int = 80,
     follow: bool = False,
@@ -1028,6 +1039,7 @@ def service(
             restart_sec=restart_sec,
             service_user=service_user,
             no_start=no_start,
+            policy=policy,
             lines=lines,
             follow=follow,
         )

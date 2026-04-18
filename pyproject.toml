@@ -54,6 +54,7 @@ dependencies = [
     "openai-whisper",
     "webrtcvad",
     "sounddevice",
+    "strands-inspect",
 ]
 
 [project.optional-dependencies]
