@@ -1925,10 +1925,10 @@ class DevDuck:
             # Append to default tools if any server tools are needed
             if server_tools_needed:
                 server_tools_str = ",".join(server_tools_needed)
-                default_tools = f"devduck.tools:system_prompt,use_github,listen,speech_to_speech,telegram,whatsapp,use_computer,browse,fetch_github_tool,manage_tools,manage_messages,service,tunnel,tasks,scheduler,websocket,zenoh_peer,zcm_peer,dds_peer,use_ros,ambient_mode,notify,identity,openapi,inspect,{server_tools_str};strands_tools:shell"
+                default_tools = f"devduck.tools:system_prompt,use_github,listen,speech_to_speech,telegram,whatsapp,use_computer,browse,fetch_github_tool,manage_tools,manage_messages,service,tunnel,tasks,scheduler,websocket,zenoh_peer,zcm_peer,use_ros,use_mavlink,ambient_mode,notify,identity,openapi,inspect,{server_tools_str};strands_tools:shell"
                 logger.info(f"Auto-added server tools: {server_tools_str}")
             else:
-                default_tools = "devduck.tools:system_prompt,browse,fetch_github_tool,manage_tools,manage_messages,service,tunnel,scheduler,websocket,zenoh_peer,zcm_peer,dds_peer,use_ros,ambient_mode,notify,identity,openapi,inspect;strands_tools:shell"
+                default_tools = "devduck.tools:system_prompt,browse,fetch_github_tool,manage_tools,manage_messages,service,tunnel,scheduler,websocket,zenoh_peer,zcm_peer,use_ros,use_mavlink,ambient_mode,notify,identity,openapi,inspect;strands_tools:shell"
 
             tools_config = os.getenv("DEVDUCK_TOOLS", default_tools)
             logger.info(f"Loading tools from config: {tools_config}")
