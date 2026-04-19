@@ -32,6 +32,7 @@ Design:
 """
 
 import logging
+import threading
 import time
 from dataclasses import fields, is_dataclass
 from typing import Any, Dict, Optional
@@ -52,6 +53,13 @@ logger = logging.getLogger(__name__)
 # Cache of topic -> (DataReader, DataWriter) so repeated echo/pub on the
 # same topic don't churn the DDS machinery. Keyed by (topic_name, idl_cls).
 _ENDPOINTS: Dict[tuple, Dict[str, Any]] = {}
+
+# Active tail loops: key = ros_topic_name (e.g. "/cmd_vel"),
+#                    value = {"thread": Thread, "running": bool,
+#                             "dds_topic": str, "type": str, "count": int,
+#                             "last": float, "rate_hz": float}
+_TAILS: Dict[str, Dict[str, Any]] = {}
+_TAILS_LOCK = threading.RLock()
 
 
 # ── Helpers ─────────────────────────────────────────────────────────
@@ -315,6 +323,164 @@ def _format_preview(payload: Any, max_len: int = 1200) -> str:
     return text
 
 
+def _emit_ros_event(ros_topic: str, type_name: str, payload: Dict[str, Any]) -> None:
+    """Push a ROS2 message into the shared event_bus as 'ros.<topic>'."""
+    try:
+        from devduck.tools.event_bus import bus  # type: ignore
+    except Exception:
+        return
+    try:
+        summary = f"{ros_topic} [{type_name}]"
+        detail = _format_preview(payload, max_len=400)
+    except Exception:
+        summary = ros_topic
+        detail = ""
+    try:
+        bus.emit(
+            event_type=f"ros.{ros_topic.lstrip('/')}",
+            source="use_ros",
+            summary=summary,
+            detail=detail,
+            metadata={"topic": ros_topic, "type": type_name, "payload": payload},
+        )
+    except Exception:
+        pass
+
+
+def _tail_loop(ros_topic: str, dds_topic: str, idl_cls: type, resolved_type: str,
+               max_hz: float, stop_flag_key: str) -> None:
+    """Background subscriber that streams samples into event_bus.
+
+    Rate-limits to `max_hz` to keep high-frequency topics from flooding the
+    agent's dynamic context. We always keep the latest sample per window.
+    """
+    endpoints = _get_or_build_endpoints(dds_topic, idl_cls)
+    reader = endpoints["reader"]
+
+    min_interval = 1.0 / max_hz if max_hz > 0 else 0.0
+    next_emit = 0.0
+    logger.info("use_ros tail start: %s [%s] max_hz=%.1f", ros_topic, resolved_type, max_hz)
+
+    while True:
+        with _TAILS_LOCK:
+            entry = _TAILS.get(stop_flag_key)
+            if entry is None or not entry.get("running"):
+                break
+
+        samples = reader.take(N=8)
+        now = time.time()
+        if samples:
+            latest = samples[-1]
+            with _TAILS_LOCK:
+                entry = _TAILS.get(stop_flag_key)
+                if entry is not None:
+                    entry["count"] += len(samples)
+                    # Exponential moving average of receive rate.
+                    last = entry.get("last") or now
+                    dt = max(now - last, 1e-3)
+                    inst = len(samples) / dt
+                    entry["rate_hz"] = 0.8 * entry.get("rate_hz", inst) + 0.2 * inst
+                    entry["last"] = now
+            if now >= next_emit:
+                payload = _message_to_dict(latest)
+                _emit_ros_event(ros_topic, resolved_type, payload)
+                next_emit = now + min_interval
+        time.sleep(0.02)
+
+    logger.info("use_ros tail stop: %s", ros_topic)
+
+
+def _tail_start(topic: str, type_name: Optional[str], max_hz: float) -> Dict[str, Any]:
+    err = _ensure_started()
+    if err is not None:
+        return err
+    ros_topic = "/" + topic.lstrip("/") if not topic.startswith("rt/") else _from_ros_topic(topic)
+    dds_topic = _to_ros_topic(topic)
+    resolved = _resolve_type(dds_topic, type_name)
+    if not resolved:
+        return {
+            "status": "error",
+            "content": [{"text": f"🦆 use_ros: cannot determine type for '{topic}'. Pass type='pkg/msg/Name'."}],
+        }
+    idl_cls = _ros_msgs.ros_type_to_idl(resolved)
+    if idl_cls is None:
+        return {
+            "status": "error",
+            "content": [{"text": f"🦆 use_ros: type '{resolved}' not in bundled registry"}],
+        }
+
+    with _TAILS_LOCK:
+        existing = _TAILS.get(ros_topic)
+        if existing and existing.get("running"):
+            return {
+                "status": "success",
+                "content": [{"text": f"🦆 use_ros tail already running on {ros_topic}"}],
+            }
+        entry = {
+            "running": True,
+            "dds_topic": dds_topic,
+            "type": resolved,
+            "max_hz": max_hz,
+            "count": 0,
+            "rate_hz": 0.0,
+            "last": 0.0,
+            "started": time.time(),
+        }
+        t = threading.Thread(
+            target=_tail_loop,
+            args=(ros_topic, dds_topic, idl_cls, resolved, max_hz, ros_topic),
+            name=f"use_ros-tail:{ros_topic}",
+            daemon=True,
+        )
+        entry["thread"] = t
+        _TAILS[ros_topic] = entry
+        t.start()
+
+    return {
+        "status": "success",
+        "content": [
+            {
+                "text": (
+                    f"🦆 use_ros tail started on {ros_topic} [{resolved}]\n"
+                    f"  Events emitted as 'ros.{ros_topic.lstrip('/')}' on event_bus, capped at {max_hz:.1f} Hz"
+                )
+            }
+        ],
+    }
+
+
+def _tail_stop(topic: str) -> Dict[str, Any]:
+    ros_topic = "/" + topic.lstrip("/") if not topic.startswith("rt/") else _from_ros_topic(topic)
+    with _TAILS_LOCK:
+        entry = _TAILS.get(ros_topic)
+        if not entry:
+            return {"status": "success", "content": [{"text": f"🦆 use_ros: no tail running on {ros_topic}"}]}
+        entry["running"] = False
+        t = entry.get("thread")
+    if t is not None:
+        t.join(timeout=1.0)
+    with _TAILS_LOCK:
+        _TAILS.pop(ros_topic, None)
+    return {"status": "success", "content": [{"text": f"🦆 use_ros tail stopped on {ros_topic}"}]}
+
+
+def _tail_list() -> Dict[str, Any]:
+    with _TAILS_LOCK:
+        items = list(_TAILS.items())
+    if not items:
+        return {"status": "success", "content": [{"text": "🦆 use_ros: no active tails"}]}
+    now = time.time()
+    lines = [f"🦆 use_ros active tails ({len(items)}):"]
+    for ros_topic, info in sorted(items):
+        uptime = now - info.get("started", now)
+        lines.append(
+            f"  {ros_topic}  [{info['type']}]  "
+            f"recv={info['count']}  rate≈{info['rate_hz']:.2f} Hz  "
+            f"up={uptime:.0f}s  cap={info['max_hz']:.1f} Hz"
+        )
+    return {"status": "success", "content": [{"text": "\n".join(lines)}]}
+
+
 # ── Tool entry point ────────────────────────────────────────────────
 @tool
 def use_ros(
@@ -324,6 +490,7 @@ def use_ros(
     msg: Optional[Dict[str, Any]] = None,
     timeout: float = 2.0,
     include_raw: bool = False,
+    max_hz: float = 5.0,
 ) -> Dict[str, Any]:
     """Talk to any ROS2 robot / node / topic over DDS — no ROS2 install needed.
 
@@ -332,6 +499,10 @@ def use_ros(
         list_topics     every ROS2 topic (use include_raw=True for rq/rr too)
         echo            one-shot read from a topic
         pub             publish one sample to a topic
+        tail            start a background subscriber that streams messages
+                        into event_bus as 'ros.<topic_name>' events
+        untail          stop a running tail
+        list_tails      inspect active tails + receive rate
         types           list bundled ROS2 message types we can decode
 
     Args:
@@ -343,6 +514,8 @@ def use_ros(
             (e.g. {"linear": {"x": 0.2}, "angular": {"z": 0.1}})
         timeout: echo wait time in seconds (default 2.0)
         include_raw: also show service/raw DDS topics in list_topics
+        max_hz: tail rate cap in Hz (default 5.0); samples above this rate
+            are coalesced to the latest
 
     Examples:
         use_ros(action="list_nodes")
@@ -351,6 +524,9 @@ def use_ros(
         use_ros(action="pub",  topic="/cmd_vel",
                 type="geometry_msgs/msg/Twist",
                 msg={"linear": {"x": 0.2}})
+        use_ros(action="tail", topic="/scan", max_hz=2.0)
+        use_ros(action="list_tails")
+        use_ros(action="untail", topic="/scan")
 
     Returns:
         Standard Strands tool result dict.
@@ -370,13 +546,24 @@ def use_ros(
         if not topic:
             return {"status": "error", "content": [{"text": "🦆 use_ros: pub requires a `topic`"}]}
         return _pub(topic, type, msg or {})
+    if a == "tail":
+        if not topic:
+            return {"status": "error", "content": [{"text": "🦆 use_ros: tail requires a `topic`"}]}
+        return _tail_start(topic, type, max_hz)
+    if a in ("untail", "stop_tail"):
+        if not topic:
+            return {"status": "error", "content": [{"text": "🦆 use_ros: untail requires a `topic`"}]}
+        return _tail_stop(topic)
+    if a in ("list_tails", "tails"):
+        return _tail_list()
     return {
         "status": "error",
         "content": [
             {
                 "text": (
                     f"🦆 use_ros: unknown action '{action}'. "
-                    "Use: list_nodes | list_topics | types | echo | pub"
+                    "Use: list_nodes | list_topics | types | echo | pub | "
+                    "tail | untail | list_tails"
                 )
             }
         ],

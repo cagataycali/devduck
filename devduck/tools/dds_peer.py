@@ -70,11 +70,27 @@ def _get_instance_id() -> str:
 
 
 def _emit(event_type: str, payload: Dict[str, Any]) -> None:
-    """Best-effort emit to devduck.tools.event_bus (no hard dependency)."""
+    """Best-effort emit to devduck.tools.event_bus (no hard dependency).
+
+    Conforms to EventBus.emit(event_type, source, summary, detail, metadata)
+    — we build a short human-readable summary and stash the full payload
+    in metadata for downstream consumers (TUI, agent context injection).
+    """
     try:
         from devduck.tools.event_bus import bus  # type: ignore
-        bus.emit(event_type, payload, source="dds_peer")
     except Exception:  # pragma: no cover - event_bus is optional at import time
+        return
+    try:
+        # Shortest useful summary: "key1=val1 key2=val2" truncated.
+        summary = " ".join(f"{k}={v}" for k, v in payload.items())[:200]
+        bus.emit(
+            event_type=event_type,
+            source="dds_peer",
+            summary=summary,
+            detail="",
+            metadata=payload,
+        )
+    except Exception:  # pragma: no cover - never let telemetry break the tool
         pass
 
 
