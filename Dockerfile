@@ -7,10 +7,6 @@ LABEL org.opencontainers.image.source="https://github.com/cagataycali/devduck"
 LABEL org.opencontainers.image.licenses="Apache-2.0"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      portaudio19-dev \
-      libasound2-dev \
-      build-essential \
-      python3-dev \
       git \
       curl \
       ca-certificates \

@@ -79,14 +79,27 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, TYPE_CHECKING
 
 import numpy as np
-import pyaudio
+try:
+    import pyaudio
+except ImportError:
+    pyaudio = None
 
 from strands import tool
-from strands.experimental.bidi.agent.agent import BidiAgent
-from strands.experimental.bidi.models.gemini_live import BidiGeminiLiveModel
-from strands.experimental.bidi.models.nova_sonic import BidiNovaSonicModel
-from strands.experimental.bidi.models.openai_realtime import BidiOpenAIRealtimeModel
-from strands.experimental.bidi.io.audio import BidiAudioIO, _BidiAudioBuffer
+try:
+    from strands.experimental.bidi.agent.agent import BidiAgent
+    from strands.experimental.bidi.models.gemini_live import BidiGeminiLiveModel
+    from strands.experimental.bidi.models.nova_sonic import BidiNovaSonicModel
+    from strands.experimental.bidi.models.openai_realtime import BidiOpenAIRealtimeModel
+    from strands.experimental.bidi.io.audio import BidiAudioIO, _BidiAudioBuffer
+    _BIDI_AVAILABLE = True
+except ImportError:
+    BidiAgent = None
+    BidiGeminiLiveModel = None
+    BidiNovaSonicModel = None
+    BidiOpenAIRealtimeModel = None
+    BidiAudioIO = None
+    _BidiAudioBuffer = None
+    _BIDI_AVAILABLE = False
 from strands.experimental.bidi.types.events import (
     BidiAudioInputEvent,
     BidiAudioStreamEvent,

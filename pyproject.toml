@@ -49,16 +49,12 @@ dependencies = [
     "eclipse-zenoh",
     "halo",
     "textual>=0.80",
-    "strands-agents[bidi-all]",
-    "webrtc-noise-gain",
-    "openai-whisper",
-    "webrtcvad",
-    "sounddevice",
     "strands-inspect",
 ]
 
 [project.optional-dependencies]
 rl = ["stable-baselines3[extra]", "gymnasium"]
+audio = ["webrtc-noise-gain", "openai-whisper", "webrtcvad", "sounddevice", "strands-agents[bidi-all]"]
 
 
 [project.scripts]
