@@ -220,17 +220,17 @@ Tests (per commit):
 
 ## 9. Commit roadmap
 
-1. `docs(research): add ROS2 native integration research doc` ← **this commit**
-2. `feat(dds_peer): scaffold CycloneDDS participant + presence`
-3. `feat(dds_peer): implement SPDP/SEDP discovery registry`
-4. `feat(_ros_msgs): bundle top ROS2 message IDL stubs`
-5. `feat(use_ros): agent-facing tool (list/echo/pub/call)`
-6. `feat(use_ros): background `tail` bridges emitting event_bus`
-7. `feat(use_ros,use_aws): vision pipeline for Image topics`
-8. `feat(use_ros,use_google): OCR/vision pipeline via Google`
-9. `feat(use_ros,use_agents): spatial + diagnostics routing`
-10. `test(thor): live integration test log & README with Thor run`
-11. `feat(devduck): register dds_peer + use_ros in tool config`
+1. `docs(research): add ROS2 native integration research doc` ✅ **shipped**
+2. `feat(dds_peer): scaffold CycloneDDS participant + lifecycle` ✅ **shipped**
+3. `feat(dds_peer): SPDP/SEDP discovery loop + ROS2 topic introspection` ✅ **shipped**
+4. `feat(_ros_msgs): bundle 28 common ROS2 message IDL stubs` ✅ **shipped**
+5. `feat(use_ros): agent-facing ROS2 tool (list/echo/pub + JSON)` ✅ **shipped**
+6. `feat(use_ros): tail bridge — stream ROS2 topics into event_bus` ✅ **shipped**
+7. `feat(devduck): register dds_peer + use_ros in default tool config` ✅ **shipped** (this commit)
+8. `feat(use_ros,use_aws): vision pipeline for Image topics` — next
+9. `feat(use_ros,use_google): OCR/vision pipeline via Google` — next
+10. `feat(use_ros,use_agents): spatial + diagnostics routing` — next
+11. `test(thor): live integration test log & README with Thor run` — next
 
 Each commit is small, testable, and reversible.
 
