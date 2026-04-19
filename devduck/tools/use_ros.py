@@ -481,6 +481,242 @@ def _tail_list() -> Dict[str, Any]:
     return {"status": "success", "content": [{"text": "\n".join(lines)}]}
 
 
+
+
+# ── ROS2 services: `call` action (rmw_cyclonedds wire format) ───────
+#
+# ROS2 services transport request/reply over two DDS topics:
+#     rq/<service>Request   -> client sends request here
+#     rr/<service>Reply     -> server replies here
+#
+# rmw_cyclonedds_cpp prepends each request/reply struct with a sample
+# identity header (16-byte client GUID + 8-byte sequence number) so
+# clients can correlate replies to the request that triggered them.
+# Every IDL struct in _ros_msgs for a service type MUST declare those
+# three header fields first; see AddTwoIntsRequest for the pattern.
+#
+# For plain DDS clients (us), the strategy is:
+#     1. Pick a pseudo-random 128-bit client GUID (once per process).
+#     2. For each call, bump a monotonic sequence number.
+#     3. Write the request on rq/...Request.
+#     4. Read rr/...Reply samples until one arrives whose
+#        client_guid_* and sequence_number match ours.
+#     5. Return the payload fields (everything after the header).
+
+import os as _os
+import struct as _struct
+_CLIENT_GUID = _struct.unpack("<Q", _os.urandom(8))[0]
+_SERVICE_SEQ_LOCK = threading.Lock()
+_SERVICE_SEQ = 0
+
+
+def _next_service_seq() -> int:
+    global _SERVICE_SEQ
+    with _SERVICE_SEQ_LOCK:
+        _SERVICE_SEQ += 1
+        return _SERVICE_SEQ
+
+
+def _service_topic_names(service: str) -> tuple:
+    """'/add_two_ints' -> ('rq/add_two_intsRequest', 'rr/add_two_intsReply')."""
+    name = service.lstrip("/")
+    return f"rq/{name}Request", f"rr/{name}Reply"
+
+
+def _resolve_service_types(
+    service: str,
+    srv_type: Optional[str],
+) -> tuple:
+    """Resolve request + response IDL classes from a ROS2 service type.
+
+    Accepts:
+        explicit: 'example_interfaces/srv/AddTwoInts' — builds request +
+                  response type names by convention.
+        discovered: looks for rq/... and rr/... entries in DDS_STATE.
+
+    Returns (req_type_name, res_type_name, req_idl_cls, res_idl_cls) or
+    a tuple with None entries and an error message in [4].
+    """
+    rq_topic, rr_topic = _service_topic_names(service)
+
+    # 1) Explicit type wins.
+    if srv_type:
+        req_name = f"{srv_type}_Request"
+        res_name = f"{srv_type}_Response"
+    else:
+        # 2) Lookup from live discovery.
+        with _STATE_LOCK:
+            req_name = DDS_STATE["topic_types"].get(rq_topic)
+            res_name = DDS_STATE["topic_types"].get(rr_topic)
+        if not req_name or not res_name:
+            return None, None, None, None, (
+                f"cannot determine service type for '{service}'. "
+                "Pass srv_type='pkg/srv/Name' or wait for discovery."
+            )
+
+    req_cls = _ros_msgs.ros_type_to_idl(req_name)
+    res_cls = _ros_msgs.ros_type_to_idl(res_name)
+    if req_cls is None or res_cls is None:
+        return None, None, None, None, (
+            f"service type '{srv_type or 'discovered'}' not in bundled registry "
+            f"(missing: {[n for n, c in [(req_name, req_cls), (res_name, res_cls)] if c is None]}). "
+            "Add it to devduck/tools/_ros_msgs.py."
+        )
+    return req_name, res_name, req_cls, res_cls, None
+
+
+def _call(
+    service: str,
+    srv_type: Optional[str],
+    msg: Dict[str, Any],
+    timeout: float,
+) -> Dict[str, Any]:
+    """Invoke a ROS2 service and wait for its reply.
+
+    Args:
+        service: ROS2 service name like '/add_two_ints'.
+        srv_type: ROS2 service type like 'example_interfaces/srv/AddTwoInts'.
+                  Optional when discovery has already observed the service.
+        msg: dict of request fields (header fields will be filled in for you).
+        timeout: seconds to wait for a matching reply.
+
+    Returns:
+        Standard Strands tool result; on success `content[0].text` contains
+        a pretty-printed dict of the response payload.
+    """
+    err = _ensure_started()
+    if err is not None:
+        return err
+
+    req_name, res_name, req_cls, res_cls, err_msg = _resolve_service_types(service, srv_type)
+    if err_msg:
+        return {"status": "error", "content": [{"text": f"🦆 use_ros: {err_msg}"}]}
+
+    rq_topic, rr_topic = _service_topic_names(service)
+
+    # Build the request: fill in correlation header + user payload.
+    seq = _next_service_seq()
+    try:
+        request = _dict_to_message(req_cls, {
+            "client_guid": _CLIENT_GUID,
+            "sequence_number": seq,
+            **(msg or {}),
+        })
+    except Exception as e:
+        return {
+            "status": "error",
+            "content": [{"text": f"🦆 use_ros: failed to build {req_name} request: {e}"}],
+        }
+
+    # Create endpoints on both service topics.
+    try:
+        req_endpoints = _get_or_build_endpoints(rq_topic, req_cls)
+        res_endpoints = _get_or_build_endpoints(rr_topic, res_cls)
+    except Exception as e:
+        return {
+            "status": "error",
+            "content": [{"text": f"🦆 use_ros: failed to bind service endpoints: {e}"}],
+        }
+
+    writer = req_endpoints["writer"]
+    reader = res_endpoints["reader"]
+
+    # Drain any stale replies so we don't match a previous client's correlation.
+    try:
+        reader.take(N=64)
+    except Exception:
+        pass
+
+    # Fire the request.
+    try:
+        writer.write(request)
+    except Exception as e:
+        return {
+            "status": "error",
+            "content": [{"text": f"🦆 use_ros: DDS write failed on {rq_topic}: {e}"}],
+        }
+
+    # Wait for a reply whose header matches our (guid, seq).
+    deadline = time.time() + timeout
+    poll = 0.02
+    while time.time() < deadline:
+        try:
+            samples = reader.take(N=8)
+        except Exception:
+            samples = []
+        for s in samples or []:
+            if (
+                getattr(s, "client_guid", None) == _CLIENT_GUID
+                and getattr(s, "sequence_number", None) == seq
+            ):
+                payload = _message_to_dict(s)
+                # Strip the correlation header from the visible response.
+                for hdr in ("client_guid", "sequence_number"):
+                    payload.pop(hdr, None)
+                return {
+                    "status": "success",
+                    "content": [
+                        {
+                            "text": (
+                                f"🦆 {service} [{res_name}]\n"
+                                f"{_format_preview(payload)}"
+                            )
+                        }
+                    ],
+                }
+        time.sleep(poll)
+
+    return {
+        "status": "error",
+        "content": [
+            {
+                "text": (
+                    f"🦆 use_ros: no matching reply on {rr_topic} within {timeout:.1f}s. "
+                    f"Server may be offline, type may be wrong, or the server is not on rmw_cyclonedds_cpp "
+                    f"(fastrtps uses a different service wire format)."
+                )
+            }
+        ],
+    }
+
+
+def _list_services() -> Dict[str, Any]:
+    """List discovered ROS2 services (joined rq/rr pairs)."""
+    err = _ensure_started()
+    if err is not None:
+        return err
+    with _STATE_LOCK:
+        types_map = dict(DDS_STATE["topic_types"])
+
+    services = {}
+    for topic, tname in types_map.items():
+        if topic.startswith("rq/") and topic.endswith("Request"):
+            base = topic[3:-len("Request")]
+            services.setdefault(base, {})["req"] = tname
+        elif topic.startswith("rr/") and topic.endswith("Reply"):
+            base = topic[3:-len("Reply")]
+            services.setdefault(base, {})["res"] = tname
+
+    if not services:
+        return {"status": "success", "content": [{"text": "🦆 use_ros: no ROS2 services discovered yet"}]}
+
+    lines = [f"🦆 ROS2 services ({len(services)}):"]
+    for name in sorted(services):
+        info = services[name]
+        req = info.get("req", "?")
+        res = info.get("res", "?")
+        # Try to derive a clean pkg/srv/Name for the call hint.
+        srv_hint = ""
+        if req.endswith("_Request_"):
+            # req looks like: pkg::srv::dds_::Name_Request_
+            pieces = req.replace("::", "/").split("/")
+            if len(pieces) >= 4:
+                pkg = pieces[0]
+                nm = pieces[-1][:-len("_Request_")]
+                srv_hint = f"  → call as '{pkg}/srv/{nm}'"
+        lines.append(f"  /{name}  req={req} res={res}{srv_hint}")
+    return {"status": "success", "content": [{"text": "\n".join(lines)}]}
+
 # ── Tool entry point ────────────────────────────────────────────────
 @tool
 def use_ros(
@@ -491,6 +727,8 @@ def use_ros(
     timeout: float = 2.0,
     include_raw: bool = False,
     max_hz: float = 5.0,
+    service: str = "",
+    srv_type: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Talk to any ROS2 robot / node / topic over DDS — no ROS2 install needed.
 
@@ -504,6 +742,8 @@ def use_ros(
         untail          stop a running tail
         list_tails      inspect active tails + receive rate
         types           list bundled ROS2 message types we can decode
+        call            invoke a ROS2 service and wait for the reply
+        list_services   list discovered ROS2 services (rq/rr topic pairs)
 
     Args:
         action: one of the actions above
@@ -516,6 +756,8 @@ def use_ros(
         include_raw: also show service/raw DDS topics in list_topics
         max_hz: tail rate cap in Hz (default 5.0); samples above this rate
             are coalesced to the latest
+        service: ROS2 service name for `call` (e.g. '/add_two_ints')
+        srv_type: ROS2 service type for `call` (e.g. 'example_interfaces/srv/AddTwoInts')
 
     Examples:
         use_ros(action="list_nodes")
@@ -527,6 +769,10 @@ def use_ros(
         use_ros(action="tail", topic="/scan", max_hz=2.0)
         use_ros(action="list_tails")
         use_ros(action="untail", topic="/scan")
+        use_ros(action="list_services")
+        use_ros(action="call", service="/add_two_ints",
+                srv_type="example_interfaces/srv/AddTwoInts",
+                msg={"a": 17, "b": 25}, timeout=5.0)
 
     Returns:
         Standard Strands tool result dict.
@@ -556,6 +802,12 @@ def use_ros(
         return _tail_stop(topic)
     if a in ("list_tails", "tails"):
         return _tail_list()
+    if a in ("call", "service_call"):
+        if not service:
+            return {"status": "error", "content": [{"text": "🦆 use_ros: call requires a `service` (e.g. '/add_two_ints')"}]}
+        return _call(service, srv_type, msg or {}, timeout)
+    if a in ("list_services", "services"):
+        return _list_services()
     return {
         "status": "error",
         "content": [
@@ -563,7 +815,7 @@ def use_ros(
                 "text": (
                     f"🦆 use_ros: unknown action '{action}'. "
                     "Use: list_nodes | list_topics | types | echo | pub | "
-                    "tail | untail | list_tails"
+                    "tail | untail | list_tails | call | list_services"
                 )
             }
         ],
