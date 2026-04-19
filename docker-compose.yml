@@ -1,0 +1,37 @@
+services:
+  devduck:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        DEVDUCK_VERSION: "0.0.0+docker"
+    image: devduck:local
+    container_name: devduck
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+    ports:
+      - "10000:10000"  # agentcore proxy
+      - "10001:10001"  # websocket
+    env_file:
+      - .env
+    environment:
+      DEVDUCK_AUTO_START_SERVERS: "true"
+      DEVDUCK_ENABLE_WS: "true"
+      DEVDUCK_ENABLE_ZENOH: "true"
+      BYPASS_TOOL_CONSENT: "true"
+    volumes:
+      - devduck-data:/home/duck/.devduck
+      - devduck-tmp:/tmp/devduck
+
+  # Slim release variant (uncomment to use PyPI image)
+  # devduck-slim:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.slim
+  #   image: devduck:slim
+  #   profiles: ["slim"]
+
+volumes:
+  devduck-data:
+  devduck-tmp:
