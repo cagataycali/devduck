@@ -216,6 +216,16 @@ def _forward_zenoh_event_to_browsers(data: dict) -> None:
         responder_id = data.get("responder_id", "")
         turn_id = data.get("turn_id", "")
 
+        # Increment per-peer chunk counter so proxy can detect whether
+        # streaming happened for a given invoke (to avoid duplicating response)
+        if msg_type == "stream":
+            try:
+                from devduck.tools.agentcore_proxy import _GATEWAY_STATE as _GS
+                counters = _GS.setdefault("zenoh_chunks_per_peer", {})
+                counters[responder_id] = counters.get(responder_id, 0) + 1
+            except Exception:
+                pass
+
         # Map zenoh event types to browser-compatible message types
         if msg_type == "stream":
             ws_msg = {

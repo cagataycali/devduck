@@ -886,6 +886,7 @@ class MeshGateway:
                 )
 
         elif agent_type == "zenoh":
+            zenoh_chunks_baseline = 0
             try:
                 # Check if target is self (this DevDuck instance)
                 # If so, invoke agent directly — avoids ZENOH_STATE dependency
@@ -993,6 +994,11 @@ class MeshGateway:
 
                         enriched_prompt = self._enrich_prompt_with_ring(prompt)
                         loop = asyncio.get_running_loop()
+                        # Snapshot zenoh chunk counter for this peer so we can
+                        # tell after the call whether streaming actually happened
+                        zenoh_chunks_baseline = _GATEWAY_STATE.setdefault(
+                            "zenoh_chunks_per_peer", {}
+                        ).get(agent_id, 0)
                         result = await loop.run_in_executor(
                             None,
                             lambda: send_to_peer(
@@ -1028,18 +1034,26 @@ class MeshGateway:
             except:
                 pass
 
-            await ws.send(
-                json.dumps(
-                    {
-                        "type": "turn_end",
-                        "turn_id": turn_id,
-                        "agent_id": agent_id,
-                        "agent_type": "zenoh",
-                        "response": response,
-                        "timestamp": time.time(),
-                    }
-                )
-            )
+            # NOTE: Do NOT include `response` here — stream chunks were already
+            # forwarded to the browser in real time via _forward_zenoh_event_to_browsers()
+            # in zenoh_peer.handle_response. Including it would cause the frontend
+            # (relay.ts) to re-emit the full response as one more chunk,
+            # producing duplicate text. We only fall back to sending `response`
+            # if no chunks were streamed (legacy peer / stream suppressed).
+            counters = _GATEWAY_STATE.setdefault("zenoh_chunks_per_peer", {})
+            chunks_sent = counters.get(agent_id, 0) - zenoh_chunks_baseline
+
+            turn_end_msg = {
+                "type": "turn_end",
+                "turn_id": turn_id,
+                "agent_id": agent_id,
+                "agent_type": "zenoh",
+                "timestamp": time.time(),
+            }
+            if chunks_sent == 0:
+                # No streaming happened — include full response as fallback
+                turn_end_msg["response"] = response
+            await ws.send(json.dumps(turn_end_msg))
 
         elif agent_type == "agentcore":
             enriched_data = dict(data)

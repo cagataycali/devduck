@@ -454,6 +454,100 @@ See the [full guide](https://devduck.tiny.technology/guide/self-replication/) fo
 
 ---
 
+## Public Tunnels (Cloudflare)
+
+Expose devduck to the public internet via [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/).
+Works for the WebSocket server (10001), relay (10000), or any local tool.
+
+### Quick Tunnel — random `*.trycloudflare.com` URL
+
+```bash
+# Install cloudflared (once)
+devduck tunnel install
+
+# Expose the WS server — returns a public URL like https://abc-def.trycloudflare.com
+devduck tunnel start --name ws --port 10001
+
+# View / stop
+devduck tunnel list
+devduck tunnel stop --name ws
+```
+
+No login, no DNS, no config — great for quick demos.
+
+### Named Tunnel — persistent custom hostname
+
+```bash
+# Authenticate with Cloudflare (once, opens browser)
+devduck tunnel login
+
+# Create a named tunnel mapped to your domain
+devduck tunnel create_named --name ws-duck \
+  --hostname ws.example.com --port 10001
+
+# Start it (runs in background; logs at ~/.devduck/tunnels/logs/)
+devduck tunnel start --name ws-duck
+```
+
+Your DNS `CNAME` is created automatically. Config lives at
+`~/.cloudflared/<name>.yml` and is WebSocket-ready
+(`originRequest.connectTimeout`, `noTLSVerify`) by default.
+
+### Auto-Start Tunnels on Launch
+
+Define tunnels in `DEVDUCK_TUNNELS` (JSON array) to spin them up at boot:
+
+```bash
+export DEVDUCK_TUNNELS='[
+  {"name": "ws", "port": 10001},
+  {"name": "relay", "port": 10000}
+]'
+devduck
+```
+
+### 🔐 Protect Public Tunnels with an API Key
+
+By default a tunnel is **wide open** — anyone on the internet can talk to your
+WS server. To lock it down, set `DEVDUCK_WS_API_KEY` on the server side. The
+check is enforced inside `devduck/tools/websocket.py` before any session starts.
+
+```bash
+# Server
+export DEVDUCK_WS_API_KEY="$(openssl rand -hex 32)"
+devduck
+```
+
+Clients must present the key on connect via **any** of these:
+
+| Method       | Example                                                    |
+|--------------|------------------------------------------------------------|
+| Query string | `wss://ws.example.com/?api_key=YOUR_KEY`                   |
+| Header       | `X-API-Key: YOUR_KEY`                                      |
+| Bearer auth  | `Authorization: Bearer YOUR_KEY`                           |
+
+Wrong/missing key → server closes with WebSocket code `4401 Unauthorized`.
+
+**`duck.nyc` web client**: paste the same key into
+*Settings → DevDuck WS API key*. It's appended to every local + relay
+WebSocket URL automatically.
+
+```js
+// Raw JS client
+new WebSocket(`wss://ws.example.com/?api_key=${encodeURIComponent(KEY)}`)
+```
+
+```python
+# Python client
+import websockets, urllib.parse
+key = urllib.parse.quote(os.environ["DEVDUCK_WS_API_KEY"])
+async with websockets.connect(f"wss://ws.example.com/?api_key={key}") as ws:
+    ...
+```
+
+Unset `DEVDUCK_WS_API_KEY` (or set it to empty) to disable auth again.
+
+---
+
 ## Session Recording & Resume
 
 ```bash

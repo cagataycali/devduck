@@ -1925,10 +1925,10 @@ class DevDuck:
             # Append to default tools if any server tools are needed
             if server_tools_needed:
                 server_tools_str = ",".join(server_tools_needed)
-                default_tools = f"devduck.tools:system_prompt,use_github,listen,speech_to_speech,telegram,whatsapp,use_computer,browse,fetch_github_tool,manage_tools,manage_messages,service,tasks,scheduler,websocket,zenoh_peer,zcm_peer,ambient_mode,notify,identity,openapi,inspect,{server_tools_str};strands_tools:shell"
+                default_tools = f"devduck.tools:system_prompt,use_github,listen,speech_to_speech,telegram,whatsapp,use_computer,browse,fetch_github_tool,manage_tools,manage_messages,service,tunnel,tasks,scheduler,websocket,zenoh_peer,zcm_peer,ambient_mode,notify,identity,openapi,inspect,{server_tools_str};strands_tools:shell"
                 logger.info(f"Auto-added server tools: {server_tools_str}")
             else:
-                default_tools = "devduck.tools:system_prompt,browse,fetch_github_tool,manage_tools,manage_messages,service,scheduler,websocket,zenoh_peer,zcm_peer,ambient_mode,notify,identity,openapi,inspect;strands_tools:shell"
+                default_tools = "devduck.tools:system_prompt,browse,fetch_github_tool,manage_tools,manage_messages,service,tunnel,scheduler,websocket,zenoh_peer,zcm_peer,ambient_mode,notify,identity,openapi,inspect;strands_tools:shell"
 
             tools_config = os.getenv("DEVDUCK_TOOLS", default_tools)
             logger.info(f"Loading tools from config: {tools_config}")
@@ -2194,6 +2194,14 @@ class DevDuck:
                 self.ambient.start()
                 logger.info("Ambient mode enabled")
                 print("🌙 Ambient mode enabled (background thinking when idle)")
+
+            # 🌐 Auto-start tunnels if configured via env vars
+            if "--mcp" not in sys.argv:
+                try:
+                    from devduck.tools.tunnel import auto_start_tunnels
+                    auto_start_tunnels()
+                except Exception as e:
+                    logger.debug(f"Tunnel auto-start skipped: {e}")
 
             # ⏰ Auto-start scheduler if jobs exist on disk
             if "--mcp" not in sys.argv:
@@ -4196,6 +4204,13 @@ Claude Desktop Config:
     except Exception as _e:
         logger.debug(f"service subcommand unavailable: {_e}")
 
+    # Tunnel subcommand (Cloudflare public exposure)
+    try:
+        from devduck.tools.tunnel import register_parser as _register_tunnel_parser
+        _register_tunnel_parser(subparsers)
+    except Exception as _e:
+        logger.debug(f"tunnel subcommand unavailable: {_e}")
+
     # Query argument (for default mode)
     parser.add_argument("query", nargs="*", default=[], help="Query to send to the agent")
 
@@ -4286,6 +4301,17 @@ Claude Desktop Config:
         except Exception as e:
             logger.error(f"service command failed: {e}")
             print(f"🦆 service error: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    # Handle tunnel subcommand
+    if args.command == "tunnel":
+        try:
+            from devduck.tools.tunnel import dispatch as _tunnel_dispatch
+            rc = _tunnel_dispatch(args)
+            sys.exit(rc)
+        except Exception as e:
+            logger.error(f"tunnel command failed: {e}")
+            print(f"🦆 tunnel error: {e}", file=sys.stderr)
             sys.exit(1)
 
     # Handle --mcp flag for stdio mode

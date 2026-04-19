@@ -1016,6 +1016,50 @@ async def handle_websocket_client(websocket, system_prompt: str):
     client_address = websocket.remote_address
     logger.info(f"WebSocket connection established with {client_address}")
 
+    # 🔐 Optional API key auth via DEVDUCK_WS_API_KEY env var.
+    # Clients pass key via:
+    #   - Query string: wss://host/?api_key=xxx
+    #   - Header:       X-API-Key: xxx  (or Authorization: Bearer xxx)
+    required_key = os.getenv("DEVDUCK_WS_API_KEY", "").strip()
+    if required_key:
+        provided = None
+        try:
+            # 1. Query string
+            path = getattr(websocket, "path", "") or getattr(
+                getattr(websocket, "request", None), "path", ""
+            ) or ""
+            if "api_key=" in path:
+                from urllib.parse import urlparse, parse_qs
+                qs = parse_qs(urlparse(path).query)
+                provided = (qs.get("api_key") or [None])[0]
+
+            # 2. Headers (websockets 11+ uses request.headers; older: request_headers)
+            if not provided:
+                headers = (
+                    getattr(getattr(websocket, "request", None), "headers", None)
+                    or getattr(websocket, "request_headers", None)
+                    or {}
+                )
+                try:
+                    provided = headers.get("X-API-Key") or headers.get("x-api-key")
+                    if not provided:
+                        auth = headers.get("Authorization") or headers.get("authorization") or ""
+                        if auth.lower().startswith("bearer "):
+                            provided = auth[7:].strip()
+                except Exception:
+                    pass
+        except Exception as _e:
+            logger.debug(f"WS auth extract error: {_e}")
+
+        if provided != required_key:
+            logger.warning(f"WS auth rejected from {client_address} (key mismatch)")
+            try:
+                await websocket.close(code=4401, reason="Unauthorized")
+            except Exception:
+                pass
+            return
+        logger.info(f"WS auth accepted for {client_address}")
+
     client_id = str(uuid.uuid4())
     session = ClientSession(websocket=websocket, client_id=client_id)
 
