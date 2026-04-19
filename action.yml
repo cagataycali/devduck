@@ -127,6 +127,16 @@ runs:
         curl -LsSf https://astral.sh/uv/install.sh | sh
         echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
+    - name: Install system dependencies (portaudio for pyaudio)
+      shell: bash
+      run: |
+        if [ "$RUNNER_OS" = "Linux" ]; then
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends portaudio19-dev libasound2-dev
+        elif [ "$RUNNER_OS" = "macOS" ]; then
+          brew install portaudio || true
+        fi
+
     - name: Install DevDuck
       shell: bash
       run: |
