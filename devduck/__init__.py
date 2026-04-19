@@ -1289,6 +1289,58 @@ def get_zenoh_peers_context():
         return ""
 
 
+def get_dds_peers_context():
+    """Get current DDS domain snapshot for dynamic context injection."""
+    try:
+        import sys as _sys
+
+        _dp_mod = _sys.modules.get("devduck.tools.dds_peer")
+        if _dp_mod:
+            DDS_STATE = _dp_mod.DDS_STATE
+        else:
+            from devduck.tools.dds_peer import DDS_STATE
+        import time
+
+        if not DDS_STATE.get("running"):
+            return ""
+
+        instance_id = DDS_STATE.get("instance_id", "unknown")
+        domain_id = DDS_STATE.get("domain_id", 0)
+        participants = DDS_STATE.get("discovered_participants", {})
+        topics = DDS_STATE.get("discovered_topics", {})
+
+        context = f"\n\n## DDS (CycloneDDS) Network Status:\n"
+        context += f"- **My Instance ID**: {instance_id}\n"
+        context += f"- **Domain**: {domain_id} (set RMW_IMPLEMENTATION=rmw_cyclonedds_cpp on ROS2 side)\n"
+        context += f"- **Participants on domain**: {len(participants)}\n"
+        context += f"- **Topics on domain**: {len(topics)}\n"
+
+        if topics:
+            context += "\n### Active Topics (first 15):\n"
+            now = time.time()
+            shown = 0
+            for name, info in sorted(topics.items()):
+                if shown >= 15:
+                    context += f"  ... and {len(topics) - 15} more\n"
+                    break
+                age = now - info.get("last_seen", now)
+                context += f"- `{name}` [{info.get('type_name', '?')}] ({age:.0f}s)\n"
+                shown += 1
+            context += (
+                "\n**Use**: `dds_peer(action='subscribe', topic='...')` to read, "
+                "`dds_peer(action='publish', topic='...', message='...')` to write.\n"
+            )
+        else:
+            context += "\n*No ROS2/DDS topics discovered yet on this domain.*\n"
+
+        return context
+    except ImportError:
+        return ""
+    except Exception as e:
+        logger.debug(f"Could not get dds peers context: {e}")
+        return ""
+
+
 def get_zcm_peers_context():
     """Get current ZCM peers for dynamic context injection."""
     try:
@@ -1895,7 +1947,7 @@ class DevDuck:
             # Default tool config
             # Agent can load additional tools on-demand via fetch_github_tool
 
-            # 🔧 Available DevDuck Tools (load on-demand from https://github.com/cagataycali/devduck/blob/main/devduck/tools/*.py): system_prompt,store_in_kb,ipc,tcp,websocket,mcp_server,scraper,tray,ambient,agentcore_config,agentcore_invoke,agentcore_logs,agentcore_agents,create_subagent,use_github,speech_to_speech,state_manager,zenoh_peer,zcm_peer,ambient_mode,telegram,slack,whatsapp,apple_notes,use_mac,use_spotify,identity,openapi,inspect
+            # 🔧 Available DevDuck Tools (load on-demand from https://github.com/cagataycali/devduck/blob/main/devduck/tools/*.py): system_prompt,store_in_kb,ipc,tcp,websocket,mcp_server,scraper,tray,ambient,agentcore_config,agentcore_invoke,agentcore_logs,agentcore_agents,create_subagent,use_github,speech_to_speech,state_manager,zenoh_peer,zcm_peer,dds_peer,ambient_mode,telegram,slack,whatsapp,apple_notes,use_mac,use_spotify,identity,openapi,inspect
 
             # 📦 Strands Tools
             # - file_read, file_write, image_reader, load_tool, retrieve
@@ -2793,7 +2845,7 @@ How it works:
         logger.info("Auto-starting servers...")
 
         # Start servers in order: IPC, TCP, WS, MCP, Zenoh, AgentCore Proxy
-        server_order = ["ipc", "tcp", "ws", "mcp", "zenoh_peer", "agentcore_proxy"]
+        server_order = ["ipc", "tcp", "ws", "mcp", "zenoh_peer", "dds_peer", "agentcore_proxy"]
 
         for server_type in server_order:
             if server_type not in self.servers:
@@ -2957,6 +3009,24 @@ How it works:
                                 break
                         logger.info(f"✓ ZCM started as {instance_id}")
                         print(f"🦆 ✓ ZCM peer: {instance_id}")
+
+                elif server_type == "dds_peer":
+                    # CycloneDDS peer — ROS2-native interop on the same DOMAIN_ID
+                    result = self.agent.tool.dds_peer(
+                        action="start",
+                        agent=self.agent,
+                        record_direct_tool_call=False,
+                    )
+
+                    if result.get("status") == "success":
+                        instance_id = "unknown"
+                        for content in result.get("content", []):
+                            text = content.get("text", "")
+                            if "Instance ID:" in text:
+                                instance_id = text.split("Instance ID:")[-1].strip()
+                                break
+                        logger.info(f"✓ DDS started as {instance_id}")
+                        print(f"🦆 ✓ DDS peer: {instance_id}")
 
                 elif server_type == "agentcore_proxy":
                     port = config.get("port", 10000)
