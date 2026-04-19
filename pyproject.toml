@@ -60,7 +60,7 @@ audio = ["webrtc-noise-gain", "openai-whisper", "webrtcvad", "sounddevice", "str
 
 [project.scripts]
 devduck = "devduck:cli"
-dev = "devduck:cli"
+ddev = "devduck:cli"
 
 [project.urls]
 Homepage = "https://github.com/cagataycali/devduck"
