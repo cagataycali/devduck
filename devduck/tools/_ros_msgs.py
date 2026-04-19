@@ -30,6 +30,10 @@ Scope of this commit:
     - nav_msgs: Odometry
     - tf2_msgs: TFMessage
     - diagnostic_msgs: DiagnosticStatus, KeyValue, DiagnosticArray
+    - rcl_interfaces: ParameterType, ParameterValue, Parameter,
+                      ParameterEvent, Log (rosout message)
+    - example_interfaces: AddTwoInts_Request, AddTwoInts_Response
+      (includes the rmw_cyclonedds_cpp service correlation header)
 
 Not included (yet, by design):
     - PointCloud2, CompressedImage (need QoS + big-msg tuning)
@@ -259,6 +263,96 @@ class DiagnosticArray(IdlStruct, typename="diagnostic_msgs::msg::dds_::Diagnosti
     status: sequence[DiagnosticStatus] = field(default_factory=list)
 
 
+
+
+# ── rcl_interfaces ──────────────────────────────────────────────────
+# These types appear on every live ROS2 node (/parameter_events, /rosout)
+# and were flagged (topic, unknown) by use_ros until now.
+
+# ParameterType is an int8 enum in rcl_interfaces; we model the struct
+# exactly as rosidl generates it (wire format == single int8 'type' field).
+@dataclass
+class ParameterType(IdlStruct, typename="rcl_interfaces::msg::dds_::ParameterType_"):
+    type: uint8 = 0  # PARAMETER_{NOT_SET,BOOL,INTEGER,DOUBLE,STRING,BYTE_ARRAY,BOOL_ARRAY,INTEGER_ARRAY,DOUBLE_ARRAY,STRING_ARRAY}
+
+
+@dataclass
+class ParameterValue(IdlStruct, typename="rcl_interfaces::msg::dds_::ParameterValue_"):
+    type: uint8 = 0
+    bool_value: bool = False
+    integer_value: int64 = 0
+    double_value: float64 = 0.0
+    string_value: str = ""
+    byte_array_value: sequence[uint8] = field(default_factory=list)
+    bool_array_value: sequence[bool] = field(default_factory=list)
+    integer_array_value: sequence[int64] = field(default_factory=list)
+    double_array_value: sequence[float64] = field(default_factory=list)
+    string_array_value: sequence[str] = field(default_factory=list)
+
+
+@dataclass
+class Parameter(IdlStruct, typename="rcl_interfaces::msg::dds_::Parameter_"):
+    name: str = ""
+    value: ParameterValue = field(default_factory=ParameterValue)
+
+
+@dataclass
+class ParameterEvent(IdlStruct, typename="rcl_interfaces::msg::dds_::ParameterEvent_"):
+    stamp: Time = field(default_factory=Time)
+    node: str = ""
+    new_parameters: sequence[Parameter] = field(default_factory=list)
+    changed_parameters: sequence[Parameter] = field(default_factory=list)
+    deleted_parameters: sequence[Parameter] = field(default_factory=list)
+
+
+@dataclass
+class Log(IdlStruct, typename="rcl_interfaces::msg::dds_::Log_"):
+    """/rosout message. Level constants: DEBUG=10, INFO=20, WARN=30, ERROR=40, FATAL=50."""
+    stamp: Time = field(default_factory=Time)
+    level: uint8 = 0
+    name: str = ""
+    msg: str = ""
+    file: str = ""
+    function: str = ""
+    line: uint32 = 0
+
+
+# ── example_interfaces: service request/response types ──────────────
+# rmw_cyclonedds_cpp prepends every service request/response with a
+# 16-byte correlation header ("cdds_request_header_t"):
+#
+#     typedef struct cdds_request_header {
+#         uint64_t guid;   // client identity (lower 64 bits of writer GUID)
+#         int64_t  seq;    // per-client monotonic request sequence number
+#     } cdds_request_header_t;
+#
+# Every IDL struct below a service topic MUST declare those two fields
+# *first* — otherwise the ROS2 server (or our replies) will fail to
+# align the CDR buffer and reject the sample. This is the
+# rmw_cyclonedds_cpp layout specifically; rmw_fastrtps uses a different
+# wrapping (still a sample_identity, but encoded differently).
+
+
+@dataclass
+class AddTwoIntsRequest(
+    IdlStruct,
+    typename="example_interfaces::srv::dds_::AddTwoInts_Request_",
+):
+    client_guid: uint64 = 0      # cdds_request_header_t.guid
+    sequence_number: int64 = 0   # cdds_request_header_t.seq
+    a: int64 = 0
+    b: int64 = 0
+
+
+@dataclass
+class AddTwoIntsResponse(
+    IdlStruct,
+    typename="example_interfaces::srv::dds_::AddTwoInts_Response_",
+):
+    client_guid: uint64 = 0
+    sequence_number: int64 = 0
+    sum: int64 = 0
+
 # ── Registry & lookup helpers ───────────────────────────────────────
 # Map: ROS2 "pkg/msg/Name" -> IDL class
 registry: Dict[str, Type] = {
@@ -297,6 +391,15 @@ registry: Dict[str, Type] = {
     "diagnostic_msgs/msg/KeyValue":        KeyValue,
     "diagnostic_msgs/msg/DiagnosticStatus": DiagnosticStatus,
     "diagnostic_msgs/msg/DiagnosticArray":  DiagnosticArray,
+    # rcl_interfaces
+    "rcl_interfaces/msg/ParameterType":  ParameterType,
+    "rcl_interfaces/msg/ParameterValue": ParameterValue,
+    "rcl_interfaces/msg/Parameter":      Parameter,
+    "rcl_interfaces/msg/ParameterEvent": ParameterEvent,
+    "rcl_interfaces/msg/Log":            Log,
+    # example_interfaces (service types, cyclonedds-cpp wire format)
+    "example_interfaces/srv/AddTwoInts_Request":  AddTwoIntsRequest,
+    "example_interfaces/srv/AddTwoInts_Response": AddTwoIntsResponse,
 }
 
 
