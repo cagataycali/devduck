@@ -33,6 +33,7 @@ from .use_computer import use_computer
 from .dialog import dialog
 from .sqlite_memory import sqlite_memory
 from .scheduler import scheduler
+from .neuralset import neuralset
 from .dialog import dialog
 from .manage_messages import manage_messages
 from .manage_tools import manage_tools
@@ -83,6 +84,7 @@ try:
         "rich_interface",
         "editor",
         "use_flipper",
+        "neuralset",
     ]
 except ImportError:
     __all__ = [
@@ -122,4 +124,5 @@ except ImportError:
         "rich_interface",
         "editor",
         "use_flipper",
+        "neuralset",
     ]
