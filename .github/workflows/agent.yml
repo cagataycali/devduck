@@ -103,14 +103,19 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          # Fallback to GITHUB_TOKEN when PAT_TOKEN secret is not configured.
-          # This prevents "could not read Username for 'https://github.com'" checkout failures.
-          token: ${{ secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
+        # NOTE: Do not pass `token:` here. actions/checkout uses the workflow's
+        # auto-provided GITHUB_TOKEN by default, which is always valid for this
+        # repository. Passing a stale/invalid PAT_TOKEN secret causes:
+        #   fatal: could not read Username for 'https://github.com'
+        # Using `secrets.PAT_TOKEN || secrets.GITHUB_TOKEN` does NOT help when
+        # PAT_TOKEN is set but expired — only when it's empty.
 
       - name: Run Strands Agent
         uses: ./
         env:
+          # PAT_TOKEN is used by the agent itself (e.g., for cross-repo API
+          # calls). Fallback to GITHUB_TOKEN so the action still works when
+          # no PAT is configured.
           PAT_TOKEN: ${{ secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
           MODEL_PROVIDER: "bedrock"
         with:
