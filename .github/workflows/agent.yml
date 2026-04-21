@@ -104,12 +104,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.PAT_TOKEN }}
+          # Fallback to GITHUB_TOKEN when PAT_TOKEN secret is not configured.
+          # This prevents "could not read Username for 'https://github.com'" checkout failures.
+          token: ${{ secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Run Strands Agent
         uses: ./
         env:
-          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
           MODEL_PROVIDER: "bedrock"
         with:
           task: |
