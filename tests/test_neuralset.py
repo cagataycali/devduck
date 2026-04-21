@@ -125,7 +125,7 @@ for test_id, kwargs, expected in TESTS:
         })
 
 print(f"\n{'='*70}")
-print(f"COVERAGE MATRIX - PR #10 (neuralset)")
+print("COVERAGE MATRIX - PR #10 (neuralset)")
 print(f"{'='*70}")
 print(f"{'ID':<30} {'EXPECT':<10} {'GOT':<12} {'PASS'}")
 print(f"{'-'*70}")
@@ -147,7 +147,7 @@ with open("/tmp/neuralset_coverage.json", "w") as f:
         "results": results,
     }, f, indent=2)
 
-print(f"\nDetailed results: /tmp/neuralset_coverage.json")
+print("\nDetailed results: /tmp/neuralset_coverage.json")
 
 # Print failures in detail
 if failed > 0:
