@@ -132,6 +132,8 @@ manage_tools(action="create", code='...')
 manage_tools(action="fetch", url="https://github.com/user/repo/blob/main/tool.py")
 ```
 
+
+
 ### Hot-reload from disk
 
 Drop a `.py` file in `./tools/` → it's available immediately.
