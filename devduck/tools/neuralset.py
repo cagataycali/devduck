@@ -234,27 +234,26 @@ def _download(
     ddir = _dataset_dir(dataset)
     ddir.mkdir(parents=True, exist_ok=True)
 
-    # Prefer neuralset CLI if available
-    cli = shutil.which("neuralset")
-    if cli:
-        cmd = [cli, "download", "--dataset", dataset, "--out", str(ddir)]
-        if subjects:
-            cmd += ["--subjects", ",".join(str(s) for s in subjects)]
-        rc, out = _run(cmd, dry_run=dry_run)
-        status = "✅" if rc == 0 else "❌"
-        return _ok(f"{status} download {dataset}\n{out[-1500:]}")
-
-    return _err(
-        "neuralset CLI not found. run action='setup' first, "
-        "or install manually then retry."
-    )
+    # Prefer neuralset CLI if available; in dry-run, simulate the command.
+    cli = shutil.which("neuralset") or "neuralset"
+    if not shutil.which("neuralset") and not dry_run:
+        return _err(
+            "neuralset CLI not found. run action='setup' first, "
+            "or install manually then retry."
+        )
+    cmd = [cli, "download", "--dataset", dataset, "--out", str(ddir)]
+    if subjects:
+        cmd += ["--subjects", ",".join(str(s) for s in subjects)]
+    rc, out = _run(cmd, dry_run=dry_run)
+    status = "✅" if rc == 0 else "❌"
+    return _ok(f"{status} download {dataset}\n{out[-1500:]}")
 
 
 def _preprocess(dataset: str, config: str | None = None, dry_run: bool = False) -> dict:
     if not dataset:
         return _err("dataset required")
-    cli = shutil.which("neuralset")
-    if not cli:
+    cli = shutil.which("neuralset") or "neuralset"
+    if not shutil.which("neuralset") and not dry_run:
         return _err("neuralset CLI not found — run action='setup' first")
     cmd = [cli, "preprocess", "--dataset", dataset]
     if config:
@@ -272,8 +271,8 @@ def _features(
 ) -> dict:
     if not dataset or not backbone:
         return _err("dataset and backbone required")
-    cli = shutil.which("neuralset")
-    if not cli:
+    cli = shutil.which("neuralset") or "neuralset"
+    if not shutil.which("neuralset") and not dry_run:
         return _err("neuralset CLI not found — run action='setup' first")
     cmd = [cli, "features", "--dataset", dataset, "--backbone", backbone]
     if layer:
@@ -286,8 +285,8 @@ def _features(
 def _align(dataset: str, backbone: str, dry_run: bool = False) -> dict:
     if not dataset or not backbone:
         return _err("dataset and backbone required")
-    cli = shutil.which("neuralset")
-    if not cli:
+    cli = shutil.which("neuralset") or "neuralset"
+    if not shutil.which("neuralset") and not dry_run:
         return _err("neuralset CLI not found — run action='setup' first")
     rc, out = _run(
         [cli, "align", "--dataset", dataset, "--backbone", backbone],
@@ -306,8 +305,8 @@ def _encode(
 ) -> dict:
     if not dataset or not backbone:
         return _err("dataset and backbone required")
-    cli = shutil.which("neuralset")
-    if not cli:
+    cli = shutil.which("neuralset") or "neuralset"
+    if not shutil.which("neuralset") and not dry_run:
         return _err("neuralset CLI not found — run action='setup' first")
     rc, out = _run(
         [
@@ -331,8 +330,8 @@ def _decode(
 ) -> dict:
     if not dataset:
         return _err("dataset required")
-    cli = shutil.which("neuralset")
-    if not cli:
+    cli = shutil.which("neuralset") or "neuralset"
+    if not shutil.which("neuralset") and not dry_run:
         return _err("neuralset CLI not found — run action='setup' first")
     rc, out = _run(
         [
@@ -356,8 +355,8 @@ def _evaluate(
 ) -> dict:
     if not dataset:
         return _err("dataset required")
-    cli = shutil.which("neuralset")
-    if not cli:
+    cli = shutil.which("neuralset") or "neuralset"
+    if not shutil.which("neuralset") and not dry_run:
         return _err("neuralset CLI not found — run action='setup' first")
     cmd = [cli, "evaluate", "--dataset", dataset, "--metric", metric]
     if backbone:
