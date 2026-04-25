@@ -24,6 +24,7 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional, Callable
 from logging.handlers import RotatingFileHandler
 from strands import Agent, tool
+from strands.agent.conversation_manager import NullConversationManager
 from devduck.tools.manage_tools import manage_tools
 
 # 🎬 Select callback handler: original or asciinema-recording
@@ -2171,6 +2172,7 @@ class DevDuck:
                 tools=self.tools,
                 system_prompt=self._build_system_prompt(),
                 load_tools_from_directory=load_from_dir,
+                conversation_manager=NullConversationManager(),
                 callback_handler=callback_handler,
                 hooks=hooks if hooks else None,
                 trace_attributes={
