@@ -17,6 +17,21 @@ Fully covered config via CLI flags + env file:
 import os
 import sys
 import shlex
+
+
+def _env_line(key: str, value: str) -> str:
+    """Render a shell-safe KEY=VALUE line for an env file sourced via `set -a; . file`.
+
+    bash's dot-sourcing interprets `;`, spaces, `$`, backticks, `"`, etc. in the
+    RHS. Single-quote the value (escaping embedded single-quotes) unless it's
+    already safe (alnum + a few symbols).
+    """
+    if value == "" or all(c.isalnum() or c in "_-./:@+=" for c in value):
+        return f"{key}={value}"
+    # single-quote wrap with escape for embedded single-quotes
+    escaped = value.replace("'", "'" + chr(92) + "''")
+    return f"{key}='{escaped}'"
+
 import shutil
 import getpass
 import platform
@@ -250,24 +265,24 @@ class InstallPlan:
         ]
 
         if self.model_provider:
-            lines.append(f"MODEL_PROVIDER={self.model_provider}")
+            lines.append(_env_line("MODEL_PROVIDER", self.model_provider))
         if self.model:
-            lines.append(f"STRANDS_MODEL_ID={self.model}")
+            lines.append(_env_line("STRANDS_MODEL_ID", self.model))
         if self.tools:
-            lines.append(f"DEVDUCK_TOOLS={self.tools}")
+            lines.append(_env_line("DEVDUCK_TOOLS", self.tools))
         if self.system_prompt:
             # Keep single-line; env files don't do multi-line well. Use \\n for newlines.
             escaped = self.system_prompt.replace("\n", "\\n").replace('"', '\\"')
             lines.append(f'SYSTEM_PROMPT="{escaped}"')
         if self.mcp_servers:
             # caller already passes valid JSON
-            lines.append(f"MCP_SERVERS={self.mcp_servers}")
+            lines.append(_env_line("MCP_SERVERS", self.mcp_servers))
         lines.append("")
         lines.append("# --- User-provided env ---")
         for k, v in self.env_vars.items():
             if "\n" in v:
                 raise ValueError(f"env var {k} contains newline")
-            lines.append(f"{k}={v}")
+            lines.append(_env_line(k, v))
 
         # ensure PATH so shell tool finds things on Linux hosts
         if self.platform == "linux" and "PATH" not in self.env_vars:
@@ -374,8 +389,13 @@ class InstallPlan:
                 <array>
                     <string>/bin/bash</string>
                     <string>-c</string>
-                    <string>set -a; . {self.env_file}; set +a; exec {self.wrapper_path}</string>
+                    <string>set -a; . {shlex.quote(self.env_file)}; set +a; exec {shlex.quote(self.wrapper_path)}</string>
                 </array>
+                <key>EnvironmentVariables</key>
+                <dict>
+                    <key>PATH</key>
+                    <string>{self.home}/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+                </dict>
                 <key>RunAtLoad</key><true/>
                 <key>KeepAlive</key><true/>
                 <key>WorkingDirectory</key>
