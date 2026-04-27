@@ -246,14 +246,103 @@ def _push_to_mesh(event_type: str, name: str, detail: str):
         logger.debug(f"Zenoh push failed: {e}")
 
 
-def _execute_job(job: dict, agent: Any) -> dict:
-    """Execute a scheduled job as a full DevDuck session via use_agent.
+class _EnvOverride:
+    """Context manager to temporarily override env vars for per-job DevDuck spawning."""
+
+    def __init__(self, overrides: Dict[str, Optional[str]]):
+        self.overrides = {k: v for k, v in overrides.items() if v is not None}
+        self.original: Dict[str, Optional[str]] = {}
+
+    def __enter__(self):
+        for k, v in self.overrides.items():
+            self.original[k] = os.environ.get(k)
+            os.environ[k] = str(v)
+        return self
+
+    def __exit__(self, *exc):
+        for k, original in self.original.items():
+            if original is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = original
+
+
+def _spawn_devduck_for_job(job: dict):
+    """Spawn a fresh DevDuck instance configured for this scheduled job.
+
+    Applies per-job overrides (model, tools, system_prompt) via env vars so
+    the spawned DevDuck picks them up during __init__. The returned instance
+    goes through the full DevDuck __call__ path, which means it gets all
+    dynamic context injection (zenoh peers, ring, ambient, listen transcripts,
+    event bus, AGENTS.md, recording events, KB retrieval/storage, mesh sync).
+    """
+    from devduck import DevDuck
+
+    name = job["name"]
+    sys_prompt_base = (
+        job.get("system_prompt")
+        or "You are executing a scheduled DevDuck job. Be concise and efficient."
+    )
+
+    # Augment system prompt with scheduler context
+    run_count = job.get("run_count", 0)
+    last_status = job.get("last_status") or "never"
+    last_result = (job.get("last_result") or "")[:500]
+    schedule_info = job.get("schedule") or f"run_at={job.get('run_at', '?')}"
+
+    sys_prompt = f"""{sys_prompt_base}
+
+## Scheduled Job Context:
+- **Job Name**: {name}
+- **Schedule**: {schedule_info}
+- **Run Count**: {run_count} (this is execution #{run_count + 1})
+- **Last Status**: {last_status}
+- **Triggered At**: {datetime.now().isoformat()}
+"""
+    if last_result:
+        sys_prompt += f"- **Last Result Preview**: {last_result[:300]}\n"
+
+    # Per-job env overrides
+    overrides: Dict[str, Optional[str]] = {
+        "SYSTEM_PROMPT": sys_prompt,
+    }
+    if job.get("model"):
+        overrides["STRANDS_MODEL_ID"] = job["model"]
+    if job.get("tools"):
+        # tools can be either comma-separated tool names OR full DEVDUCK_TOOLS config
+        tools_str = job["tools"].strip()
+        if ":" in tools_str or ";" in tools_str:
+            # Full DEVDUCK_TOOLS config (e.g., "strands_tools:shell;devduck.tools:use_github")
+            overrides["DEVDUCK_TOOLS"] = tools_str
+        else:
+            # Simple comma list → assume devduck.tools + strands_tools:shell fallback
+            # Let the user be explicit for anything fancier
+            overrides["DEVDUCK_TOOLS"] = f"devduck.tools:{tools_str};strands_tools:shell"
+    if job.get("max_tokens"):
+        overrides["STRANDS_MAX_TOKENS"] = str(job["max_tokens"])
+
+    with _EnvOverride(overrides):
+        # auto_start_servers=False — scheduled jobs shouldn't fight for ports
+        return DevDuck(auto_start_servers=False)
+
+
+def _execute_job(job: dict, agent: Any = None) -> dict:
+    """Execute a scheduled job as a full DevDuck session.
+
+    Spawns a fresh DevDuck(auto_start_servers=False) per job. The spawned
+    instance is invoked via its __call__ method (NOT the bare agent), which
+    means it receives all dynamic context injection: zenoh peers, ring
+    context, ambient status, recording events, listen transcripts, event
+    bus context, AGENTS.md, own source code, KB retrieval/storage, and
+    pushes results to the unified ring.
+
+    `agent` parameter kept for API compatibility but no longer required —
+    each job gets its own fresh DevDuck. If provided, can be used as fallback.
 
     Returns execution record dict.
     """
     name = job["name"]
     prompt = job["prompt"]
-    sys_prompt = job.get("system_prompt") or "You are executing a scheduled task. Be concise and efficient."
 
     logger.info(f"⏰ Executing scheduled job: {name}")
     print(f"\n⏰ [scheduler] Running '{name}'...")
@@ -270,39 +359,28 @@ def _execute_job(job: dict, agent: Any) -> dict:
     t0 = time.time()
 
     try:
-        if agent and hasattr(agent, "tool") and "use_agent" in agent.tool_names:
-            # Build use_agent kwargs
-            ua_kwargs: Dict[str, Any] = {
-                "prompt": prompt,
-                "system_prompt": sys_prompt,
-                "record_direct_tool_call": False,
-                "agent": agent,
-            }
-            # Per-job model override
-            if job.get("model"):
-                ua_kwargs["model_provider"] = "env"
-                ua_kwargs["model_settings"] = {"model_id": job["model"]}
-            # Per-job tools filter
-            if job.get("tools"):
-                # tools is a list of tool names
-                tool_names = [t.strip() for t in job["tools"].split(",") if t.strip()]
-                if tool_names:
-                    ua_kwargs["tools"] = tool_names
+        # Spawn a fresh DevDuck instance for this job
+        job_devduck = _spawn_devduck_for_job(job)
 
-            result = agent.tool.use_agent(**ua_kwargs)
-            result_text = result.get("content", [{}])[0].get("text", "No response")
-            record["result"] = result_text[:3000]
-            record["status"] = "success"
-            print(f"⏰ [scheduler] '{name}' completed.")
-            _emit("schedule.done", f"'{name}' completed", result_text[:200], {"job": name})
-            _push_to_mesh("done", name, f"Completed: {result_text[:300]}")
-        else:
-            record["result"] = "No agent available"
-            record["status"] = "skipped"
+        if not job_devduck.agent:
+            record["result"] = "DevDuck instance initialization failed"
+            record["status"] = "error"
+            raise RuntimeError("DevDuck agent unavailable in spawned instance")
+
+        # Invoke via wrapper (__call__) — this triggers full context injection
+        result = job_devduck(prompt)
+        result_text = str(result)
+
+        record["result"] = result_text[:3000]
+        record["status"] = "success"
+        print(f"⏰ [scheduler] '{name}' completed.")
+        _emit("schedule.done", f"'{name}' completed", result_text[:200], {"job": name})
+        _push_to_mesh("done", name, f"Completed: {result_text[:300]}")
+
     except Exception as e:
         record["result"] = str(e)[:1000]
         record["status"] = "error"
-        logger.error(f"Scheduler job '{name}' failed: {e}")
+        logger.error(f"Scheduler job '{name}' failed: {e}", exc_info=True)
         print(f"⏰ [scheduler] '{name}' failed: {e}")
         _emit("schedule.error", f"'{name}' failed", str(e)[:200], {"job": name})
         _push_to_mesh("error", name, f"Failed: {str(e)[:300]}")

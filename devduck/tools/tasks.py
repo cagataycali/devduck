@@ -146,46 +146,127 @@ class TaskState:
             return None
 
 
+class _EnvOverride:
+    """Context manager to temporarily override env vars for DevDuck spawning."""
+
+    def __init__(self, overrides: Dict[str, Optional[str]]):
+        self.overrides = {k: v for k, v in overrides.items() if v is not None}
+        self.original: Dict[str, Optional[str]] = {}
+
+    def __enter__(self):
+        import os
+        for k, v in self.overrides.items():
+            self.original[k] = os.environ.get(k)
+            os.environ[k] = str(v)
+        return self
+
+    def __exit__(self, *exc):
+        import os
+        for k, original in self.original.items():
+            if original is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = original
+
+
+def _spawn_task_devduck(ts: "TaskState"):
+    """Spawn a fresh DevDuck instance configured for this task.
+
+    Applies task-specific overrides (tools, system_prompt) via env vars so
+    the spawned DevDuck picks them up during __init__. The returned instance
+    goes through the full DevDuck __call__ path, which means it gets all
+    dynamic context injection (zenoh peers, ring, ambient, listen
+    transcripts, event bus, AGENTS.md, recording events, KB retrieval/storage,
+    mesh sync).
+    """
+    from devduck import DevDuck
+
+    # Augment system prompt with task context
+    sys_prompt = f"""{ts.system_prompt}
+
+## Background Task Context:
+- **Task ID**: {ts.task_id}
+- **Created**: {ts.created_at}
+- **Timeout**: {ts.timeout}s
+- **Status**: {ts.status}
+- **Message Count**: {len(ts.messages)}
+
+You are a long-running background task. Maintain conversation continuity
+across multiple message exchanges. Your state persists to disk between
+invocations.
+"""
+
+    overrides: Dict[str, Optional[str]] = {
+        "SYSTEM_PROMPT": sys_prompt,
+    }
+
+    # Tools filter: if specified, build a DEVDUCK_TOOLS config
+    if ts.tools:
+        tool_names = [t.strip() for t in ts.tools if t.strip()]
+        if tool_names:
+            # Assume tools live in devduck.tools unless already namespaced
+            overrides["DEVDUCK_TOOLS"] = (
+                f"devduck.tools:{','.join(tool_names)};strands_tools:shell"
+            )
+
+    with _EnvOverride(overrides):
+        return DevDuck(auto_start_servers=False)
+
+
 def _run_task(ts: TaskState, parent_agent: Optional[Any] = None):
-    """Execute task in background thread."""
+    """Execute task in background thread using a fresh DevDuck instance.
+
+    The spawned DevDuck gets full context injection on every message
+    invocation (zenoh peers, ring, ambient, event bus, mesh sync, etc.)
+    via its __call__ method. Conversation state persists across messages
+    via the DevDuck's underlying agent.messages, which we also mirror to
+    TaskState for disk persistence.
+
+    `parent_agent` is kept for API compatibility but not strictly required —
+    each task now owns its own DevDuck.
+    """
     start = time.time()
     try:
         ts.set_status("running")
 
-        # Build tools from parent agent
-        tools = []
-        if parent_agent:
-            if ts.tools:
-                for name in ts.tools:
-                    if name in parent_agent.tool_registry.registry:
-                        tools.append(parent_agent.tool_registry.registry[name])
-            else:
-                tools = list(parent_agent.tool_registry.registry.values())
+        # Spawn a fresh DevDuck for this task
+        task_devduck = _spawn_task_devduck(ts)
 
-        agent = Agent(
-            model=parent_agent.model if parent_agent else None,
-            messages=ts.messages.copy(),
-            tools=tools,
-            system_prompt=ts.system_prompt,
-            callback_handler=None,
-        )
-        _task_agents[ts.task_id] = agent
+        if not task_devduck.agent:
+            ts.set_status("error")
+            ts.append_result("ERROR: Failed to initialize DevDuck agent for task")
+            return
 
-        # Process initial prompt
+        # Restore any prior messages (for resumed tasks) into the DevDuck agent
+        if len(ts.messages) > 1:
+            try:
+                task_devduck.agent.messages = list(ts.messages)
+            except Exception as e:
+                logger.warning(f"Could not restore messages for task {ts.task_id}: {e}")
+
+        _task_agents[ts.task_id] = task_devduck
+
+        # Process initial prompt if this is a brand-new task
         if len(ts.messages) == 1 and ts.messages[0]["role"] == "user":
-            result = agent(ts.prompt)
-            ts.messages = list(agent.messages)
+            result = task_devduck(ts.prompt)  # wrapper → full context injection
+            try:
+                ts.messages = list(task_devduck.agent.messages)
+            except Exception:
+                pass
             ts._save()
             ts.append_result(f"Initial response: {str(result)[:5000]}")
 
-        # Message queue loop
+        # Message queue loop — each add_message invocation goes through __call__
         empty_checks = 0
         while ts.status == "running" and not ts.paused:
             try:
                 msg = ts.queue.get(timeout=2.0)
                 empty_checks = 0
-                result = agent(msg)
-                ts.messages = list(agent.messages)
+                result = task_devduck(msg)  # wrapper → full context injection
+                try:
+                    ts.messages = list(task_devduck.agent.messages)
+                except Exception:
+                    pass
                 ts._save()
                 ts.append_result(f"Response to '{msg[:100]}': {str(result)[:5000]}")
                 ts.queue.task_done()
@@ -204,6 +285,9 @@ def _run_task(ts: TaskState, parent_agent: Optional[Any] = None):
         logger.error(f"Task {ts.task_id} error: {e}\n{traceback.format_exc()}")
         ts.set_status("error")
         ts.append_result(f"ERROR: {e}\n{traceback.format_exc()}")
+    finally:
+        # Drop the DevDuck instance reference on exit
+        _task_agents.pop(ts.task_id, None)
 
 
 @tool
