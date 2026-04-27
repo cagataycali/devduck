@@ -1926,10 +1926,10 @@ class DevDuck:
             # Append to default tools if any server tools are needed
             if server_tools_needed:
                 server_tools_str = ",".join(server_tools_needed)
-                default_tools = f"devduck.tools:system_prompt,use_github,listen,speech_to_speech,telegram,whatsapp,use_computer,browse,fetch_github_tool,manage_tools,manage_messages,service,tunnel,tasks,scheduler,websocket,zenoh_peer,zcm_peer,ambient_mode,notify,identity,openapi,inspect,{server_tools_str};strands_tools:shell"
+                default_tools = f"devduck.tools:welcome,system_prompt,use_github,listen,speech_to_speech,telegram,whatsapp,use_computer,browse,fetch_github_tool,manage_tools,manage_messages,service,tunnel,tasks,scheduler,websocket,zenoh_peer,zcm_peer,ambient_mode,notify,identity,{server_tools_str};strands_tools:shell"
                 logger.info(f"Auto-added server tools: {server_tools_str}")
             else:
-                default_tools = "devduck.tools:system_prompt,browse,fetch_github_tool,manage_tools,manage_messages,service,tunnel,scheduler,websocket,zenoh_peer,zcm_peer,ambient_mode,notify,identity,openapi,inspect;strands_tools:shell"
+                default_tools = "devduck.tools:welcome,system_prompt,browse,fetch_github_tool,manage_tools,manage_messages,service,tunnel,scheduler,websocket,zenoh_peer,ambient_mode,notify,identity,openapi;strands_tools:shell"
 
             tools_config = os.getenv("DEVDUCK_TOOLS", default_tools)
             logger.info(f"Loading tools from config: {tools_config}")
@@ -3441,23 +3441,41 @@ def interactive():
     from prompt_toolkit.completion import WordCompleter
     from prompt_toolkit.history import FileHistory
 
-    # 🦆 Render beautiful landing UI
+    # 🦆 Render beautiful landing UI (honors .hushlogin + $CWD/.welcome)
+    # There is NO static welcome — content comes from devduck.tools.welcome
+    try:
+        from devduck.tools.welcome import is_hushed as _is_hushed
+    except Exception:
+        _is_hushed = lambda: False
+
     try:
         from devduck.landing import render_landing
         render_landing(devduck)
     except Exception as e:
-        # Fallback to plain text if rich UI fails
+        # Fallback — still honor hushlogin
         logger.warning(f"Landing UI failed, using fallback: {e}")
-        print("🦆 DevDuck")
-        print(f"📝 Logs: {LOG_DIR}")
-        if devduck.ambient:
-            print(f"🌙 Ambient mode: ON (idle: {devduck.ambient.idle_threshold}s)")
-        recorder = get_session_recorder()
-        if recorder and recorder.recording:
-            print(f"🎬 Recording: ON ({recorder.session_id})")
-        print("Type 'exit', 'quit', or 'q' to quit.")
-        print("Commands: 'record' (toggle recording), 'ambient' (toggle), '!' (shell)")
-        print()
+        if not _is_hushed():
+            # Minimal dynamic welcome (avoids static message)
+            try:
+                from devduck.tools.welcome import get_welcome_text
+                wt = get_welcome_text()
+                if wt:
+                    print(wt)
+                    print()
+            except Exception:
+                pass
+            print("🦆 DevDuck")
+            print(f"📝 Logs: {LOG_DIR}")
+            if devduck.ambient:
+                print(f"🌙 Ambient mode: ON (idle: {devduck.ambient.idle_threshold}s)")
+            recorder = get_session_recorder()
+            if recorder and recorder.recording:
+                print(f"🎬 Recording: ON ({recorder.session_id})")
+            print("Type 'exit', 'quit', or 'q' to quit.")
+            print("Commands: 'record' (toggle recording), 'ambient' (toggle), '!' (shell)")
+            print()
+        else:
+            print(f"🦆 DevDuck ready · {getattr(devduck, 'model', '?')} · type 'exit' to quit")
 
     logger.info("Interactive mode started")
 

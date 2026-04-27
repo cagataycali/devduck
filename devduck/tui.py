@@ -1391,16 +1391,49 @@ class DevDuckTUI(App):
 
         help_panel = Panel(help_table, title="[bold]⌨️  Commands[/]", border_style="dim yellow", box=box.ROUNDED, padding=(0, 0))
 
+        # ── Dynamic Welcome (from $CWD/.welcome or default) ────
+        welcome_panel = None
+        try:
+            from devduck.tools.welcome import get_welcome_text, has_custom_welcome
+            welcome_text = get_welcome_text()
+            if welcome_text:
+                try:
+                    welcome_body = Markdown(welcome_text)
+                except Exception:
+                    welcome_body = Text(welcome_text)
+                subtitle = "[dim italic]custom · $CWD/.welcome[/]" if has_custom_welcome() else "[dim italic]default · welcome tool to edit[/]"
+                welcome_panel = Panel(
+                    welcome_body,
+                    title="[bold]📜 Welcome[/]",
+                    subtitle=subtitle,
+                    border_style="bright_magenta",
+                    box=box.ROUNDED,
+                    padding=(1, 2),
+                )
+        except Exception:
+            welcome_panel = None
+
         # ── Compose all sections ────────────────────────────────
-        return Group(
+        sections = [
             Panel(Align.center(header_table), border_style="bright_yellow", box=box.DOUBLE_EDGE, padding=(0, 1)),
             info_row,
             svc_panel,
             feat_panel,
             help_panel,
-        )
+        ]
+        if welcome_panel is not None:
+            sections.append(welcome_panel)
+        return Group(*sections)
 
     def _show_welcome(self) -> None:
+        # 🤫 Honor .hushlogin / DEVDUCK_HUSHLOGIN — no welcome panel at all
+        try:
+            from devduck.tools.welcome import is_hushed
+            if is_hushed():
+                return
+        except Exception:
+            pass
+
         scroll = self.query_one("#conversations-scroll", ScrollableContainer)
 
         welcome = Static(

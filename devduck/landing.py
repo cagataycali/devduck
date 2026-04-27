@@ -16,7 +16,19 @@ from rich.table import Table
 from rich.columns import Columns
 from rich.text import Text
 from rich.align import Align
+from rich.markdown import Markdown
 from rich import box
+
+# Dynamic welcome — NOT static! Honors $CWD/.welcome + .hushlogin
+try:
+    from devduck.tools.welcome import get_welcome_text, is_hushed, has_custom_welcome
+except Exception:
+    def get_welcome_text() -> str:
+        return ""
+    def is_hushed() -> bool:
+        return False
+    def has_custom_welcome() -> bool:
+        return False
 
 
 console = Console()
@@ -58,8 +70,25 @@ def _status_dot(ok: bool) -> str:
 
 
 def render_landing(devduck_instance):
-    """Render the full landing dashboard."""
+    """Render the full landing dashboard.
+
+    Honors `.hushlogin` (Unix convention): if `$CWD/.hushlogin` or
+    `$HOME/.hushlogin` exists, or `DEVDUCK_HUSHLOGIN=true`, the landing
+    screen is suppressed entirely — only a single-line status is printed.
+
+    The welcome content itself is dynamic — sourced from `$CWD/.welcome`
+    via `devduck.tools.welcome.get_welcome_text()`. There is no static
+    welcome message anywhere.
+    """
     from devduck import LOG_DIR, get_session_recorder
+
+    # 🤫 Hushlogin → minimal output, skip the big dashboard
+    if is_hushed():
+        console.print(
+            f"[dim]🦆 DevDuck ready · [/][bright_yellow]{getattr(devduck_instance, 'model', '?')}[/]"
+            f"[dim] · {len(getattr(devduck_instance, 'tools', []))} tools · type 'exit' to quit[/]"
+        )
+        return
 
     console.clear()
 
@@ -299,6 +328,27 @@ def render_landing(devduck_instance):
         box=box.ROUNDED,
         padding=(0, 0),
     ))
+
+    # ── Dynamic Welcome (from $CWD/.welcome or default) ────────
+    try:
+        welcome_text = get_welcome_text()
+        if welcome_text:
+            try:
+                welcome_body = Markdown(welcome_text)
+            except Exception:
+                welcome_body = Text(welcome_text)
+
+            subtitle = "[dim italic]custom · $CWD/.welcome[/]" if has_custom_welcome() else "[dim italic]default · welcome(action='edit', content=...)[/]"
+            console.print(Panel(
+                welcome_body,
+                title="[bold]📜 Welcome[/]",
+                subtitle=subtitle,
+                border_style="bright_magenta",
+                box=box.ROUNDED,
+                padding=(1, 2),
+            ))
+    except Exception:
+        pass
 
     # ── Footer ──────────────────────────────────────────────────
     now = datetime.now()

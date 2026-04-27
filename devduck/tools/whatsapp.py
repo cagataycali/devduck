@@ -48,6 +48,7 @@ import json
 import logging
 import os
 import subprocess
+import sys
 import shutil
 import threading
 import time
@@ -243,21 +244,72 @@ def _process_whatsapp_message(message: Dict):
     text = message.get("Text", message.get("Body", message.get("body", "")))
     if not text:
         text = message.get("DisplayText", "")
-    msg_id = message.get("ID", message.get("id", ""))
+    msg_id = message.get("ID", message.get("id", message.get("MsgID", "")))
     timestamp = message.get("Timestamp", message.get("timestamp", ""))
+    media_type = message.get("MediaType", message.get("media_type", "")) or ""
 
-    if not text or not text.strip():
+    # Download media if present (image/video/audio/document)
+    media_path: Optional[str] = None
+    if media_type:
+        try:
+            dl_args = ["media", "download", "--chat", chat_jid, "--id", msg_id]
+            dl = _run_wacli(dl_args, timeout=60, json_output=False)
+            if dl.get("status") == "success":
+                # wacli prints saved path on last non-empty line
+                for line in reversed(str(dl.get("output", "")).splitlines()):
+                    line = line.strip()
+                    if line and os.path.exists(line):
+                        media_path = line
+                        break
+                # Fallback: scan wacli media dir for newest file
+                if not media_path:
+                    store = os.environ.get("WACLI_STORE", os.path.expanduser("~/.wacli"))
+                    media_dir = Path(store) / "media"
+                    if media_dir.exists():
+                        files = sorted(
+                            media_dir.rglob("*"),
+                            key=lambda p: p.stat().st_mtime if p.is_file() else 0,
+                            reverse=True,
+                        )
+                        for f in files[:3]:
+                            if f.is_file() and msg_id[:8] in str(f):
+                                media_path = str(f)
+                                break
+                        if not media_path and files:
+                            # Newest file in media dir as best-guess
+                            for f in files:
+                                if f.is_file():
+                                    media_path = str(f)
+                                    break
+                logger.info(f"WhatsApp: downloaded {media_type} → {media_path}")
+            else:
+                logger.warning(f"WhatsApp: media download failed: {dl.get('output')}")
+        except Exception as e:
+            logger.error(f"WhatsApp: media download error: {e}")
+
+    # Skip only if NO text AND NO media
+    if (not text or not text.strip()) and not media_path:
         return
 
     _LISTENER_STATE["messages_processed"] += 1
-    logger.info(f"WhatsApp: processing message from {sender_jid} in {chat_jid}")
+    logger.info(
+        f"WhatsApp: processing msg from {sender_jid} in {chat_jid} "
+        f"(media={media_type}, path={media_path})"
+    )
 
     # 🔔 Emit incoming message event
+    summary = text[:60] if text else f"[{media_type}]"
     _emit_event(
         "whatsapp.in",
-        f"{sender_jid.split('@')[0]}: {text[:60]}",
-        text,
-        {"chat_jid": chat_jid, "sender_jid": sender_jid, "msg_id": msg_id},
+        f"{sender_jid.split('@')[0]}: {summary}",
+        text or f"[{media_type} @ {media_path}]",
+        {
+            "chat_jid": chat_jid,
+            "sender_jid": sender_jid,
+            "msg_id": msg_id,
+            "media_type": media_type,
+            "media_path": media_path,
+        },
     )
 
     try:
@@ -270,17 +322,24 @@ def _process_whatsapp_message(message: Dict):
             logger.error("Failed to create DevDuck instance for whatsapp message")
             return
 
-        # Use the DevDuck wrapper for invocation so mesh/ring/zenoh context
-        # is injected per message.
         invoker = connection_devduck
 
-        # Build context
         recent = _get_recent_events(10)
         event_ctx = (
             f"\nRecent WhatsApp Events:\n{json.dumps(recent[-5:], indent=2)}"
             if recent
             else ""
         )
+
+        media_hint = ""
+        if media_path:
+            media_hint = (
+                f"\n\n## 📎 Attached Media:\n"
+                f"- Type: {media_type}\n"
+                f"- Path: {media_path}\n"
+                f"- To analyze image: use `image_reader(image_path='{media_path}')` "
+                f"or `file_read` for text/docs\n"
+            )
 
         agent.system_prompt += f"""
 
@@ -292,10 +351,25 @@ def _process_whatsapp_message(message: Dict):
 - To reply: whatsapp(action="send_text", to="{chat_jid}", text="your reply")
 - To send file: whatsapp(action="send_file", to="{chat_jid}", file_path="path", caption="text")
 - To search history: whatsapp(action="messages_search", query="term", chat="{chat_jid}")
+{media_hint}
 {event_ctx}
 """
 
-        prompt = f"[WhatsApp {chat_jid}] {sender_jid} says: {text}"
+        if media_path and not text.strip():
+            prompt = (
+                f"[WhatsApp {chat_jid}] {sender_jid} sent a {media_type} "
+                f"(saved at {media_path}). Analyze/describe what's in it, "
+                f"then reply to them via whatsapp send_text."
+            )
+        elif media_path:
+            prompt = (
+                f"[WhatsApp {chat_jid}] {sender_jid} sent a {media_type} "
+                f"(saved at {media_path}) with caption: {text}. "
+                f"Analyze the media and reply."
+            )
+        else:
+            prompt = f"[WhatsApp {chat_jid}] {sender_jid} says: {text}"
+
         result = invoker(prompt)
 
         # Always auto-reply with 🦆 prefix (so bot ignores its own messages)
@@ -703,13 +777,121 @@ def whatsapp(
 
     # ─── Auth & Sync ───
     if action == "auth":
-        # Auth is interactive (QR code) — run in foreground
-        return _result(
-            "success",
-            "🔐 Run `wacli auth` in your terminal to scan the QR code.\n"
-            "This is interactive and cannot be run from within the agent.\n"
-            "After auth, use whatsapp(action='sync') or whatsapp(action='doctor').",
-        )
+        # `wacli auth` only emits the QR when attached to a TTY, so we run it
+        # inside a PTY, stream its output live to the user's terminal, and
+        # scrape the `2@...` QR payload so we can re-render it via the python
+        # `qrcode` lib (bigger/cleaner than wacli's built-in block-drawing).
+        import pty, select, signal, errno, re
+
+        binary = _get_wacli_bin()
+        cmd = [binary] + _get_store_args() + ["auth"]
+
+        print("🔐 Launching `wacli auth` — scan the QR code with WhatsApp.")
+        print("   (WhatsApp → Settings → Linked Devices → Link a Device)")
+        print("   Press Ctrl+C to cancel.\n", flush=True)
+
+        captured = bytearray()
+        exit_code: Optional[int] = None
+
+        try:
+            pid, fd = pty.fork()
+        except OSError as e:
+            return _result("error", f"Failed to fork PTY: {e}")
+
+        if pid == 0:
+            try:
+                os.execvp(cmd[0], cmd)
+            except Exception:
+                os._exit(127)
+
+        # Parent: stream PTY → stdout, capture for later parsing.
+        try:
+            with _WACLI_LOCK:
+                while True:
+                    try:
+                        rlist, _, _ = select.select([fd], [], [], 0.5)
+                    except (OSError, ValueError):
+                        break
+                    if fd in rlist:
+                        try:
+                            chunk = os.read(fd, 4096)
+                        except OSError as e:
+                            if e.errno == errno.EIO:
+                                break
+                            raise
+                        if not chunk:
+                            break
+                        sys.stdout.buffer.write(chunk)
+                        sys.stdout.flush()
+                        captured.extend(chunk)
+
+                    try:
+                        wpid, status = os.waitpid(pid, os.WNOHANG)
+                        if wpid != 0:
+                            exit_code = (
+                                os.WEXITSTATUS(status) if os.WIFEXITED(status)
+                                else -os.WTERMSIG(status)
+                            )
+                            break
+                    except ChildProcessError:
+                        break
+        except KeyboardInterrupt:
+            print("\n🦆 Cancelling wacli auth…", flush=True)
+            try:
+                os.kill(pid, signal.SIGINT)
+                time.sleep(0.5)
+                os.kill(pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            try:
+                os.waitpid(pid, 0)
+            except ChildProcessError:
+                pass
+            exit_code = 130
+        finally:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+
+        # Parse captured stdout (strip ANSI) for the QR payload.
+        plain = re.sub(r"\x1b\[[0-9;?]*[a-zA-Z]", "", captured.decode("utf-8", errors="replace"))
+        m = re.search(r"(2@[A-Za-z0-9+/=]+(?:,[A-Za-z0-9+/=]+){3})", plain)
+        if m:
+            try:
+                import qrcode
+                q = qrcode.QRCode(border=1)
+                q.add_data(m.group(1))
+                q.make(fit=True)
+                print("\n📱 Re-rendered QR (larger, via python-qrcode):\n", flush=True)
+                q.print_ascii(invert=True)
+            except ImportError:
+                print("\n💡 Install `qrcode` for a larger re-render: pip install qrcode", flush=True)
+            except Exception as e:
+                logger.debug(f"qrcode render failed: {e}")
+
+        # Post-auth status check
+        authed = False
+        try:
+            status_res = _run_wacli(["auth", "status"], timeout=10)
+            payload = status_res.get("output")
+            if isinstance(payload, dict):
+                authed = bool(payload.get("data", {}).get("authenticated"))
+        except Exception:
+            pass
+
+        if authed:
+            return _result("success", "✅ WhatsApp authenticated. Next: whatsapp(action='sync').")
+
+        msg = ["❌ WhatsApp auth did not complete."]
+        if exit_code is not None:
+            msg.append(f"wacli exit code: {exit_code}")
+        if "Client outdated" in plain or "(405)" in plain:
+            msg.append(
+                "⚠️  wacli reported 'Client outdated (405)'. Upgrade:\n"
+                "    brew update && brew upgrade steipete/tap/wacli"
+            )
+        return _result("error", "\n".join(msg))
 
     if action == "sync":
         # One-shot sync (--once)
@@ -835,7 +1017,7 @@ def whatsapp(
     if action == "chats_show":
         if not chat:
             return _result("error", "❌ 'chat' required for chats_show")
-        result = _run_wacli(["chats", "show", chat])
+        result = _run_wacli(["chats", "show", "--jid", chat])
         if result["status"] == "success":
             return _success(result["output"])
         return _result("error", f"❌ {result['output']}")
@@ -853,7 +1035,7 @@ def whatsapp(
     if action == "contacts_show":
         if not jid:
             return _result("error", "❌ 'jid' required for contacts_show")
-        result = _run_wacli(["contacts", "show", jid])
+        result = _run_wacli(["contacts", "show", "--jid", jid])
         if result["status"] == "success":
             return _success(result["output"])
         return _result("error", f"❌ {result['output']}")

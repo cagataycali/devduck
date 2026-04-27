@@ -21,7 +21,7 @@ import time
 from collections import deque
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
-
+from strands import tool
 
 # ── Event Types ─────────────────────────────────────────────────
 # Standardized event type constants for consistency
@@ -254,3 +254,121 @@ def emit(event_type: str, source: str, summary: str, detail: str = "",
          metadata: Optional[Dict[str, Any]] = None) -> Event:
     """Shorthand: push an event to the global bus."""
     return bus.emit(event_type, source, summary, detail, metadata)
+
+@tool
+def event_bus(
+    action: str = "recent",
+    event_type: str = None,
+    source: str = "agent",
+    summary: str = "",
+    detail: str = "",
+    count: int = 30,
+    seconds: float = 300,
+    max_age_seconds: float = 300,
+) -> Dict[str, Any]:
+    """🔔 Inspect and control the unified DevDuck event bus.
+
+    All background tools (telegram, whatsapp, scheduler, tasks, listen,
+    notify, zenoh, speech) push events here. The TUI sidebar and agent
+    context reads from it.
+
+    Actions:
+        - "recent":     List last N events (count=30)
+        - "by_type":    Filter by event_type (e.g. "telegram.in")
+        - "since":      Events from last N seconds
+        - "context":    Formatted context block (as injected to agent)
+        - "emit":       Push a custom event (requires event_type+summary)
+        - "clear":      Wipe the buffer
+        - "stats":      Counter, size, event type distribution
+
+    Args:
+        action: One of the actions above
+        event_type: For "by_type" filter or "emit" (e.g. "custom.note")
+        source: Source label when emitting (default: "agent")
+        summary: Short one-liner (required for emit)
+        detail: Longer detail text (optional for emit)
+        count: How many events to return (recent/by_type)
+        seconds: Time window for "since"
+        max_age_seconds: Time window for "context"
+
+    Returns:
+        Dict with status and content.
+    """
+    try:
+        if action == "recent":
+            events = bus.recent(count=count)
+            if not events:
+                return {"status": "success", "content": [{"text": "No events in bus."}]}
+            lines = [f"📋 {len(events)} recent events (total emitted: {bus.count}):"]
+            for e in events:
+                detail_preview = f" — {e.detail[:100]}" if e.detail else ""
+                lines.append(f"[{e.time_str}] {e.icon} {e.source} | {e.event_type}: {e.summary}{detail_preview}")
+            return {"status": "success", "content": [{"text": "\n".join(lines)}]}
+
+        elif action == "by_type":
+            if not event_type:
+                return {"status": "error", "content": [{"text": "event_type required for by_type"}]}
+            events = bus.recent_by_type(event_type, count=count)
+            if not events:
+                return {"status": "success", "content": [{"text": f"No events of type '{event_type}'."}]}
+            lines = [f"📋 {len(events)} events of type '{event_type}':"]
+            for e in events:
+                lines.append(f"[{e.time_str}] {e.icon} {e.source}: {e.summary}")
+            return {"status": "success", "content": [{"text": "\n".join(lines)}]}
+
+        elif action == "since":
+            events = bus.recent_since(seconds)
+            if not events:
+                return {"status": "success", "content": [{"text": f"No events in last {seconds}s."}]}
+            lines = [f"📋 {len(events)} events in last {seconds}s:"]
+            for e in events:
+                lines.append(f"[{e.time_str}] {e.icon} {e.source} | {e.event_type}: {e.summary}")
+            return {"status": "success", "content": [{"text": "\n".join(lines)}]}
+
+        elif action == "context":
+            ctx = bus.get_context_string(max_events=count, max_age_seconds=max_age_seconds)
+            if not ctx:
+                return {"status": "success", "content": [{"text": "No recent events for context."}]}
+            return {"status": "success", "content": [{"text": ctx}]}
+
+        elif action == "emit":
+            if not event_type or not summary:
+                return {"status": "error", "content": [{"text": "emit requires event_type + summary"}]}
+            e = bus.emit(event_type, source, summary, detail)
+            return {"status": "success", "content": [{"text": f"✅ Emitted [{e.time_str}] {e.icon} {source} | {event_type}: {summary}"}]}
+
+        elif action == "clear":
+            prev = bus.size
+            bus.clear()
+            return {"status": "success", "content": [{"text": f"🗑  Cleared {prev} events."}]}
+
+        elif action == "stats":
+            events = bus.recent(count=bus.size)
+            type_counts: Dict[str, int] = {}
+            source_counts: Dict[str, int] = {}
+            for e in events:
+                type_counts[e.event_type] = type_counts.get(e.event_type, 0) + 1
+                source_counts[e.source] = source_counts.get(e.source, 0) + 1
+            lines = [
+                f"📊 Event Bus Stats",
+                f"  Total emitted: {bus.count}",
+                f"  Currently buffered: {bus.size}",
+                f"  Subscribers: {len(bus._subscribers)}",
+                "",
+                "By type:",
+            ]
+            for t, c in sorted(type_counts.items(), key=lambda x: -x[1]):
+                lines.append(f"  {c:4d}  {t}")
+            lines.append("\nBy source:")
+            for s, c in sorted(source_counts.items(), key=lambda x: -x[1]):
+                lines.append(f"  {c:4d}  {s}")
+            return {"status": "success", "content": [{"text": "\n".join(lines)}]}
+
+        else:
+            return {
+                "status": "error",
+                "content": [{"text": f"Unknown action '{action}'. Valid: recent, by_type, since, context, emit, clear, stats"}],
+            }
+
+    except Exception as e:
+        return {"status": "error", "content": [{"text": f"event_bus error: {e}"}]}

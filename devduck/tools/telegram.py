@@ -105,7 +105,7 @@ def _store_event(event_data: Dict):
         logger.error(f"Error storing telegram event: {e}")
 
 
-def _get_recent_events(count: int = 20) -> List[Dict]:
+def _get_recent_events(count: int = 100) -> List[Dict]:
     """Read last N events from JSONL."""
     if not EVENTS_FILE.exists():
         return []
@@ -268,10 +268,10 @@ def _process_message(message: Dict, bot_token: str):
         invoker = connection_devduck
 
         # Build context with recent events
-        event_count = int(os.getenv("TELEGRAM_DEFAULT_EVENT_COUNT", "20"))
+        event_count = int(os.getenv("TELEGRAM_DEFAULT_EVENT_COUNT", "100"))
         recent = _get_recent_events(event_count)
         event_ctx = (
-            f"\nRecent Telegram Events:\n{json.dumps(recent[-5:], indent=2)}"
+            f"\nRecent Telegram Events:\n{json.dumps(recent[-100:], indent=2)}"
             if recent
             else ""
         )

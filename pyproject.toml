@@ -51,6 +51,8 @@ dependencies = [
     "textual>=0.80",
     "strands-inspect",
     "numpy",
+    "spotipy",
+    "qrcode"
 ]
 
 [project.optional-dependencies]
