@@ -4,7 +4,7 @@ Persists jobs to /tmp/.devduck/scheduler/jobs.json (survives on Android/constrai
 Uses Python's sched + threading for precise timing — no external dependencies.
 
 Each scheduled job spawns a full DevDuck session via use_agent with configurable:
-- system_prompt, tools, model, max_tokens, context
+- system_prompt, tools, model, max_tokens, context, env_vars
 - cron (recurring) or run_at (one-time)
 - Catch-up window for missed jobs after restart
 - Standard cron DOW (Sunday=0)
@@ -321,6 +321,13 @@ def _spawn_devduck_for_job(job: dict):
     if job.get("max_tokens"):
         overrides["STRANDS_MAX_TOKENS"] = str(job["max_tokens"])
 
+    # Arbitrary per-job env vars (e.g. TELEGRAM_BOT_TOKEN, API keys, flags)
+    job_env = job.get("env_vars") or {}
+    if isinstance(job_env, dict):
+        for k, v in job_env.items():
+            if v is not None:
+                overrides[str(k)] = str(v)
+
     with _EnvOverride(overrides):
         # auto_start_servers=False — scheduled jobs shouldn't fight for ports
         return DevDuck(auto_start_servers=False)
@@ -623,6 +630,7 @@ def scheduler(
     max_tokens: Optional[int] = None,
     context: Optional[str] = None,
     enabled: bool = True,
+    env_vars: Optional[Dict[str, str]] = None,
     agent: Any = None,
 ) -> Dict[str, Any]:
     """⏰ Job scheduler - cron and one-time tasks with persistence.
@@ -656,6 +664,7 @@ def scheduler(
         max_tokens: Max tokens for model response
         context: Additional context injected into the prompt
         enabled: Whether the job is enabled (default: True)
+        env_vars: Dict of per-job env vars (e.g. {"TELEGRAM_BOT_TOKEN": "..."})
         agent: Parent agent instance
 
     Returns:
@@ -727,6 +736,7 @@ def scheduler(
             "max_tokens": max_tokens,
             "context": context,
             "enabled": enabled,
+            "env_vars": env_vars or {},
             "created_at": datetime.now().isoformat(),
             "run_count": 0,
             "last_triggered": 0,
@@ -773,6 +783,8 @@ def scheduler(
             extras.append(f"tools: {tools}")
         if model:
             extras.append(f"model: {model}")
+        if env_vars:
+            extras.append(f"env: {list(env_vars.keys())}")
         extra_str = f"\n{' | '.join(extras)}" if extras else ""
 
         return _ok(f"⏰ Job '{name}' {verb} ({sched_info}){extra_str}")
