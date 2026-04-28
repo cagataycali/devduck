@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/cagataycali-devduck-badge.png)](https://mseep.ai/app/cagataycali-devduck)
+
 <p align="center">
   <img src="duck-animated.svg" alt="DevDuck" width="160" height="160">
 </p>
