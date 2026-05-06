@@ -2700,7 +2700,7 @@ You are NOT a passive chatbot — you have tools that make you self-managing.
 - Recurring work: `scheduler(action='add', name=..., schedule='*/5 * * * *', prompt=...)`
 - One-time: `scheduler(action='add', name=..., run_at='2026-05-06T18:00:00', prompt=..., once=True)`
 - **Multi-terminal safety**: The scheduler uses atomic file locks
-  (`/tmp/.devduck/scheduler/locks/{job}_{YYYYMMDD_HHMM}.lock`).
+  (`/tmp/.devduck/scheduler/locks/job_YYYYMMDD_HHMM.lock`).
   If 3 terminals run the same job, only ONE acquires the lock per minute — the
   other two skip. Jobs persist to `/tmp/.devduck/scheduler/jobs.json` so every
   DevDuck instance sees the same schedule but only one fires it.
