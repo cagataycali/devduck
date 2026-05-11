@@ -1,0 +1,254 @@
+/* DevDuck — Minimal glassmorphic theme */
+
+/* ============================================= */
+/* Light mode                                    */
+/* ============================================= */
+[data-md-color-scheme="default"] {
+    --md-primary-fg-color: #333333;
+    --md-primary-bg-color: #fafafa;
+    --md-accent-fg-color: #e6a817;
+    --md-default-bg-color: #fafafa;
+    --md-default-fg-color: #333333;
+    --md-default-fg-color--light: #666666;
+    --md-default-fg-color--lighter: #999999;
+    --md-default-fg-color--lightest: #cccccc;
+    --md-typeset-a-color: #333333;
+    --md-code-bg-color: #f5f5f5;
+    --md-code-fg-color: #444444;
+
+    --bg: #fafafa;
+    --bg-surface: #f5f5f5;
+    --bg-elevated: #eeeeee;
+    --fg: #333333;
+    --fg-muted: #888888;
+    --fg-heading: #111111;
+    --glass-bg: rgba(245, 245, 245, 0.7);
+    --glass-border: rgba(0, 0, 0, 0.06);
+    --glass-blur: blur(12px);
+    --scrollbar-thumb: rgba(0, 0, 0, 0.1);
+    --scrollbar-hover: rgba(0, 0, 0, 0.2);
+    --code-fg: #444;
+}
+
+/* ============================================= */
+/* Dark mode — true black + glass                */
+/* ============================================= */
+[data-md-color-scheme="slate"] {
+    --md-default-bg-color: #0a0a0a;
+    --md-default-fg-color: #c8c8c8;
+    --md-default-fg-color--light: #888888;
+    --md-default-fg-color--lighter: #555555;
+    --md-default-fg-color--lightest: #333333;
+    --md-primary-fg-color: #f0f0f0;
+    --md-primary-bg-color: #0a0a0a;
+    --md-accent-fg-color: #f5c518;
+    --md-code-bg-color: rgba(255, 255, 255, 0.04);
+    --md-code-fg-color: #b8b8b8;
+    --md-code-hl-color: rgba(245, 197, 24, 0.1);
+    --md-typeset-a-color: #e0e0e0;
+
+    --bg: #0a0a0a;
+    --bg-surface: rgba(255, 255, 255, 0.04);
+    --bg-elevated: rgba(255, 255, 255, 0.06);
+    --fg: #c8c8c8;
+    --fg-muted: #666666;
+    --fg-heading: #f0f0f0;
+    --glass-bg: rgba(255, 255, 255, 0.03);
+    --glass-border: rgba(255, 255, 255, 0.06);
+    --glass-blur: blur(20px);
+    --scrollbar-thumb: rgba(255, 255, 255, 0.08);
+    --scrollbar-hover: rgba(255, 255, 255, 0.15);
+    --code-fg: #b8b8b8;
+}
+
+/* ============================================= */
+/* Base                                          */
+/* ============================================= */
+body {
+    background: var(--bg) !important;
+    color: var(--fg) !important;
+    font-feature-settings: "kern" 1;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ============================================= */
+/* Typography                                    */
+/* ============================================= */
+h1, h2, h3, h4, h5, h6 {
+    color: var(--fg-heading) !important;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+}
+h1 { font-weight: 700; }
+.md-content { color: var(--fg) !important; }
+.md-typeset p { color: var(--fg) !important; line-height: 1.7; }
+.md-typeset li { color: var(--fg) !important; line-height: 1.7; }
+
+/* ============================================= */
+/* Links                                         */
+/* ============================================= */
+.md-typeset a {
+    color: var(--md-typeset-a-color) !important;
+    text-decoration: underline;
+    text-decoration-color: rgba(128, 128, 128, 0.3);
+    text-underline-offset: 2px;
+    transition: text-decoration-color 0.2s;
+}
+.md-typeset a:hover {
+    text-decoration-color: var(--md-accent-fg-color);
+}
+
+/* ============================================= */
+/* Header                                        */
+/* ============================================= */
+.md-header {
+    background: var(--md-primary-bg-color) !important;
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
+    border-bottom: 1px solid var(--glass-border);
+    box-shadow: none !important;
+}
+.md-header__title { color: var(--fg-heading) !important; }
+.md-header .md-icon { color: var(--fg) !important; }
+.md-header__button { color: var(--fg) !important; }
+
+/* ============================================= */
+/* Sidebar navigation                            */
+/* ============================================= */
+.md-sidebar { background: transparent !important; }
+
+.md-nav__link {
+    color: var(--fg-muted) !important;
+    font-size: 0.82rem;
+    transition: color 0.15s;
+}
+.md-nav__link:hover { color: var(--fg-heading) !important; }
+.md-nav__link--active,
+.md-nav__item--active > .md-nav__link {
+    color: var(--md-accent-fg-color) !important;
+    font-weight: 600;
+}
+.md-nav__item--nested > .md-nav__link {
+    color: var(--fg-heading) !important;
+    font-weight: 600;
+}
+
+/* ============================================= */
+/* Code — glass cards                            */
+/* ============================================= */
+.md-typeset pre {
+    background: var(--glass-bg) !important;
+    backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-border) !important;
+    border-radius: 8px;
+}
+.md-typeset code {
+    background: var(--bg-surface) !important;
+    color: var(--code-fg) !important;
+    border-radius: 4px;
+    font-size: 0.85em;
+}
+
+/* ============================================= */
+/* Admonitions — glass cards                     */
+/* ============================================= */
+.md-typeset .admonition,
+.md-typeset details {
+    background: var(--glass-bg) !important;
+    backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-border) !important;
+    border-radius: 8px;
+    box-shadow: none !important;
+}
+
+/* ============================================= */
+/* Tables — glass                                */
+/* ============================================= */
+.md-typeset table:not([class]) {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    overflow: hidden;
+}
+.md-typeset table:not([class]) th {
+    background: var(--bg-elevated);
+    color: var(--fg-heading);
+    font-weight: 600;
+}
+.md-typeset table:not([class]) td {
+    border-color: var(--glass-border);
+    color: var(--fg);
+}
+
+/* ============================================= */
+/* Content tabs                                  */
+/* ============================================= */
+.md-typeset .tabbed-set > input:checked + label {
+    border-color: var(--md-accent-fg-color);
+    color: var(--fg-heading);
+}
+.md-typeset .tabbed-set > label { color: var(--fg-muted); }
+.md-typeset .tabbed-content {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 0 0 8px 8px;
+}
+
+/* ============================================= */
+/* Mermaid diagrams                              */
+/* ============================================= */
+.mermaid {
+    border: 1px solid var(--glass-border);
+    border-radius: 8px;
+    padding: 1rem;
+    background: var(--glass-bg);
+}
+
+/* ============================================= */
+/* Scrollbar                                     */
+/* ============================================= */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-hover); }
+
+/* ============================================= */
+/* Footer: hidden                                */
+/* ============================================= */
+.md-footer { display: none !important; }
+
+/* ============================================= */
+/* Grid cards                                    */
+/* ============================================= */
+[data-md-color-scheme="slate"] .md-typeset .grid.cards > ul > li,
+[data-md-color-scheme="slate"] .md-typeset .grid.cards > ol > li {
+    background: rgba(255, 255, 255, 0.03) !important;
+    border: 1px solid rgba(255, 255, 255, 0.06) !important;
+    backdrop-filter: blur(16px);
+    border-radius: 10px;
+}
+[data-md-color-scheme="default"] .md-typeset .grid.cards > ul > li,
+[data-md-color-scheme="default"] .md-typeset .grid.cards > ol > li {
+    background: rgba(0, 0, 0, 0.02) !important;
+    border: 1px solid rgba(0, 0, 0, 0.06) !important;
+    border-radius: 10px;
+}
+
+/* ============================================= */
+/* Mobile nav — dark mode fix                    */
+/* ============================================= */
+[data-md-color-scheme="slate"] .md-nav__title {
+    color: var(--fg-heading) !important;
+    background: var(--bg) !important;
+}
+[data-md-color-scheme="slate"] .md-sidebar--primary {
+    background: var(--bg) !important;
+}
+
+/* ============================================= */
+/* Search                                        */
+/* ============================================= */
+.md-search__input {
+    background: var(--bg-surface) !important;
+    color: var(--fg) !important;
+}
