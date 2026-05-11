@@ -1333,7 +1333,7 @@ def run_websocket_server(host: str, port: int, system_prompt: str) -> None:
 @tool
 def websocket(
     action: str,
-    host: str = "127.0.0.1",
+    host: str = "0.0.0.0",
     port: int = 8080,
     system_prompt: str = "You are a helpful WebSocket server assistant.",
     agent=None,
